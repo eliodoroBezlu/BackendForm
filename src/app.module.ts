@@ -3,6 +3,7 @@ import { MongooseModule } from "@nestjs/mongoose"
 import { ConfigModule, ConfigService } from "@nestjs/config"
 import { InspeccionesModule } from "./modules/inspecciones/inspecciones.module"
 import { ExcelModule } from "./modules/excel/excel.module"
+import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/inspecciones-emergencia.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ExcelModule } from "./modules/excel/excel.module"
     }),
     InspeccionesModule,
     ExcelModule,
+    InspeccionesEmergenciaModule,
   ],
 })
 export class AppModule {}
