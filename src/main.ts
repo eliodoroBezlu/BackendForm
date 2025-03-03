@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { ConfigService } from "@nestjs/config"
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://172.25.112.1:3000'], // Permitir solo solicitudes de este origen
+    origin: configService.get<String>("CORS_ORIGIN")?.split(","), // Permitir solo solicitudes de este origen
   });
 
   const port = 3001; // Define el puerto
