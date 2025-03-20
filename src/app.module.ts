@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config"
 import { InspeccionesModule } from "./modules/inspecciones/inspecciones.module"
 import { ExcelModule } from "./modules/excel/excel.module"
 import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/inspecciones-emergencia.module';
+import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/
     InspeccionesModule,
     ExcelModule,
     InspeccionesEmergenciaModule,
+    TrabajadoresModule,
   ],
 })
 export class AppModule {}

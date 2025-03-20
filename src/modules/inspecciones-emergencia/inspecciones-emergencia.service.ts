@@ -18,13 +18,13 @@ export class InspeccionesEmergenciaService {
     return createInspeccionEmergencia.save()
   }
 
-  async verificarTag(tag: string, periodo: string, año: number) {
+  async verificarTag(tag: string, periodo: string, año: number, ) {
     const formularioExistente = await this.inspeccionEmergenciaModel.findOne({ tag, periodo, año });
 
     if (formularioExistente) {
-      return { existe: true, formulario: formularioExistente };
+      return { existe: true, formulario: formularioExistente,  };
     } else {
-      return { existe: false };
+      return { existe: false, };
     }
   }
 
@@ -34,18 +34,35 @@ export class InspeccionesEmergenciaService {
     mes: string,
     datosMes: any,
   ) {
+    // Verificar que el mes sea válido
+    const mesesValidos = [
+      "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+      "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+    ];
+  
+    if (!mesesValidos.includes(mes)) {
+      throw new Error(`Mes no válido: ${mes}`);
+    }
+  
+    // Crear el objeto de actualización
     const updateQuery = {
       $set: {
         [`meses.${mes}`]: datosMes, // Actualiza solo el mes específico
         mesActual: mes, // Actualiza el campo mesActual al mes que se está modificando
       },
     };
-
-    return await this.inspeccionEmergenciaModel.findOneAndUpdate(
-      { tag }, // Busca por tag
+  
+    // Buscar y actualizar el documento
+    const resultado = await this.inspeccionEmergenciaModel.updateOne(
+      { tag: tag }, // Busca por tag (asegúrate de que el campo en la base de datos sea "tag")
       updateQuery,
-      { new: true }, // Devuelve el documento actualizado
     );
+  
+    if (resultado.matchedCount === 0) {
+      throw new Error(`No se encontró un formulario con el tag: ${tag}`);
+    }
+  
+    return { success: true, message: "Mes actualizado correctamente" };
   }
 
 

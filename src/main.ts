@@ -5,11 +5,34 @@ import { ConfigService } from "@nestjs/config"
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-  const origin =  configService.get<String>("CORS_ORIGIN")?.split(",")
-  console.log(origin)
-   app.enableCors({
-     origin: origin // Permitir solo solicitudes de este origen
-   });
+
+  // Parsear los orígenes definidos
+  const originsString = configService.get<string>("CORS_ORIGIN") || "";
+  const allowedOrigins = originsString.split(",").map(origin => origin.trim());
+
+  app.enableCors({
+    origin: (requestOrigin, callback) => {
+
+      // Solo permitir orígenes específicamente definidos
+      if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+        callback(null, true);
+      } else {
+        console.error(`Origen no permitido: ${requestOrigin}`);
+        callback(new Error('Not allowed by CORS'), false);
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Métodos HTTP permitidos
+    allowedHeaders: [
+      'Origin', 
+      'X-Requested-With', 
+      'Content-Type', 
+      'Accept', 
+      'Authorization'
+    ],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+  });
 
   const port = 3001; // Define el puerto
   await app.listen(port); 

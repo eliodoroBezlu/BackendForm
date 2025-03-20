@@ -135,7 +135,7 @@ export class FormularioInspeccionEmergencia extends Document {
   @Prop({ required: true })
   area: string
 
-  @Prop({ type: String })
+  @Prop({ type: String,  unique: true})
   tag: string
 
   @Prop({ type: String })

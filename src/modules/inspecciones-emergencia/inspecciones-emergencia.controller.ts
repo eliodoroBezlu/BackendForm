@@ -13,18 +13,19 @@ export class InspeccionesEmergenciaController {
   }
 
   @Put('actualizar-mes/:tag')
-  async actualizarMes(
-    @Param('tag') tag: string,
-    @Body() body: { mes: string; datosMes: any },
-  ) {
-    const { mes, datosMes } = body;
-    return await this.inspeccionesEmergenciaService.actualizarMesPorTag(tag, mes, datosMes);
-  }
+async actualizarMes(
+  @Param('tag') tag: string,
+  @Body() body: { mes: string; datosMes: any },
+) {
+  const { mes, datosMes } = body;
+  const resultado = await this.inspeccionesEmergenciaService.actualizarMesPorTag(tag, mes, datosMes);
+  return resultado; // Devuelve { success: true, message: "Mes actualizado correctamente" }
+}
 
   @Post('verificar-tag')
-  async verificarTag(@Body() body: { tag: string; periodo: string; año: number }) {
-    const { tag, periodo, año } = body;
-    return await this.inspeccionesEmergenciaService.verificarTag(tag, periodo, año);
+  async verificarTag(@Body() body: { tag: string; periodo: string; año: number; mesActual: string }) {
+    const { tag, periodo, año, } = body;
+    return await this.inspeccionesEmergenciaService.verificarTag(tag, periodo, año,);
   }
   @Get()
   findAll() {
