@@ -66,7 +66,7 @@ class InspeccionSistemasMensual {
 }
 
 @Schema()
-class InspeccionExtintor {
+export class InspeccionExtintor {
   @Prop()
   fechaInspeccion: string
 
@@ -135,7 +135,7 @@ export class FormularioInspeccionEmergencia extends Document {
   @Prop({ required: true })
   area: string
 
-  @Prop({ type: String,  unique: true})
+  @Prop({ type: String})
   tag: string
 
   @Prop({ type: String })

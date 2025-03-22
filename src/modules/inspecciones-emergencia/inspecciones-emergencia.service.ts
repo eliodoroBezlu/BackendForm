@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateFormularioInspeccionDto } from './dto/create-inspecciones-emergencia.dto';
 import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emergencia.dto';
 import { FormularioInspeccionEmergencia } from './schemas/inspeccion-emergencia.schema';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 
 @Injectable()
@@ -66,13 +66,23 @@ export class InspeccionesEmergenciaService {
   }
 
 
-  findAll() {
-    return `This action returns all inspeccionesEmergencia`;
+  async findAll() {
+    return this.inspeccionEmergenciaModel
+      .find()
+      .sort({ createdAt: -1 }) // Ordenar por fecha de creación descendente
+      .exec()
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} inspeccionesEmergencia`;
-  }
+  async findOne(id: string): Promise<FormularioInspeccionEmergencia> {
+      if (!isValidObjectId(id)) {
+        throw new BadRequestException(`ID inválido: ${id}`)
+      }
+      const inspeccion = await this.inspeccionEmergenciaModel.findById(id).exec()
+      if (!inspeccion) {
+        throw new NotFoundException(`Inspección con ID ${id} no encontrada`)
+      }
+      return inspeccion
+    }
 
   update(id: number, updateInspeccionesEmergenciaDto: UpdateInspeccionesEmergenciaDto) {
     return `This action updates a #${id} inspeccionesEmergencia`;

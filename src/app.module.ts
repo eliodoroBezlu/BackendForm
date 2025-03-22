@@ -3,6 +3,7 @@ import { MongooseModule } from "@nestjs/mongoose"
 import { ConfigModule, ConfigService } from "@nestjs/config"
 import { InspeccionesModule } from "./modules/inspecciones/inspecciones.module"
 import { ExcelModule } from "./modules/excel/excel.module"
+import { InspeccionesEmergenciaExcelModule } from './modules/inspecciones-emergencia/inspecciones-emergencia-excel/inspecciones-emergencia-excel.module'
 import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/inspecciones-emergencia.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 
@@ -22,6 +23,7 @@ import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
     ExcelModule,
     InspeccionesEmergenciaModule,
     TrabajadoresModule,
+    InspeccionesEmergenciaExcelModule,
   ],
 })
 export class AppModule {}

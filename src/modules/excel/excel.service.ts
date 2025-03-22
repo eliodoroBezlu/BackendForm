@@ -3,12 +3,10 @@ import{ ConfigService } from "@nestjs/config"
 import * as ExcelJS from "exceljs"
 import type { Inspeccion } from "../inspecciones/schemas/inspeccion.schema"
 import * as path from "path"
-import * as fs from "fs"
 
 @Injectable()
 export class ExcelService {
   private readonly templatePath: string
-  private readonly signaturePath: string
   private readonly logger = new Logger(ExcelService.name)
   private readonly filasExcluidas = new Set([15, 18, 23, 26, 27, 34, 38, 43, 44, 45, 53, 54, 61])
   private readonly CARACTERES_POR_FILA = 100
@@ -17,23 +15,9 @@ export class ExcelService {
     this.templatePath =
       this.configService.get<string>("EXCEL_TEMPLATE_PATH") ||
       path.join(process.cwd(), "src", "templates", "arnes_checklist.xlsx")
-    this.signaturePath = path.join(process.cwd(), "src", "signatures")
   }
 
-  async onModuleInit() {
-    try {
-      await fs.promises.access(this.templatePath, fs.constants.R_OK)
-      this.logger.log(`Plantilla Excel encontrada en: ${this.templatePath}`)
 
-      if (!fs.existsSync(this.signaturePath)) {
-        await fs.promises.mkdir(this.signaturePath, { recursive: true })
-        this.logger.log(`Carpeta de firmas creada en: ${this.signaturePath}`)
-      }
-    } catch (error) {
-      this.logger.error(`Error en la inicialización: ${error.message}`)
-      throw new Error("Error en la inicialización del servicio Excel")
-    }
-  }
 
  
 
