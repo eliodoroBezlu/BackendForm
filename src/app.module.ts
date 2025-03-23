@@ -6,6 +6,9 @@ import { ExcelModule } from "./modules/excel/excel.module"
 import { InspeccionesEmergenciaExcelModule } from './modules/inspecciones-emergencia/inspecciones-emergencia-excel/inspecciones-emergencia-excel.module'
 import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/inspecciones-emergencia.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
+import { SuperintendenciaModule } from './modules/superintendencia/superintendencia.module';
+import { AreaModule } from './modules/area/area.module';
+import { ExtintorModule } from './modules/extintor/extintor.module';
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
     InspeccionesEmergenciaModule,
     TrabajadoresModule,
     InspeccionesEmergenciaExcelModule,
+    SuperintendenciaModule,
+    AreaModule,
+    ExtintorModule,
   ],
 })
 export class AppModule {}

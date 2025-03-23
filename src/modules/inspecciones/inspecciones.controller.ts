@@ -15,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InspeccionesService } from './inspecciones.service';
-
 import type { CreateInspeccionDto } from "./dto/create-inspeccion.dto"
 import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto'
 import { ExcelService } from '../excel/excel.service';

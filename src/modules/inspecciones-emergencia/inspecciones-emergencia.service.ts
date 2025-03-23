@@ -4,6 +4,8 @@ import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emerg
 import { FormularioInspeccionEmergencia } from './schemas/inspeccion-emergencia.schema';
 import { isValidObjectId, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
+import { ExtintorService } from '../extintor/extintor.service';
+import { Area } from '../area/schema/area.schema';
 
 @Injectable()
 export class InspeccionesEmergenciaService {
@@ -11,6 +13,9 @@ export class InspeccionesEmergenciaService {
   constructor(
     @InjectModel(FormularioInspeccionEmergencia.name) 
     private inspeccionEmergenciaModel: Model<FormularioInspeccionEmergencia>,
+    private  extintorService: ExtintorService,
+    @InjectModel(Area.name)
+    private areaModel: Model<Area>,
   ) {}
   
   async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
@@ -18,15 +23,41 @@ export class InspeccionesEmergenciaService {
     return createInspeccionEmergencia.save()
   }
 
-  async verificarTag(tag: string, periodo: string, año: number, ) {
-    const formularioExistente = await this.inspeccionEmergenciaModel.findOne({ tag, periodo, año });
+ // En InspeccionesEmergenciaService (backend)
+async verificarTag(tag: string, periodo: string, año: number, area: string) {
+  // Buscar el formulario por tag
+  const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
+    tag,
+    periodo,
+    año,
+  });
 
-    if (formularioExistente) {
-      return { existe: true, formulario: formularioExistente,  };
-    } else {
-      return { existe: false, };
-    }
+  // Buscar extintores por área
+  const extintores = await this.extintorService.findByArea(area);
+  
+  // Buscar información del área incluyendo la superintendencia
+  const areaInfo = await this.areaModel.findOne({ nombre: area })
+    .populate('superintendencia')
+    .exec();
+  
+  // Obtener el nombre de la superintendencia si existe
+  const superintendencia = areaInfo?.superintendencia?.nombre || "";
+
+  if (formularioExistente) {
+    return {
+      existe: true,
+      formulario: formularioExistente,
+      extintores,
+      superintendencia, // Añadir el nombre de la superintendencia
+    };
+  } else {
+    return {
+      existe: false,
+      extintores,
+      superintendencia, // Añadir el nombre de la superintendencia
+    };
   }
+} 
 
   // Añadir o actualizar datos de un mes específico usando el tag
   async actualizarMesPorTag(

@@ -162,12 +162,12 @@ export class InspeccionesEmergenciaExcelService {
             'ABRIL': { cantidad: 'K', estado: 'L' },
             'MAYO': { cantidad: 'M', estado: 'N' },
             'JUNIO': { cantidad: 'O', estado: 'P' },
-            'JULIO': { cantidad: 'B', estado: 'C' },
-            'AGOSTO': { cantidad: 'D', estado: 'E' },
-            'SEPTIEMBRE': { cantidad: 'F', estado: 'G' },
-            'OCTUBRE': { cantidad: 'H', estado: 'I' },
-            'NOVIEMBRE': { cantidad: 'J', estado: 'K' },
-            'DICIEMBRE': { cantidad: 'L', estado: 'M' }
+            'JULIO': { cantidad: 'E', estado: 'F' },
+            'AGOSTO': { cantidad: 'G', estado: 'H' },
+            'SEPTIEMBRE': { cantidad: 'I', estado: 'J' },
+            'OCTUBRE': { cantidad: 'K', estado: 'L' },
+            'NOVIEMBRE': { cantidad: 'M', estado: 'N' },
+            'DICIEMBRE': { cantidad: 'O', estado: 'P' }
           };
       
           // Mapeo de filas para sistemas pasivos según la imagen

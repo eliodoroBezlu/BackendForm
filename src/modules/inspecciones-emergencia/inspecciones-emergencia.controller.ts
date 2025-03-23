@@ -36,11 +36,18 @@ async actualizarMes(
   return resultado; // Devuelve { success: true, message: "Mes actualizado correctamente" }
 }
 
-  @Post('verificar-tag')
-  async verificarTag(@Body() body: { tag: string; periodo: string; año: number; mesActual: string }) {
-    const { tag, periodo, año, } = body;
-    return await this.inspeccionesEmergenciaService.verificarTag(tag, periodo, año,);
-  }
+@Post('verificar-tag')
+async verificarTag(
+  @Body() body: { tag: string; periodo: string; año: number; area: string },
+) {
+  const { tag, periodo, año, area } = body;
+  return await this.inspeccionesEmergenciaService.verificarTag(
+    tag,
+    periodo,
+    año,
+    area,
+  );
+}
 
   @Get(":id/excel")
     async downloadExcel(@Param("id") id: string, @Res() res: Response) {
