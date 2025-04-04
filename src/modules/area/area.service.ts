@@ -16,24 +16,22 @@ export class AreaService {
     private readonly superintendenciaModel: Model<Superintendencia>,
   ) {}
   async create(createAreaDto: CreateAreaDto) {
-    // Buscar la superintendencia por nombre
-    const superintendencia = await this.superintendenciaModel.findOne({
-      nombre: createAreaDto.superintendencia,
-    });
-
+    // Buscar la superintendencia por ID
+    const superintendencia = await this.superintendenciaModel.findById(createAreaDto.superintendencia);
+  
     // Si no se encuentra la superintendencia, lanzar un error
     if (!superintendencia) {
       throw new NotFoundException(
-        `Superintendencia con nombre "${createAreaDto.superintendencia}" no encontrada`,
+        `Superintendencia con ID "${createAreaDto.superintendencia}" no encontrada`
       );
     }
-
+  
     // Crear el área con el ID de la superintendencia
     const area = new this.areaModel({
       nombre: createAreaDto.nombre,
-      superintendencia: superintendencia._id, // Usar el ID de la superintendencia
+      superintendencia: superintendencia._id,
     });
-
+  
     return await area.save();
   }
 

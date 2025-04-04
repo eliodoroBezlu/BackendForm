@@ -45,7 +45,7 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
 
   if (formularioExistente) {
     return {
-      existe: true,
+      existe: false, // modificacion que hice antes true por temporada de pruebas
       formulario: formularioExistente,
       extintores,
       superintendencia, // Añadir el nombre de la superintendencia

@@ -9,7 +9,7 @@ async function bootstrap() {
   // Parsear los orígenes definidos
   const originsString = configService.get<string>("CORS_ORIGIN") || "";
   const allowedOrigins = originsString.split(",").map(origin => origin.trim());
-
+  console.log("Orígenes permitidos:", allowedOrigins);
   app.enableCors({
     origin: (requestOrigin, callback) => {
 

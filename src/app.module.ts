@@ -9,6 +9,7 @@ import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { SuperintendenciaModule } from './modules/superintendencia/superintendencia.module';
 import { AreaModule } from './modules/area/area.module';
 import { ExtintorModule } from './modules/extintor/extintor.module';
+import { TagModule } from './modules/tag/tag.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ExtintorModule } from './modules/extintor/extintor.module';
     SuperintendenciaModule,
     AreaModule,
     ExtintorModule,
+    TagModule,
   ],
 })
 export class AppModule {}
