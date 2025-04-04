@@ -213,7 +213,7 @@ export class ExcelService {
       const worksheet = workbook.getWorksheet(1) // ExcelJS usa 1-based index
 
       if (!worksheet) {
-        throw new Error("No se pudo encontrar la hoja de trabajo")
+        throw new Error("No se pudo encontrar la hoja de trabajo en el repositorio")
       }
 
       for (const [index, inspeccion] of inspecciones.entries()) {
