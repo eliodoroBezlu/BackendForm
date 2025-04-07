@@ -12,6 +12,9 @@ export class Extintor extends Document {
 
   @Prop({ required: true })
   Ubicacion: string;
+
+  @Prop({type: Boolean})
+  inspeccionado: boolean
 }
 
 export const ExtintorSchema = SchemaFactory.createForClass(Extintor);   

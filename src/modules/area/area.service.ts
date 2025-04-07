@@ -46,7 +46,7 @@ export class AreaService {
     // Si query es válido, realizar la búsqueda con regex
     const areas = await this.areaModel
       .find({ nombre: { $regex: query, $options: 'i' } }) // Buscar por "nombre"
-      .limit(10)
+      .limit(20)
       .exec();
   
     return areas.map((area) => area.nombre); // Devolver solo los nombres

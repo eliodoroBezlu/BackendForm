@@ -27,7 +27,7 @@ export class InspeccionesEmergenciaController {
   }
 
   @Put('actualizar-mes/:tag')
-async actualizarMes(
+  async actualizarMes(
   @Param('tag') tag: string,
   @Body() body: { mes: string; datosMes: any },
 ) {
@@ -87,4 +87,14 @@ async verificarTag(
   remove(@Param('id') id: string) {
     return this.inspeccionesEmergenciaService.remove(+id);
   }
+
+  // En inspecciones-emergencia.controller.ts
+    @Put('actualizar-extintores/:tag')
+    async actualizarExtintores(
+      @Param('tag') tag: string,
+      @Body() body: { extintores: any[] }
+    ) {
+      const { extintores } = body;
+      return await this.inspeccionesEmergenciaService.actualizarExtintoresPorTag(tag, extintores);
+    }
 }
