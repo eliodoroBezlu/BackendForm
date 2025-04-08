@@ -40,7 +40,6 @@ export class ExtintorService {
         .lean()
         .exec();
       
-      console.log("Resultado de la consulta:", result);
       return result;
     } catch (error) {
       console.error("Error en findByArea service:", error);
@@ -67,7 +66,6 @@ export class ExtintorService {
         { $set: { inspeccionado: true } }
       );
       
-      console.log(`Extintores actualizados: ${resultado.modifiedCount}`);
       return { modified: resultado.modifiedCount };
     } catch (error) {
       console.error('Error al marcar extintores como inspeccionados:', error);
