@@ -47,6 +47,23 @@ export class ExtintorService {
     }
   }
 
+  async findByCodigo(codigoExtintor: string){
+    try {
+      if (!codigoExtintor) {
+        throw new Error('El código del extintor es requerido');
+      }
+      const result = await this.extintorModel
+      .find({
+        Codigo: codigoExtintor
+      })
+      .lean()
+      .exec
+    return result
+    } catch (error) {
+      
+    }
+  }
+
   update(id: number, updateExtintorDto: UpdateExtintorDto) {
     return `This action updates a #${id} extintor`;
   }
@@ -70,6 +87,27 @@ export class ExtintorService {
     } catch (error) {
       console.error('Error al marcar extintores como inspeccionados:', error);
       throw new Error(`Error al actualizar extintores: ${error.message}`);
+    }
+  }
+
+  async crearExtintor(codigosExtintores: string[]){
+
+  }
+
+  async deshabilitarExtintor(codigoExtintor: string){
+    try {
+      const resultado = await this.extintorModel.updateOne(
+        { CodigoExtintor: codigoExtintor},
+        { $set: {activo: false}}
+      );
+
+          if (resultado.matchedCount === 0) {
+      return { exito: false, mensaje: 'No se encontró el extintor con ese código' };
+    }
+    
+    return { exito: true, mensaje: 'Extintor deshabilitado correctamente' };
+    } catch (error) {
+      console.error('Error al desactivar el extintor')
     }
   }
 

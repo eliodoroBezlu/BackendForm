@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, NotFoundException, BadRequestException } from '@nestjs/common';
 import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
@@ -15,13 +15,14 @@ export class TagController {
 
   // En tu TagController
   @Get('por-area')
-  async findTagByArea(@Query('area') area: string) {
-    const orden = await this.tagService.findByArea(area);
-    if (!orden) {
-      throw new NotFoundException('Área no encontrada');
-    }
-    return { tag: orden.tag };
+async findTagByArea(@Query('area') area: string) {
+  if (!area) {
+    throw new BadRequestException ('Se requiere especificar un área');
   }
+  const tags = await this.tagService.findByArea(area);
+  // Devuelve directamente el array de tags
+  return tags;
+}
 
 
 

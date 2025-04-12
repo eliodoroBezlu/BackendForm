@@ -48,7 +48,7 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
   });
 
   // Buscar extintores por área
-  const extintores = await this.extintorService.findByArea(area);
+  const extintores = await this.extintorService.findByArea(tag);
   
   // Buscar información del área incluyendo la superintendencia
   const areaInfo = await this.areaModel.findOne({ nombre: area })

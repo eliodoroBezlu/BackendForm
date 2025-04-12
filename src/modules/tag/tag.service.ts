@@ -41,8 +41,10 @@ export class TagService {
     }
   }
 
-  async findByArea(area: string): Promise<OrdenTrabajo | null> {
-    return this.ordenTrabajoModel.findOne({ area }).exec();
+  async findByArea(area: string): Promise<string[]> {
+    const resultados = await this.ordenTrabajoModel.find({ area }).exec();
+    // Extrae solo los valores de tag y los devuelve como array
+    return resultados.map(doc => doc.tag);
   }
 
   async findAll(): Promise<OrdenTrabajo[]> {
