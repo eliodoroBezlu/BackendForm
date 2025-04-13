@@ -16,8 +16,8 @@ export class Extintor extends Document {
   @Prop({type: Boolean, default: false})
   inspeccionado: boolean;
 
-  @Prop({type: Boolean, default: true})
-  activo: boolean;
+  // @Prop({type: Boolean, default: true})
+  // activo: boolean;
 
 }
 
