@@ -26,20 +26,20 @@ export class ExtintorService {
     return await this.extintorModel.find().exec();
   }
 
-  async findByArea(area: string) {
+  async findByArea(tag: string) {
     try {
-      console.log("Servicio - Buscando área:", area);
-      console.log("Filtro de consulta:", { Area: new RegExp(area, 'i'), inspeccionado: false });
+      console.log("Servicio - Buscando área:", tag);
+      console.log("Filtro de consulta:", { Area: new RegExp(tag, 'i'), inspeccionado: false });
       
       const result = await this.extintorModel
         .find({
-          Area: new RegExp(area, 'i'),
+          Area: new RegExp(tag, 'i'),
           inspeccionado: false
         })
         .select('CodigoExtintor Ubicacion Area')
         .lean()
         .exec();
-      
+        console.log(tag+"prueba")
       return result;
     } catch (error) {
       console.error("Error en findByArea service:", error);

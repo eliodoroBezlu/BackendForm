@@ -40,6 +40,7 @@ export class InspeccionesEmergenciaService {
 
  // En InspeccionesEmergenciaService (backend)
 async verificarTag(tag: string, periodo: string, año: number, area: string) {
+  console.log(tag+"prueba")
   // Buscar el formulario por tag
   const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
     tag,
