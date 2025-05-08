@@ -102,6 +102,7 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
       $set: {
         [`meses.${mes}`]: datosMes, // Actualiza solo el mes específico
         mesActual: mes, // Actualiza el campo mesActual al mes que se está modificando
+        fechaUltimaModificacion: new Date()
       },
     };
 
@@ -173,6 +174,9 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
         [`meses.${mesActual}.inspeccionesExtintor`]: {
           $each: extintores  // Añade cada elemento del array
         }
+      },
+      $set: {
+        fechaUltimaModificacion: new Date() // Actualiza la fecha de última modificación
       }
     };
 

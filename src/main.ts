@@ -34,7 +34,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204
   });
 
-  const port = 3001; // Define el puerto
+  const port = configService.get<number>('PORT') || 3002; // Define el puerto
   await app.listen(port); 
   console.log(`Aplicación corriendo en http://localhost:${port}`);
 }
