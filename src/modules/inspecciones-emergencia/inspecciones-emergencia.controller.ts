@@ -8,17 +8,21 @@ import {
   Patch,
   Res,
   Put,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
 import { CreateFormularioInspeccionDto } from './dto/create-inspecciones-emergencia.dto';
 import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emergencia.dto';
 import { InspeccionesEmergenciaExcelService } from './inspecciones-emergencia-excel/inspecciones-emergencia-excel.service'
+import { ExtintorService } from '../extintor/extintor.service';
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(
     private readonly inspeccionesEmergenciaService: InspeccionesEmergenciaService,
     private readonly formularioInspeccionEmergencia: InspeccionesEmergenciaExcelService,
+    private readonly extintorService: ExtintorService,
   ) {}
 
   @Post('crear-formulario')
@@ -89,12 +93,29 @@ async verificarTag(
   }
 
   // En inspecciones-emergencia.controller.ts
-    @Put('actualizar-extintores/:tag')
-    async actualizarExtintores(
-      @Param('tag') tag: string,
-      @Body() body: { extintores: any[] }
-    ) {
+@Put('actualizar-extintores/:tag')
+async actualizarExtintores(
+  @Param('tag') tag: string,
+  @Body() body: { extintores: any[] }
+) {
+    try {
       const { extintores } = body;
-      return await this.inspeccionesEmergenciaService.actualizarExtintoresPorTag(tag, extintores);
+      // Verificar y crear automáticamente solo los extintores que no existen
+      await this.extintorService.verificarYCrearExtintores(extintores,tag);
+      
+      // Actualizar el formulario con todos los extintores
+      const resultadoActualizacion = await this.inspeccionesEmergenciaService.actualizarExtintoresPorTag(tag, extintores);
+      
+      return {
+        exito: true,
+        actualizacion: resultadoActualizacion
+      };
+    } catch (error) {
+      console.error('Error al actualizar extintores:', error);
+      throw new HttpException(
+        error.message || 'Error al actualizar extintores',
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
+  }
 }

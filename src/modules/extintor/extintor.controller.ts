@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpException, HttpStatus, Put } from '@nestjs/common';
 import { ExtintorService } from './extintor.service';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
@@ -52,4 +52,19 @@ export class ExtintorController {
         );
       }
     }
+
+  @Put('desactivar/:codigo')
+  async desactivarExtintor(@Param('codigo') codigo: string) {
+    try {
+      const resultado = await this.extintorService.deshabilitarExtintor(codigo);
+      
+      return resultado;
+    } catch (error) {
+      console.error("Error al desactivar extintor:", error);
+      throw new HttpException(
+        error.message || 'Error al desactivar extintor',
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
 }
