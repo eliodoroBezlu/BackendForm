@@ -7,7 +7,7 @@ export class Extintor extends Document {
   @Prop({ required: true })
   Area: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, unique: true })
   CodigoExtintor: string;
 
   @Prop({ required: true })

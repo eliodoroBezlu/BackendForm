@@ -18,25 +18,40 @@ export class InspeccionesEmergenciaService {
     private areaModel: Model<Area>,
   ) {}
   
-  async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
-    // Crear la inspección
-    const createInspeccionEmergencia = new this.inspeccionEmergenciaModel(createInspeccionesEmergenciaDto);
-    const savedInspection = await createInspeccionEmergencia.save();
-    
-    // Actualizar los extintores que fueron inspeccionados
-    const mesActual = createInspeccionesEmergenciaDto.mesActual;
-    const extintoresInspeccionados = createInspeccionesEmergenciaDto.meses[mesActual]?.inspeccionesExtintor || [];
-    
-    if (extintoresInspeccionados.length > 0) {
-      // Extraer solo los códigos de extintores
-      const codigosExtintores = extintoresInspeccionados.map(extintor => extintor.codigo);
-      
-      // Llamar al servicio de extintor para actualizar
-      await this.extintorService.marcarExtintoresComoInspeccionados(codigosExtintores);
-    }
-    
-    return savedInspection;
+async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
+  // Validar que el tag exista
+  if (!createInspeccionesEmergenciaDto.tag) {
+    throw new Error('El tag es requerido para crear un formulario');
   }
+
+  // Crear la inspección
+  const createInspeccionEmergencia = new this.inspeccionEmergenciaModel(createInspeccionesEmergenciaDto);
+  const savedInspection = await createInspeccionEmergencia.save();
+  
+  // Actualizar los extintores que fueron inspeccionados
+  const mesActual = createInspeccionesEmergenciaDto.mesActual;
+  const extintoresInspeccionados = createInspeccionesEmergenciaDto.meses[mesActual]?.inspeccionesExtintor || [];
+  
+  if (extintoresInspeccionados.length > 0) {
+    // Extraer solo los códigos de extintores
+    const codigosExtintores = extintoresInspeccionados.map(extintor => extintor.codigo);
+    
+    // Verificar y crear automáticamente los extintores que no existen
+    await this.extintorService.verificarYCrearExtintores(
+      extintoresInspeccionados.map(extintor => ({
+        codigo: extintor.codigo,
+        ubicacion: extintor.ubicacion || 'No especificada'
+      })),
+      createInspeccionesEmergenciaDto.tag
+    );
+    
+    // Llamar al servicio de extintor para actualizar
+    await this.extintorService.marcarExtintoresComoInspeccionados(codigosExtintores);
+  }
+  
+  return savedInspection;
+}
+
 
  // En InspeccionesEmergenciaService (backend)
 async verificarTag(tag: string, periodo: string, año: number, area: string) {
@@ -77,47 +92,56 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
 
   // Añadir o actualizar datos de un mes específico usando el tag
   async actualizarMesPorTag(
-    tag: string,
-    mes: string,
-    datosMes: any,
-  ) {
-    // Verificar que el mes sea válido
-    const mesesValidos = [
-      "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-      "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
-    ];
-  
-    if (!mesesValidos.includes(mes)) {
-      throw new Error(`Mes no válido: ${mes}`);
-    }
-  
-    // Actualizar los extintores que fueron inspeccionados
-    if (datosMes.inspeccionesExtintor && datosMes.inspeccionesExtintor.length > 0) {
-      const codigosExtintores = datosMes.inspeccionesExtintor.map(extintor => extintor.codigo);
-      await this.extintorService.marcarExtintoresComoInspeccionados(codigosExtintores);
-    }
-  
-    // Crear el objeto de actualización
-    const updateQuery = {
-      $set: {
-        [`meses.${mes}`]: datosMes, // Actualiza solo el mes específico
-        mesActual: mes, // Actualiza el campo mesActual al mes que se está modificando
-        fechaUltimaModificacion: new Date()
-      },
-    };
+  tag: string,
+  mes: string,
+  datosMes: any,
+) {
+  // Verificar que el mes sea válido
+  const mesesValidos = [
+    "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+  ];
 
-    // Buscar y actualizar el documento
-    const resultado = await this.inspeccionEmergenciaModel.updateOne(
-      { tag: tag }, // Busca por tag
-      updateQuery,
-    );
-  
-    if (resultado.matchedCount === 0) {
-      throw new Error(`No se encontró un formulario con el tag: ${tag}`);
-    }
-  
-    return { success: true, message: "Mes actualizado correctamente" };
+  if (!mesesValidos.includes(mes)) {
+    throw new Error(`Mes no válido: ${mes}`);
   }
+
+  // Actualizar los extintores que fueron inspeccionados
+  if (datosMes.inspeccionesExtintor && datosMes.inspeccionesExtintor.length > 0) {
+    // Verificar y crear automáticamente los extintores que no existen
+    await this.extintorService.verificarYCrearExtintores(
+      datosMes.inspeccionesExtintor.map(extintor => ({
+        codigo: extintor.codigo,
+        ubicacion: extintor.ubicacion || 'No especificada'
+      })),
+      tag
+    );
+    
+    const codigosExtintores = datosMes.inspeccionesExtintor.map(extintor => extintor.codigo);
+    await this.extintorService.marcarExtintoresComoInspeccionados(codigosExtintores);
+  }
+
+  // Crear el objeto de actualización
+  const updateQuery = {
+    $set: {
+      [`meses.${mes}`]: datosMes, // Actualiza solo el mes específico
+      mesActual: mes, // Actualiza el campo mesActual al mes que se está modificando
+      fechaUltimaModificacion: new Date()
+    },
+  };
+
+  // Buscar y actualizar el documento
+  const resultado = await this.inspeccionEmergenciaModel.updateOne(
+    { tag: tag }, // Busca por tag
+    updateQuery,
+  );
+
+  if (resultado.matchedCount === 0) {
+    throw new Error(`No se encontró un formulario con el tag: ${tag}`);
+  }
+
+  return { success: true, message: "Mes actualizado correctamente" };
+}
 
 
   async findAll() {
