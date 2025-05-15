@@ -7,6 +7,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ExtintorService } from '../extintor/extintor.service';
 import { Area } from '../area/schema/area.schema';
 
+interface FiltrosInspeccion {
+  area?: string;
+  superintendencia?: string;
+  mesActual?: string;
+  documentCode?: string;
+}
 @Injectable()
 export class InspeccionesEmergenciaService {
 
@@ -144,11 +150,32 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
 }
 
 
-  async findAll() {
+async findAll(filtros?: FiltrosInspeccion) {
+    // Construir el objeto de consulta basado en los filtros
+    const query: any = {};
+    
+    if (filtros) {
+      if (filtros.area) {
+        query.area = { $regex: filtros.area, $options: 'i' }; // Búsqueda insensible a mayúsculas/minúsculas
+      }
+      
+      if (filtros.superintendencia) {
+        query.superintendencia = { $regex: filtros.superintendencia, $options: 'i' };
+      }
+      
+      if (filtros.mesActual) {
+        query.mesActual = filtros.mesActual;
+      }
+      
+      if (filtros.documentCode) {
+        query.documentCode = { $regex: filtros.documentCode, $options: 'i' };
+      }
+    }
+    
     return this.inspeccionEmergenciaModel
-      .find()
-      .sort({ createdAt: -1 }) // Ordenar por fecha de creación descendente
-      .exec()
+      .find(query)
+      .sort({ fechaUltimaModificacion: -1 }) // Ordenar por fecha de última modificación descendente
+      .exec();
   }
 
   async findOne(id: string): Promise<FormularioInspeccionEmergencia> {

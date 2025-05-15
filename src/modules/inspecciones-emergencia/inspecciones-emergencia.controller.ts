@@ -10,6 +10,7 @@ import {
   Put,
   HttpException,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
@@ -78,8 +79,20 @@ async verificarTag(
     }
   
   @Get()
-  findAll() {
-    return this.inspeccionesEmergenciaService.findAll();
+  findAll(
+    @Query('area') area?: string,
+    @Query('superintendencia') superintendencia?: string,
+    @Query('mesActual') mesActual?: string,
+    @Query('documentCode') documentCode?: string,
+  ) {
+    const filtros = {
+      area,
+      superintendencia,
+      mesActual,
+      documentCode,
+    };
+    
+    return this.inspeccionesEmergenciaService.findAll(filtros);
   }
 
   @Patch(':id')
