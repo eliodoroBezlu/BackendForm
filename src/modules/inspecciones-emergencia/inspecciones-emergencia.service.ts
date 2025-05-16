@@ -155,19 +155,19 @@ async findAll(filtros?: FiltrosInspeccion) {
     const query: any = {};
     
     if (filtros) {
-      if (filtros.area) {
-        query.area = { $regex: filtros.area, $options: 'i' }; // Búsqueda insensible a mayúsculas/minúsculas
+      if (filtros.area && typeof filtros.area === 'string') {
+        query.area = { $regex: filtros.area, $options: 'i' };
       }
       
-      if (filtros.superintendencia) {
+      if (filtros.superintendencia && typeof filtros.superintendencia === 'string') {
         query.superintendencia = { $regex: filtros.superintendencia, $options: 'i' };
       }
       
-      if (filtros.mesActual) {
+      if (filtros.mesActual && typeof filtros.mesActual === 'string') {
         query.mesActual = filtros.mesActual;
       }
       
-      if (filtros.documentCode) {
+      if (filtros.documentCode && typeof filtros.documentCode === 'string') {
         query.documentCode = { $regex: filtros.documentCode, $options: 'i' };
       }
     }
