@@ -198,8 +198,9 @@ async verificarYCrearExtintores(extintores: any[], tag: string, area:string) {
               $set: { 
                 inspeccionado: true,
                 activo: true,
-                Area: tag,
-                Ubicacion: extintor.ubicacion || extintorExistente.Ubicacion
+                tag: tag,
+                Ubicacion: extintor.ubicacion || extintorExistente.Ubicacion,
+                area: area
               } 
             }
           );
