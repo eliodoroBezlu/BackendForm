@@ -5,7 +5,10 @@ import { Document } from 'mongoose';
 @Schema({timestamps: true})
 export class Extintor extends Document {
   @Prop({ required: true })
-  Area: string;
+  area: string;
+
+  @Prop({ required: true })
+  tag: string;
 
   @Prop({ required: true, unique: true })
   CodigoExtintor: string;

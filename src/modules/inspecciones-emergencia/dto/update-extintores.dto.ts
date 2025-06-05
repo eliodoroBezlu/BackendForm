@@ -13,6 +13,9 @@ export class ExtintoresUpdateDto {
   @IsString()
   tag: string;
 
+  @IsString()
+  area: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ExtintorDto)

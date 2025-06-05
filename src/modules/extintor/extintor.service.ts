@@ -33,7 +33,7 @@ export class ExtintorService {
       
       const result = await this.extintorModel
         .find({
-          Area: new RegExp(tag, 'i'),
+          tag: new RegExp(tag, 'i'),
           inspeccionado: false,
           activo:true
         })
@@ -155,8 +155,7 @@ export class ExtintorService {
     }
   }
 
-  // Añadir este método a tu ExtintorService
-async verificarYCrearExtintores(extintores: any[], tag: string) {
+async verificarYCrearExtintores(extintores: any[], tag: string, area:string) {
   if (!extintores || extintores.length === 0) {
     return { creados: 0, actualizados: 0 };
   }
@@ -180,9 +179,10 @@ async verificarYCrearExtintores(extintores: any[], tag: string) {
         const nuevoExtintor = new this.extintorModel({
           CodigoExtintor: extintor.codigo,
           Ubicacion: extintor.ubicacion || 'No especificada',
-          Area: tag,
+          tag: tag,
           inspeccionado: true,
-          activo: true
+          activo: true,
+          area: area
         });
         
         await nuevoExtintor.save();

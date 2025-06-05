@@ -48,7 +48,8 @@ async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
         codigo: extintor.codigo,
         ubicacion: extintor.ubicacion || 'No especificada'
       })),
-      createInspeccionesEmergenciaDto.tag
+      createInspeccionesEmergenciaDto.tag,
+      createInspeccionesEmergenciaDto.area,
     );
     
     // Llamar al servicio de extintor para actualizar
@@ -61,7 +62,7 @@ async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
 
  // En InspeccionesEmergenciaService (backend)
 async verificarTag(tag: string, periodo: string, año: number, area: string) {
-  console.log(tag+"prueba")
+  console.log(`Verificando tag: ${tag}, área: ${area}`);
   // Buscar el formulario por tag
   const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
     tag,
@@ -101,6 +102,7 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
   tag: string,
   mes: string,
   datosMes: any,
+  area: string
 ) {
   // Verificar que el mes sea válido
   const mesesValidos = [
@@ -120,7 +122,8 @@ async verificarTag(tag: string, periodo: string, año: number, area: string) {
         codigo: extintor.codigo,
         ubicacion: extintor.ubicacion || 'No especificada'
       })),
-      tag
+      tag,
+      area
     );
     
     const codigosExtintores = datosMes.inspeccionesExtintor.map(extintor => extintor.codigo);
@@ -198,7 +201,7 @@ async findAll(filtros?: FiltrosInspeccion) {
   }
 
   // En el archivo inspecciones-emergencia.service.ts
-  async actualizarExtintoresPorTag(tag: string, extintores: any[]) {
+  async actualizarExtintoresPorTag(tag: string, extintores: any[], area: string) {
     // Verificar extintores
     if (!extintores || extintores.length === 0) {
       throw new BadRequestException('No se proporcionaron extintores para actualizar');

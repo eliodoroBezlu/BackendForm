@@ -34,10 +34,10 @@ export class InspeccionesEmergenciaController {
   @Put('actualizar-mes/:tag')
   async actualizarMes(
   @Param('tag') tag: string,
-  @Body() body: { mes: string; datosMes: any },
+  @Body() body: { mes: string; datosMes: any ; area: string },
 ) {
-  const { mes, datosMes } = body;
-  const resultado = await this.inspeccionesEmergenciaService.actualizarMesPorTag(tag, mes, datosMes);
+  const { mes, datosMes, area } = body;
+  const resultado = await this.inspeccionesEmergenciaService.actualizarMesPorTag(tag, mes, datosMes, area);
   return resultado; // Devuelve { success: true, message: "Mes actualizado correctamente" }
 }
 
@@ -109,15 +109,25 @@ async verificarTag(
 @Put('actualizar-extintores/:tag')
 async actualizarExtintores(
   @Param('tag') tag: string,
-  @Body() body: { extintores: any[] }
+  @Body() body: { extintores: any[], area: string }
 ) {
     try {
-      const { extintores } = body;
+      
+      const { extintores, area } = body;
+
+       if (!area) {
+      throw new HttpException(
+        'El área es requerida para actualizar extintores',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+    console.log(`Actualizando extintores para tag: ${tag}, área: ${area}`);
+      
       // Verificar y crear automáticamente solo los extintores que no existen
-      await this.extintorService.verificarYCrearExtintores(extintores,tag);
+      await this.extintorService.verificarYCrearExtintores(extintores, tag, area);
       
       // Actualizar el formulario con todos los extintores
-      const resultadoActualizacion = await this.inspeccionesEmergenciaService.actualizarExtintoresPorTag(tag, extintores);
+      const resultadoActualizacion = await this.inspeccionesEmergenciaService.actualizarExtintoresPorTag(tag, extintores, area);
       
       return {
         exito: true,
