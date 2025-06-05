@@ -29,7 +29,7 @@ export class ExtintorService {
   async findByArea(tag: string) {
     try {
       console.log("Servicio - Buscando área:", tag);
-      console.log("Filtro de consulta:", { Area: new RegExp(tag, 'i'), inspeccionado: false });
+      console.log("Filtro de consulta:", { area: new RegExp(tag, 'i'), inspeccionado: false });
       
       const result = await this.extintorModel
         .find({
