@@ -33,6 +33,7 @@
     "exceljs": "^4.4.0",
     "mongoose": "^8.10.0",
     "pdfkit": "^0.16.0",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "xlsx-populate": "^1.21.0"

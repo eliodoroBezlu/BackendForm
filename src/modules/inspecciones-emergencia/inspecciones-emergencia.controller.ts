@@ -141,4 +141,19 @@ async actualizarExtintores(
       );
     }
   }
+
+  @Get('verificar-inspecciones')
+  async verificarInspecciones(
+    @Query('area') area: string,
+    @Query('mesActual') mesActual: string,
+  ) {
+    if (!area || !mesActual) {
+      throw new HttpException(
+        'Los parámetros area y mesActual son requeridos',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return await this.inspeccionesEmergenciaService.verificarInspecciones(area, mesActual);
+  }
 }

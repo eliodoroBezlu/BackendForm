@@ -10,6 +10,7 @@ import { SuperintendenciaModule } from './modules/superintendencia/superintenden
 import { AreaModule } from './modules/area/area.module';
 import { ExtintorModule } from './modules/extintor/extintor.module';
 import { TagModule } from './modules/tag/tag.module';
+import { QrGeneratorModule } from './modules/qr-generator/qr-generator.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { TagModule } from './modules/tag/tag.module';
     AreaModule,
     ExtintorModule,
     TagModule,
+    QrGeneratorModule,
   ],
 })
 export class AppModule {}
