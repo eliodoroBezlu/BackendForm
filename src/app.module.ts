@@ -11,6 +11,8 @@ import { AreaModule } from './modules/area/area.module';
 import { ExtintorModule } from './modules/extintor/extintor.module';
 import { TagModule } from './modules/tag/tag.module';
 import { QrGeneratorModule } from './modules/qr-generator/qr-generator.module';
+import { TemplatesModule } from './modules/templates/templates.module';
+import { InstancesModule } from './modules/instances/instances.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { QrGeneratorModule } from './modules/qr-generator/qr-generator.module';
     ExtintorModule,
     TagModule,
     QrGeneratorModule,
+    TemplatesModule,
+    InstancesModule,
   ],
 })
 export class AppModule {}

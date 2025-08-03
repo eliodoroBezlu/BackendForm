@@ -34,7 +34,7 @@ export class ExtintorService {
 
     const result = await this.extintorModel
       .find({
-        tag: new RegExp(tag, 'i'),  // ← Corregido: area en lugar de tag
+        tag: new RegExp(`^${tag}$`, 'i'),  // ← Corregido: area en lugar de tag
         inspeccionado: false,
         activo: true,
       })
@@ -67,7 +67,7 @@ export class ExtintorService {
 
       const totalExtintoresActivosArea = await this.extintorModel
       .countDocuments({ 
-        tag: new RegExp(tag, 'i'),
+        tag: new RegExp(`^${tag}$`, 'i'),
         activo: true 
       })
       .exec();
