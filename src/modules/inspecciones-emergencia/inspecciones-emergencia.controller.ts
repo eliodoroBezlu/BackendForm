@@ -28,9 +28,6 @@ export class InspeccionesEmergenciaController {
 
   @Post('crear-formulario')
   async crearFormulario(@Body() createInspeccionesDto: CreateFormularioInspeccionDto) {
-    console.log('Datos recibidos:', JSON.stringify(createInspeccionesDto, null, 2));
-    console.log('Claves de meses:', Object.keys(createInspeccionesDto.meses || {}));
-  
     return await this.inspeccionesEmergenciaService.create(createInspeccionesDto);
   }
 
