@@ -1,219 +1,229 @@
-import { IsString, IsEnum, IsNumber, IsDate, IsObject, ValidateNested, IsOptional } from "class-validator"
-import { Type } from "class-transformer"
+import {
+  IsString,
+  IsEnum,
+  IsNumber,
+  IsDate,
+  IsObject,
+  ValidateNested,
+  IsOptional,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 enum EstadoInspeccion {
-  CONFORME = "✓",
-  NO_CONFORME = "X",
-  NO_APLICA = "N/A",
+  CONFORME = '✓',
+  NO_CONFORME = 'X',
+  NO_APLICA = 'N/A',
 }
 
 enum Periodo {
-  ENERO_JUNIO = "ENERO-JUNIO",
-  JULIO_DICIEMBRE = "JULIO-DICIEMBRE",
+  ENERO_JUNIO = 'ENERO-JUNIO',
+  JULIO_DICIEMBRE = 'JULIO-DICIEMBRE',
 }
 
 enum Mes {
-  ENERO = "ENERO",
-  FEBRERO = "FEBRERO",
-  MARZO = "MARZO",
-  ABRIL = "ABRIL",
-  MAYO = "MAYO",
-  JUNIO = "JUNIO",
-  JULIO = "JULIO",
-  AGOSTO = "AGOSTO",
-  SEPTIEMBRE = "SEPTIEMBRE",
-  OCTUBRE = "OCTUBRE",
-  NOVIEMBRE = "NOVIEMBRE",
-  DICIEMBRE = "DICIEMBRE",
+  ENERO = 'ENERO',
+  FEBRERO = 'FEBRERO',
+  MARZO = 'MARZO',
+  ABRIL = 'ABRIL',
+  MAYO = 'MAYO',
+  JUNIO = 'JUNIO',
+  JULIO = 'JULIO',
+  AGOSTO = 'AGOSTO',
+  SEPTIEMBRE = 'SEPTIEMBRE',
+  OCTUBRE = 'OCTUBRE',
+  NOVIEMBRE = 'NOVIEMBRE',
+  DICIEMBRE = 'DICIEMBRE',
 }
 
 enum EstadoFormulario {
-  ACTIVO = "activo",
-  COMPLETADO = "completado",
-  ARCHIVADO = "archivado",
+  ACTIVO = 'activo',
+  COMPLETADO = 'completado',
+  ARCHIVADO = 'archivado',
 }
 
 class SistemaInspeccionDto {
   @IsNumber()
-  cantidad: number
+  cantidad: number;
 
   @IsEnum(EstadoInspeccion)
-  estado: EstadoInspeccion
+  estado: EstadoInspeccion;
 
   @IsString()
   @IsOptional()
-  observaciones?: string
+  observaciones?: string;
 }
 
 class SistemasPasivosDto {
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  puertasEmergencia: SistemaInspeccionDto
+  puertasEmergencia: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  senaleticaViasEvacuacion: SistemaInspeccionDto
+  senaleticaViasEvacuacion: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  planosEvacuacion: SistemaInspeccionDto
+  planosEvacuacion: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  registroPersonalEvacuacion: SistemaInspeccionDto
+  registroPersonalEvacuacion: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  numerosEmergencia: SistemaInspeccionDto
+  numerosEmergencia: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  luzEmergencia: SistemaInspeccionDto
+  luzEmergencia: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  puntoReunion: SistemaInspeccionDto
+  puntoReunion: SistemaInspeccionDto;
 }
 
 class SistemasActivosDto {
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  kitDerrame: SistemaInspeccionDto
+  kitDerrame: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  lavaOjos: SistemaInspeccionDto
+  lavaOjos: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  duchasEmergencia: SistemaInspeccionDto
+  duchasEmergencia: SistemaInspeccionDto;
 
   @ValidateNested()
   @Type(() => SistemaInspeccionDto)
-  desfibriladorAutomatico: SistemaInspeccionDto
+  desfibriladorAutomatico: SistemaInspeccionDto;
 }
 
 class InspeccionSistemasMensualDto {
   @ValidateNested()
   @Type(() => SistemasPasivosDto)
-  sistemasPasivos: SistemasPasivosDto
+  sistemasPasivos: SistemasPasivosDto;
 
   @ValidateNested()
   @Type(() => SistemasActivosDto)
-  sistemasActivos: SistemasActivosDto
+  sistemasActivos: SistemasActivosDto;
 
   @IsString()
   @IsOptional()
-  observaciones?: string
+  observaciones?: string;
 }
 
 class InspeccionExtintorDto {
   @IsString()
-  fechaInspeccion: string
+  fechaInspeccion: string;
 
   @IsString()
-  codigo: string
+  codigo: string;
 
   @IsString()
-  ubicacion: string
+  ubicacion: string;
 
   @IsEnum(EstadoInspeccion)
-  inspeccionMensual: EstadoInspeccion
+  inspeccionMensual: EstadoInspeccion;
 
   @IsEnum(EstadoInspeccion)
-  manguera: EstadoInspeccion
+  manguera: EstadoInspeccion;
 
   @IsEnum(EstadoInspeccion)
-  cilindro: EstadoInspeccion
+  cilindro: EstadoInspeccion;
 
   @IsEnum(EstadoInspeccion)
-  indicadorPresion: EstadoInspeccion
+  indicadorPresion: EstadoInspeccion;
 
   @IsEnum(EstadoInspeccion)
-  gatilloChavetaPrecinto: EstadoInspeccion
+  gatilloChavetaPrecinto: EstadoInspeccion;
 
   @IsEnum(EstadoInspeccion)
-  senalizacionSoporte: EstadoInspeccion
+  senalizacionSoporte: EstadoInspeccion;
 
   @IsString()
-  observaciones: string
+  observaciones: string;
 }
 
 class InspectorDto {
   @IsString()
-  nombre: string
+  nombre: string;
 
   @IsString()
   @IsOptional()
-  firma: string | null
+  firma: string | null;
 }
 
 class InspeccionMensualDto {
   @ValidateNested()
   @Type(() => InspeccionSistemasMensualDto)
-  inspeccionesActivos: InspeccionSistemasMensualDto
+  inspeccionesActivos: InspeccionSistemasMensualDto;
 
   @ValidateNested({ each: true })
   @Type(() => InspeccionExtintorDto)
-  inspeccionesExtintor: InspeccionExtintorDto[]
+  inspeccionesExtintor: InspeccionExtintorDto[];
 
   @ValidateNested()
   @Type(() => InspectorDto)
-  inspector: InspectorDto
+  inspector: InspectorDto;
 }
 
 export class CreateFormularioInspeccionDto {
   @IsString()
   @IsOptional()
-  documentCode?: string
+  documentCode?: string;
 
   @IsNumber()
   @IsOptional()
-  revisionNumber?: number
+  revisionNumber?: number;
 
   @IsString()
-  superintendencia: string
+  superintendencia: string;
 
   @IsString()
-  area: string
-
-  @IsString()
-  @IsOptional()
-  tag?: string
+  area: string;
 
   @IsString()
   @IsOptional()
-  responsableEdificio?: string
+  tag?: string;
 
   @IsString()
-  edificio: string
+  @IsOptional()
+  responsableEdificio?: string;
+
+  @IsString()
+  edificio: string;
 
   @IsEnum(Periodo)
-  periodo: Periodo
+  periodo: Periodo;
 
   @IsNumber()
-  año: number
+  año: number;
 
   @IsEnum(Mes)
-  mesActual: Mes
+  mesActual: Mes;
 
   @IsObject()
-  @ValidateNested()
-  @Type(() => InspeccionMensualDto)
-  meses: { [key in Mes]?: InspeccionMensualDto }
+  meses: Record<string, any>
+
+  // @IsObject()
+  // @ValidateNested({ each: true })
+  // @Type(() => InspeccionMensualDto)
+  // meses: { [key in Mes]?: InspeccionMensualDto };
 
   @IsDate()
   @IsOptional()
   @Type(() => Date)
-  fechaCreacion?: Date
+  fechaCreacion?: Date;
 
   @IsDate()
   @IsOptional()
   @Type(() => Date)
-  fechaUltimaModificacion?: Date
+  fechaUltimaModificacion?: Date;
 
   @IsEnum(EstadoFormulario)
   @IsOptional()
-  estado?: EstadoFormulario
+  estado?: EstadoFormulario;
 }
-
