@@ -4,9 +4,17 @@ import { InstancesController } from './instances.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Instance, InstanceSchema } from './schemas/instance.schema';
 import { TemplatesModule } from '../templates/templates.module';
+import { ExcelIsoIroModule } from './excel-generator/excel-generator.module';
 
 @Module({
-  imports: [MongooseModule.forFeature([{name:Instance.name, schema: InstanceSchema}]),TemplatesModule],
+  imports: [
+    MongooseModule.forFeature([
+      { name: Instance.name, schema: InstanceSchema },
+    ]),
+    TemplatesModule,
+    ExcelIsoIroModule
+  ],
+
   controllers: [InstancesController],
   providers: [InstancesService],
   exports: [InstancesService],

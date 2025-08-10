@@ -9,16 +9,38 @@ import {
   Query,
   DefaultValuePipe,
   ParseIntPipe,
+  Res,
 } from '@nestjs/common';
+
+import e, { Response } from 'express';
 import { InstancesService } from './instances.service';
 import { CreateInstanceDto } from './dto/create-instance.dto';
 import { UpdateInstanceDto } from './dto/update-instance.dto';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ExcelCalienteService } from './excel-generator/excel-generator.service';
+import { ExcelAislamientoervice } from './excel-generator/excel-generator-aislamiento.service';
+import { ExcelIzajeService } from './excel-generator/excel-generator-izaje.service';
+import { ExcelSustanciasService } from './excel-generator/excel-generator-sustancias.service';
+import { ExcelElectricoActosService } from './excel-generator/excel-generator-electrcio-actos.service';
+import { ExcelAlturaService } from './excel-generator/excel-generator-altura.service';
+import { ExcelConfinadoService } from './excel-generator/excel-generator-confinado.service';
+import { ExcelElectricoCondicionesService } from './excel-generator/excel-generator-electrcio-condiciones.service';
 
 @ApiTags('instances')
 @Controller('instances')
 export class InstancesController {
-  constructor(private readonly instancesService: InstancesService) {}
+  constructor(
+    private readonly instancesService: InstancesService,
+
+    private readonly calienteExcelService: ExcelCalienteService,
+    private readonly aislamientoExcelService: ExcelAislamientoervice,
+    private readonly izajeExcelService:ExcelIzajeService,
+    private readonly sustanciaExcelService: ExcelSustanciasService,
+    private readonly electricActosExcelService: ExcelElectricoActosService,
+    private readonly alturaExcelService: ExcelAlturaService,
+    private readonly confinadosExcelService: ExcelConfinadoService,
+    private readonly electricCondicionesExcelService: ExcelElectricoCondicionesService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva instancia de formulario' })
@@ -122,5 +144,113 @@ export class InstancesController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.instancesService.remove(id);
+  }
+
+  @Get(':id/excel')
+  async downloadExcel(@Param('id') id: string, @Res() res: Response) {
+    try {
+      // 1. Buscar la instancia con template poblado
+      const inspeccion = await this.instancesService.findOne(id);
+
+      if (!inspeccion) {
+        return res.status(404).json({ message: 'Inspección no encontrada' });
+      }
+
+      // 2. Extraer información del template
+      const template = inspeccion.templateId as any;
+      const templateCode = template.code?.toUpperCase() || '';
+      const templateName = template.name?.toUpperCase() || '';
+
+      console.log(
+        `Generando Excel para template: ${templateCode} - ${template.name}`,
+      );
+
+      // 3. Determinar qué servicio usar basado en el código/nombre del template
+      let buffer: Buffer;
+      let serviceUsed = '';
+
+      if (templateCode.includes('1.02.P06.F47')) {
+        buffer = await this.calienteExcelService.generateExcel(inspeccion);
+        serviceUsed = 'CalienteExcelService';
+      }else if (templateCode.includes('1.02.P06.F45')) {
+        buffer = await this.aislamientoExcelService.generateExcel(inspeccion);
+        serviceUsed = 'AislamientoExcelService';
+      }
+      else if (templateCode.includes('1.02.P06.F50')) {
+        buffer = await this.izajeExcelService.generateExcel(inspeccion);
+        serviceUsed = 'AislamientoExcelService';
+      }else if (templateCode.includes('1.02.P06.F51')) {
+        buffer = await this.sustanciaExcelService.generateExcel(inspeccion);
+        serviceUsed = 'SustanciasExcelService';
+      }else if (templateCode.includes('1.02.P06.F52')) {
+        buffer = await this.electricActosExcelService.generateExcel(inspeccion);
+        serviceUsed = 'ElectricExcelService';
+      }else if (templateCode.includes('1.02.P06.F46') ) {
+        buffer = await this.alturaExcelService.generateExcel(inspeccion);
+        serviceUsed = 'AlturaExcelService';
+      }else if (templateCode.includes('1.02.P06.F48')) {
+        buffer = await this.confinadosExcelService.generateExcel(inspeccion);
+        serviceUsed = 'ConfinadoExcelService';
+      }else if (templateCode.includes('1.02.P06.F53')) {
+        buffer = await this.electricCondicionesExcelService.generateExcel(inspeccion);
+        serviceUsed = 'ElectricCondicionesExcelService';
+      }
+      
+      // Agregar más servicios aquí cuando los tengas
+      /*
+    else if (templateCode.includes('SAFETY') || 
+             templateCode.includes('SEGURIDAD') ||
+             templateName.includes('SEGURIDAD')) {
+      
+      buffer = await this.safetyExcelService.generateExcel(inspeccion);
+      serviceUsed = 'SafetyExcelService';
+      
+    } else if (templateCode.includes('MAINT') || 
+               templateCode.includes('MANTENIMIENTO') ||
+               templateName.includes('MANTENIMIENTO')) {
+      
+      buffer = await this.maintenanceExcelService.generateExcel(inspeccion);
+      serviceUsed = 'MaintenanceExcelService';
+      
+    }
+    */
+      else {
+        // Si no encuentra ningún servicio compatible
+        return res.status(400).json({
+          message: `No se encontró un generador de Excel para el template: ${templateCode} - ${template.name}`,
+          templateCode: templateCode,
+          templateName: template.name,
+          availableServices: [
+            'IRO, ISOLATION, AISLAMIENTO (IsolationExcelService)',
+            // 'SAFETY, SEGURIDAD (SafetyExcelService)',
+            // 'MAINT, MANTENIMIENTO (MaintenanceExcelService)',
+          ],
+        });
+      }
+
+      // 4. Generar nombre de archivo descriptivo
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const filename = `inspeccion-${templateCode || 'UNKNOWN'}-${id}-${timestamp}.xlsx`;
+
+      console.log(`Excel generado exitosamente usando: ${serviceUsed}`);
+
+      // 5. Configurar respuesta
+      res.set({
+        'Content-Type':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename=${filename}`,
+        'Content-Length': buffer.length.toString(),
+      });
+
+      res.send(buffer);
+    } catch (error) {
+      console.error('Error al generar Excel:', error);
+
+      res.status(500).json({
+        message: 'Error al generar el archivo Excel',
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 }

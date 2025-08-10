@@ -36,7 +36,9 @@ export class ExcelService {
   private async insertarImagen(worksheet: ExcelJS.Worksheet, base64Image: string, cellRange: string) {
     try {
         const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
-        const imageBuffer = Buffer.from(base64Data, "base64");
+        const imageBuffer: ExcelJS.Buffer = Buffer.from(base64Data, "base64") as unknown as ExcelJS.Buffer;
+
+
 
         const imageId = worksheet.workbook.addImage({
             buffer: imageBuffer,
@@ -208,8 +210,9 @@ export class ExcelService {
 
   async generateExcel(inspecciones: Inspeccion[]): Promise<Buffer> {
     try {
-      const workbook = new ExcelJS.Workbook()
+      const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(this.templatePath)
+      
       const worksheet = workbook.getWorksheet(1) // ExcelJS usa 1-based index
 
       if (!worksheet) {
@@ -222,8 +225,8 @@ export class ExcelService {
         await this.llenarRespuestas(worksheet, inspeccion, rowIndex + 8)
       }
 
-      const buffer = (await workbook.xlsx.writeBuffer()) as Buffer
-      return buffer
+      const excelBuffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(excelBuffer);
     } catch (error) {
       this.logger.error(`Error al generar Excel: ${error.message}`)
       throw new Error("Error al generar el archivo Excel")

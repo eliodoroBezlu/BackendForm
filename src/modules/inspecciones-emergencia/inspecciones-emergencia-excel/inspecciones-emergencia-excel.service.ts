@@ -41,7 +41,7 @@ export class InspeccionesEmergenciaExcelService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = Buffer.from(base64Data, "base64") as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
@@ -642,8 +642,8 @@ export class InspeccionesEmergenciaExcelService {
       await this.llenarDatosDeInspeccion(worksheet, inspeccion);
       await this.llenarInspeccionesExtintores(worksheet, inspeccion);
 
-      const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
-      return buffer;
+      const excelBuffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(excelBuffer);
     } catch (error) {
       this.logger.error(`Error al generar Excel: ${error.message}`);
       throw new Error(`Error al generar el archivo Excel: ${error.message}`);

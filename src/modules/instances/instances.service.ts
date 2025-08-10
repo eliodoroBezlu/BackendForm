@@ -23,19 +23,11 @@ export class InstancesService {
   ) {}
 
   async create(createInstanceDto: CreateInstanceDto): Promise<Instance> {
-    console.log('=== CREATING INSTANCE ===');
-    console.log('Received DTO:', JSON.stringify(createInstanceDto, null, 2));
 
     // Verificar que el template existe
     const template = await this.templatesService.findOne(
       createInstanceDto.templateId,
     );
-
-    // Validar que las secciones correspondan al template
-    // await this.validateSectionsAgainstTemplate(
-    //   createInstanceDto.sections,
-    //   template,
-    // );
 
     // Calcular automáticamente los campos de cumplimiento
     const calculatedSections = this.calculateSectionMetrics(
@@ -538,36 +530,4 @@ export class InstancesService {
         Math.round(overallCompliancePercentage * 100) / 100,
     };
   }
-
-  // private async validateSectionsAgainstTemplate(
-  //   sections: any[],
-  //   template: Template,
-  // ): Promise<void> {
-  //   const templateSectionIds = new Set(template.sections.map((s) => s.id));
-  //   const instanceSectionIds = new Set(sections.map((s) => s.sectionId));
-
-  //   // Verificar que todas las secciones de la instancia existen en el template
-  //   for (const sectionId of instanceSectionIds) {
-  //     if (!templateSectionIds.has(sectionId)) {
-  //       throw new BadRequestException(
-  //         `Sección ${sectionId} no existe en el template`,
-  //       );
-  //     }
-  //   }
-
-  //   // Validar que el número de preguntas coincide
-  //   sections.forEach((section) => {
-  //     const templateSection = template.sections.find(
-  //       (s) => s.id === section.sectionId,
-  //     );
-  //     if (
-  //       templateSection &&
-  //       section.questions.length !== templateSection.questions.length
-  //     ) {
-  //       throw new BadRequestException(
-  //         `El número de preguntas en la sección ${section.sectionId} no coincide con el template`,
-  //       );
-  //     }
-  //   });
-  // }
 }
