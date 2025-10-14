@@ -17,6 +17,9 @@ export class Trabajador extends Document {
 
   @Prop({ required: true })
   superintendencia: string;
+  
+  @Prop({ default: true })
+  activo: boolean;
 }
 
 export const TrabajadorSchema = SchemaFactory.createForClass(Trabajador);

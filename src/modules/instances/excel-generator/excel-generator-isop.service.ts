@@ -5,18 +5,18 @@ import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
 
 @Injectable()
-export class ExcelAlturaService {
+export class ExcelIsopV7Service {
   private readonly templatePath: string;
-  private readonly logger = new Logger(ExcelAlturaService.name);
+  private readonly logger = new Logger(ExcelIsopV7Service.name);
 
   constructor(private readonly configService: ConfigService) {
     this.templatePath =
       this.configService.get<string>('ISOLATION_EXCEL_TEMPLATE_PATH') ||
-      path.join(process.cwd(), 'src', 'templates', 'altura.xlsx');
+      path.join(process.cwd(), 'src', 'templates', 'isopPrueba.xlsx');
   }
 
   getSupportedTemplateCodes(): string[] {
-    return ['1.02.P06.F46'];
+    return ['1.02.P06.F12'];
   }
 
   canHandle(templateCode: string): boolean {
@@ -24,6 +24,66 @@ export class ExcelAlturaService {
     return supportedCodes.some((code) =>
       templateCode.toUpperCase().includes(code.toUpperCase()),
     );
+  }
+
+  // ✅ NUEVO: Método para cargar workbook de forma segura
+  private async loadWorkbookSafely(): Promise<ExcelJS.Workbook> {
+    try {
+      const fs = require('fs');
+
+      if (!fs.existsSync(this.templatePath)) {
+        throw new Error(
+          `El archivo template no existe en: ${this.templatePath}`,
+        );
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(this.templatePath);
+
+      // ✅ LIMPIEZA: Eliminar tablas y filtros problemáticos
+      workbook.worksheets.forEach((worksheet) => {
+        try {
+          // Eliminar tablas (tables) para evitar corrupción
+          if ((worksheet as any).tables && (worksheet as any).tables.length > 0) {
+            this.logger.warn(
+              `Se encontraron ${(worksheet as any).tables.length} tablas en "${worksheet.name}", eliminándolas...`,
+            );
+            (worksheet as any).tables = [];
+          }
+
+          // Eliminar filtros automáticos
+          if (worksheet.autoFilter) {
+            this.logger.warn(
+              `Se encontró autoFilter en "${worksheet.name}", eliminándolo...`,
+            );
+            worksheet.autoFilter = undefined;
+          }
+        } catch (error) {
+          this.logger.warn(
+            `No se pudo limpiar worksheet "${worksheet.name}": ${error.message}`,
+          );
+        }
+      });
+
+      this.logger.log('Workbook cargado y limpiado exitosamente');
+      return workbook;
+    } catch (error) {
+      this.logger.error(`Error al cargar workbook: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // ✅ NUEVO: Método para escribir workbook de forma segura
+  private async writeWorkbookSafely(
+    workbook: ExcelJS.Workbook,
+  ): Promise<Buffer> {
+    try {
+      const buffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
+    } catch (error) {
+      this.logger.error(`Error al escribir workbook: ${error.message}`);
+      throw error;
+    }
   }
 
   private async insertarImagen(
@@ -75,20 +135,15 @@ export class ExcelAlturaService {
   ) {
     try {
       const verificationList = instance.verificationList;
-      // Fallback: usar los valores por posición
-
       const valores = Array.from(verificationList.values());
 
-      // Mapeo basado en la estructura real de datos
-      worksheet.getCell('C7').value = valores[0] || ''; // Gerencia
-      worksheet.getCell('H7').value = valores[1] || ''; // Supervisor
-
-      worksheet.getCell('L7').value = valores[2] || ''; // Inspección N°
-
-      worksheet.getCell('C8').value = valores[3] || ''; // Superintendencia
-      worksheet.getCell('H8').value = valores[4] || ''; // lugar de Inspección
-      worksheet.getCell('H9').value = valores[5] || ''; // Fecha Inspección
-      worksheet.getCell('C9').value = valores[6] || ''; // area
+      worksheet.getCell('C8').value = valores[0] || '';
+      worksheet.getCell('H8').value = valores[1] || '';
+      worksheet.getCell('N8').value = valores[2] || '';
+      worksheet.getCell('C9').value = valores[3] || '';
+      worksheet.getCell('H9').value = valores[4] || '';
+      worksheet.getCell('H10').value = valores[5] || '';
+      worksheet.getCell('C10').value = valores[6] || '';
 
       this.logger.log('Lista de verificación completada exitosamente');
     } catch (error) {
@@ -106,22 +161,18 @@ export class ExcelAlturaService {
     try {
       this.logger.log('Iniciando llenado del equipo de inspección');
 
-      // Verificar que existe el equipo de inspección
       if (!instance.inspectionTeam || instance.inspectionTeam.length === 0) {
         this.logger.warn('No se encontró equipo de inspección en la instancia');
         return;
       }
 
-      // Filas donde se insertarán los datos del equipo (13-18 según tu comentario)
-      const startRow = 13;
-      const maxMembers = 6; // Máximo 6 miembros (filas 13-18)
+      const startRow = 14;
+      const maxMembers = 6;
 
-      // Columnas según tu estructura: Nombre (B), Cargo (I), Firma (K)
       const nameColumn = 'B';
-      const cargoColumn = 'H';
-      const firmaColumn = 'L';
+      const cargoColumn = 'F';
+      const firmaColumn = 'N';
 
-      // Llenar datos de cada miembro del equipo
       for (
         let i = 0;
         i < Math.min(instance.inspectionTeam.length, maxMembers);
@@ -131,34 +182,24 @@ export class ExcelAlturaService {
         const currentRow = startRow + i;
 
         try {
-          // Nombre del miembro
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
-          // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
-          // Firma del miembro (si es base64, insertar como imagen)
-          if (member.firma) {
-            // Verificar si es una imagen base64
-            if (member.firma.startsWith('data:image/')) {
-              await this.insertarImagen(
-                worksheet,
-                member.firma,
-                `${firmaColumn}${currentRow}`,
-              );
-              
-            }
+          if (member.firma && member.firma.startsWith('data:image/')) {
+            await this.insertarImagen(
+              worksheet,
+              member.firma,
+              `${firmaColumn}${currentRow}`,
+            );
           }
 
-          // Ajustar altura de la fila para acomodar imágenes si es necesario
           worksheet.getRow(currentRow).height = Math.max(
             25,
             worksheet.getRow(currentRow).height || 15,
@@ -167,11 +208,9 @@ export class ExcelAlturaService {
           this.logger.error(
             `Error al procesar miembro ${i + 1}: ${memberError.message}`,
           );
-          // Continuar con el siguiente miembro en caso de error
         }
       }
 
-      // Si hay más miembros de los que caben, registrar advertencia
       if (instance.inspectionTeam.length > maxMembers) {
         this.logger.warn(
           `El equipo tiene ${instance.inspectionTeam.length} miembros, pero solo se pueden mostrar ${maxMembers} en el template`,
@@ -204,21 +243,23 @@ export class ExcelAlturaService {
       }
 
       const sectionPositions = [
-        { startRow: 33, name: 'A. GENERAL' },
-        { startRow: 53, name: 'B. PUNTOS DE ANCLAJE' }, // Ajustar según la plantilla
-        { startRow: 59, name: 'C. LINEAS DE VIDA HORIZONTALES' },
-        { startRow: 68, name: 'D. LINEAS DE VIDA HORIZONTALES' }, // Ajustar según la plantilla
-        { startRow: 73, name: 'E. ESCALERAS' },
-        { startRow: 103, name: 'F. EQUIPOS ELEVADORES DE PERSONAS' }, // Ajustar según la plantilla
-        { startRow: 115, name: 'F. EQUIPO CANASTILLO PARA LA ELEVACIÓN DE PERSONAS' }, // Ajustar según la plantilla
-        { startRow: 127, name: 'F. ANDAMIOS' }, // Ajustar según la plantilla
+        { startRow: 34, name: 'A. ORDEN Y ASEO (5Ss)' },
+        { startRow: 50, name: 'B. General' },
+        { startRow: 57, name: 'C. Extintores Portátiles' },
+        { startRow: 67, name: 'D. Sistema de Emergencias' },
+        { startRow: 73, name: 'E. ELEMENTOS DE PROTECCIÓN PERSONAL' },
+        { startRow: 84, name: 'F. HERRAMIENTAS DE MANO' },
+        { startRow: 98, name: 'G. Oficinas y otros ambientes' },
+        { startRow: 109, name: 'H. Calefactores Verticales...' },
+        { startRow: 109, name: 'I. Cafeterías' },
+        { startRow: 119, name: 'J. Duchas, Vestidores y Servicios Higiénicos' },
+        { startRow: 147, name: 'K. SEÑALIZACIÓN' },
+        { startRow: 158, name: 'L. VEHÍCULOS' },
       ];
 
-      // Columnas para las respuestas
-      const responseColumn = 'H'; // Columna donde van las respuestas (0, 1, 2, 3, N/A)
-      const commentsColumn = 'I'; // Columna de comentarios
+      const responseColumn = 'F';
+      const commentsColumn = 'G';
 
-      // Procesar cada sección de la instancia
       for (
         let sectionIndex = 0;
         sectionIndex < instance.sections.length;
@@ -234,35 +275,32 @@ export class ExcelAlturaService {
           continue;
         }
 
-        
-
         let currentRow = sectionInfo.startRow;
 
         for (let i = 0; i < section.questions.length; i++) {
           const question = section.questions[i];
 
           try {
-            // Insertar la respuesta
             if (question.response !== undefined && question.response !== null) {
               const cellRef = `${responseColumn}${currentRow}`;
               worksheet.getCell(cellRef).value = question.response;
             }
 
-            // Insertar comentario si existe
             if (question.comment && question.comment.trim() !== '') {
               const commentCellRef = `${commentsColumn}${currentRow}`;
               worksheet.getCell(commentCellRef).value = question.comment;
             }
 
-            currentRow++; // Pasar a la siguiente fila para la próxima pregunta
+            currentRow++;
           } catch (questionError) {
             this.logger.error(
               `Error al procesar pregunta ${i + 1} en fila ${currentRow}: ${questionError.message}`,
             );
-            currentRow++; // Continuar con la siguiente pregunta
+            currentRow++;
           }
         }
       }
+
       this.logger.log('Secciones completadas exitosamente');
     } catch (error) {
       this.logger.error(`Error al llenar secciones: ${error.message}`);
@@ -275,30 +313,18 @@ export class ExcelAlturaService {
     instance: Instance,
   ) {
     this.logger.log('Iniciando llenado de conclusiones y recomendaciones');
-    // Aquí puedes implementar la lógica para llenar las conclusiones y recomendaciones
-    worksheet.getCell('A145').value = instance.aspectosPositivos || '';
-    worksheet.getCell('A148').value = instance.aspectosAdicionales || '';
+    worksheet.getCell('A175').value = instance.aspectosPositivos || '';
+    worksheet.getCell('A178').value = instance.aspectosAdicionales || '';
   }
 
   async generateExcel(instance: Instance): Promise<Buffer> {
     try {
-      // 1. Verificar que el archivo template existe
-      const fs = require('fs');
-      if (!fs.existsSync(this.templatePath)) {
-        throw new Error(
-          `El archivo template no existe en: ${this.templatePath}`,
-        );
-      }
+      // ✅ CAMBIO: Usar método seguro de carga
+      const workbook = await this.loadWorkbookSafely();
 
-      // 2. Cargar el workbook
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(this.templatePath);
-
-      // 3. Obtener la primera hoja de trabajo
       let worksheet: ExcelJS.Worksheet | undefined = workbook.worksheets[0];
 
       if (!worksheet) {
-        // Intentar con nombres comunes si la primera no existe
         worksheet =
           workbook.getWorksheet('Hoja1') ||
           workbook.getWorksheet('Sheet1') ||
@@ -317,15 +343,15 @@ export class ExcelAlturaService {
 
       this.logger.log(`Generando Excel usando hoja: "${worksheet.name}"`);
 
-      // FASE 1: Solo llenar la Lista de Verificación
       await this.llenarListaVerificacion(worksheet, instance);
       await this.llenarEquipoInspeccion(worksheet, instance);
       await this.llenarSecciones(worksheet, instance);
       await this.llenarConclusiones(worksheet, instance);
 
-      const excelBuffer = await workbook.xlsx.writeBuffer();
+      // ✅ CAMBIO: Usar método seguro de escritura
+      const excelBuffer = await this.writeWorkbookSafely(workbook);
       this.logger.log('Excel generado exitosamente');
-      return Buffer.from(excelBuffer);
+      return excelBuffer;
     } catch (error) {
       this.logger.error(`Error al generar Excel: ${error.message}`);
       throw new Error(

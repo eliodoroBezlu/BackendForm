@@ -1,97 +1,139 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose"
-import type { Document } from "mongoose"
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import  { Document, Types } from "mongoose";
 
-export type TemplateDocument = Template & Document
+export type TemplateDocument = Template & Document;
 
-@Schema({timestamps: true})
+@Schema()
 export class VerificationField {
   @Prop({ required: true })
-  label: string
-  
+  label: string;
+
   @Prop({
     required: true,
-    enum: ["text", "date", "number", "select"],
+    enum: ["text", "date", "number", "select", "autocomplete"],
   })
-  type: string
-  
+  type: string;
+
   @Prop({ type: [String] })
-  options?: string[]
-  
+  options?: string[];
+
   @Prop({ default: false })
-  required?: boolean
+  required?: boolean;
+
+  @Prop({ type: String })
+  dataSource?: string;
 }
 
 @Schema()
 export class Question {
   @Prop({ required: true })
-  text: string
-  
-  @Prop({ required: true})
-  obligatorio: boolean
+  text: string;
+
+  @Prop({ required: true })
+  obligatorio: boolean;
 }
 
 @Schema()
 export class Section {
   @Prop({ required: true })
-  title: string
-  
+  title: string;
+
+  @Prop()
+  description?: string;
+
   @Prop({ required: true, min: 0 })
-  maxPoints: number
-  
-  @Prop({ type: [Question], required: true })
-  questions: Question[]
+  maxPoints: number;
+
+  @Prop({ type: [Question], default: [] })
+  questions: Question[];
+
+  @Prop({ type: Number })
+  order?: number;
+
+  @Prop({ type: Boolean, default: false })
+  isParent?: boolean;
+
+  @Prop({ type: Types.ObjectId, default: null })
+  parentId?: Types.ObjectId | null;
+
+  subsections?: Section[];
 }
+
+export const SectionSchema = SchemaFactory.createForClass(Section);
+SectionSchema.add({
+  subsections: [SectionSchema],
+});
 
 @Schema()
 export class SimpleQuestion {
   @Prop({ required: true })
-  text: string
-  
-  @Prop({ required: false })
-  image?: string
-}
+  text: string;
 
+  @Prop()
+  image?: string;
+}
 @Schema()
 export class SimpleSection {
   @Prop({ required: true })
-  title: string
-  
-  @Prop({ type: [SimpleQuestion], required: true })
-  questions: SimpleQuestion[]
+  title: string;
+
+  @Prop()
+  description?: string;
+
+  @Prop({ type: [SimpleQuestion], default: [] })
+  questions: SimpleQuestion[];
+
+  @Prop({ type: Number })
+  order?: number;
+
+  @Prop({ type: Boolean, default: false })
+  isParent?: boolean;
+
+  @Prop({ type: Types.ObjectId, default: null })
+  parentId?: Types.ObjectId | null;
+
+  subsections?: SimpleSection[];
 }
+
+export const SimpleSectionSchema = SchemaFactory.createForClass(SimpleSection);
+SimpleSectionSchema.add({
+  subsections: [SimpleSectionSchema],
+});
 
 @Schema({ timestamps: true })
 export class Template {
   @Prop({ required: true, unique: true })
-  code: string
-  
+  code: string;
+
   @Prop({ required: true })
-  name: string
-  
+  name: string;
+
   @Prop({ required: true })
-  revision: string
-  
+  revision: string;
+
   @Prop({
     required: true,
     enum: ["interna", "externa"],
   })
-  type: string
-  
+  type: string;
+
   @Prop({ type: [VerificationField], required: true })
-  verificationFields: VerificationField[]
-  
-  @Prop({ type: [Section], required: true })
-  sections: Section[]
-  
-  @Prop({ type: [SimpleSection], required: false })
-  simpleSections?: SimpleSection[]
-  
+  verificationFields: VerificationField[];
+
+  @Prop({ type: [SectionSchema], required: true })
+  sections: Section[];
+
+  @Prop({ type: [SimpleSectionSchema] })
+  simpleSections?: SimpleSection[];
+
   @Prop({ default: true })
-  isActive: boolean
+  isActive: boolean;
 }
 
-export const TemplateSchema = SchemaFactory.createForClass(Template)
+// ✅ Crear el esquema principal
+export const TemplateSchema = SchemaFactory.createForClass(Template);
 
-// Índices para optimizar consultas
-TemplateSchema.index({ type: 1 })
-TemplateSchema.index({ isActive: 1 })
+// 📈 Índices útiles
+TemplateSchema.index({ type: 1 });
+TemplateSchema.index({ isActive: 1 });
+TemplateSchema.index({ code: 1 });

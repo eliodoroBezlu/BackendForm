@@ -18,8 +18,8 @@ export class SuperintendenciaService {
   }
 
   async findAll() {
-    return await this.superintendenciaModel.find().exec();
-  }
+  return await this.superintendenciaModel.find().exec();
+}
 
   findOne(id: number) {
     return `This action returns a #${id} superintendencia`;

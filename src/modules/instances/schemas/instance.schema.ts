@@ -70,6 +70,15 @@ export class SectionResponse {
   sectionComment?: string // Comentario general de la sección
 }
 
+@Schema()
+export class PersonalInvolucrado {
+  @Prop({ required: true })
+  nombre: string;
+
+  @Prop({ required: true })
+  ci: string;
+}
+
 @Schema({ timestamps: true })
 export class Instance {
   @Prop({ type: Types.ObjectId, ref: "Template", required: true })
@@ -93,6 +102,9 @@ export class Instance {
 
   @Prop()
   aspectosAdicionales?: string
+
+  @Prop({ type: [PersonalInvolucrado] })
+  personalInvolucrado?: PersonalInvolucrado[];
 
   // Campos calculados automáticamente para toda la instancia
   @Prop({ required: true, type: Number })

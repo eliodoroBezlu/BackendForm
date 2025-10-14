@@ -1,65 +1,117 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ConfigService } from "@nestjs/config"
+import { ConfigService } from "@nestjs/config";
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  // Configuración de Swagger
   const config = new DocumentBuilder()
     .setTitle("Inspection Forms API")
     .setDescription("API para el sistema de formularios de inspección")
     .setVersion("1.0")
     .addTag("templates", "Gestión de plantillas de formularios")
     .addTag("instances", "Gestión de instancias de formularios")
-    .build()
+    .setContact(
+      'API Support',
+      'https://example.com/support',
+      'support@example.com'
+    )
+    .addServer('http://localhost:3002', 'Desarrollo')
+    .addServer('https://tu-dominio-produccion.com', 'Producción')
+    .build();
 
-  const document = SwaggerModule.createDocument(app, config)
-  SwaggerModule.setup("api/docs", app, document)
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup("api/docs", app, document, {
+    swaggerOptions: {
+      tagsSorter: 'alpha',
+      operationsSorter: 'alpha',
+    },
+    customSiteTitle: 'Inspection Forms API Docs',
+    customfavIcon: '/favicon.ico',
+  });
 
-  // Validación global
+  // ✅ Validación global
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+      validateCustomDecorators: true,
     }),
-  )
+  );
 
-  // Parsear los orígenes definidos
+  // 🌐 Configuración CORS
   const originsString = configService.get<string>("CORS_ORIGIN") || "";
-  const allowedOrigins = originsString.split(",").map(origin => origin.trim());
-  console.log("Orígenes permitidos:", allowedOrigins);
+  const allowedOrigins = originsString
+    .split(",")
+    .map(origin => origin.trim())
+    .filter(origin => origin.length > 0);
+
+  logger.log(`🌐 Orígenes CORS permitidos: ${allowedOrigins.join(', ')}`);
+
   app.enableCors({
     origin: (requestOrigin, callback) => {
+      // Permitir requests sin origen (ej: Postman, aplicaciones móviles)
+      if (!requestOrigin) {
+        return callback(null, true);
+      }
 
-      // Solo permitir orígenes específicamente definidos
-      if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+      if (allowedOrigins.includes(requestOrigin)) {
         callback(null, true);
       } else {
-        console.error(`Origen no permitido: ${requestOrigin}`);
-        callback(new Error('Not allowed by CORS'), false);
+        logger.warn(`❌ Origen CORS no permitido: ${requestOrigin}`);
+        callback(new Error(`CORS: Origen ${requestOrigin} no permitido`), false);
       }
     },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Métodos HTTP permitidos
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
-      'Origin', 
-      'X-Requested-With', 
-      'Content-Type', 
-      'Accept', 
-      'Authorization'
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'X-API-Key',
+      'Cache-Control',
+    ],
+    exposedHeaders: [
+      'X-Total-Count',
+      'X-Page-Count',
+      'Link'
     ],
     credentials: true,
     preflightContinue: false,
-    optionsSuccessStatus: 204
+    optionsSuccessStatus: 204,
   });
 
-  const port = configService.get<number>('PORT') || 3002; // Define el puerto
-  await app.listen(port); 
-  console.log(`Aplicación corriendo en http://localhost:${port}`);
-  
-}
-bootstrap();
+  // 🔒 Headers de seguridad básicos
+  app.use((req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+  });
 
-// para subir los cambios
+  // 🚀 Configuración del puerto y inicio del servidor
+  const port = configService.get<number>('PORT') || 3002;
+
+  await app.listen(port);
+
+  // 📊 Log de información del servidor
+  logger.log(`🚀 Servidor corriendo en http://localhost:${port}`);
+  logger.log(`📚 Documentación Swagger: http://localhost:${port}/api/docs`);
+  logger.log(`💚 Health check: http://localhost:${port}/health`);
+}
+
+// 🛑 Manejo de errores globales
+bootstrap().catch((error) => {
+  console.error('❌ Error al iniciar la aplicación:', error);
+  process.exit(1);
+});

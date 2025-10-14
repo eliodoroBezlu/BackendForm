@@ -22,9 +22,11 @@ import { ExcelAislamientoervice } from './excel-generator/excel-generator-aislam
 import { ExcelIzajeService } from './excel-generator/excel-generator-izaje.service';
 import { ExcelSustanciasService } from './excel-generator/excel-generator-sustancias.service';
 import { ExcelElectricoActosService } from './excel-generator/excel-generator-electrcio-actos.service';
-import { ExcelAlturaService } from './excel-generator/excel-generator-altura.service';
+import { ExcelAlturav3Service } from './excel-generator/excel-generator-alturav3.service';
 import { ExcelConfinadoService } from './excel-generator/excel-generator-confinado.service';
 import { ExcelElectricoCondicionesService } from './excel-generator/excel-generator-electrcio-condiciones.service';
+import { ExcelAlturav4Service } from './excel-generator/excel-generator-alturav4.service';
+import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.service';
 
 @ApiTags('instances')
 @Controller('instances')
@@ -34,12 +36,14 @@ export class InstancesController {
 
     private readonly calienteExcelService: ExcelCalienteService,
     private readonly aislamientoExcelService: ExcelAislamientoervice,
-    private readonly izajeExcelService:ExcelIzajeService,
+    private readonly izajeExcelService: ExcelIzajeService,
     private readonly sustanciaExcelService: ExcelSustanciasService,
     private readonly electricActosExcelService: ExcelElectricoActosService,
-    private readonly alturaExcelService: ExcelAlturaService,
+    private readonly alturaExcelService: ExcelAlturav3Service,
     private readonly confinadosExcelService: ExcelConfinadoService,
     private readonly electricCondicionesExcelService: ExcelElectricoCondicionesService,
+    private readonly alturaV4ExcelService: ExcelAlturav4Service,
+    private readonly isopV7ExcelService: ExcelIsopV7Service,
   ) {}
 
   @Post()
@@ -61,6 +65,8 @@ export class InstancesController {
   @ApiQuery({ name: 'createdBy', required: false, type: String })
   @ApiQuery({ name: 'dateFrom', required: false, type: Date })
   @ApiQuery({ name: 'dateTo', required: false, type: Date })
+  @ApiQuery({ name: 'area', required: false, type: String }) // ✅ NUEVO
+  @ApiQuery({ name: 'superintendencia', required: false, type: String }) // ✅ NUEVO
   @ApiResponse({ status: 200, description: 'Lista de instancias' })
   async findAll(
     @Query('templateId') templateId?: string,
@@ -68,6 +74,8 @@ export class InstancesController {
     @Query('createdBy') createdBy?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    @Query('area') area?: string, // ✅ NUEVO
+    @Query('superintendencia') superintendencia?: string, // ✅ NUEVO
     @Query('minCompliance', new DefaultValuePipe(0), ParseIntPipe)
     minCompliance?: number,
     @Query('maxCompliance', new DefaultValuePipe(100), ParseIntPipe)
@@ -84,6 +92,8 @@ export class InstancesController {
     if (createdBy) filters.createdBy = createdBy;
     if (dateFrom) filters.dateFrom = new Date(dateFrom);
     if (dateTo) filters.dateTo = new Date(dateTo);
+    if (area) filters.area = area; // ✅ NUEVO
+    if (superintendencia) filters.superintendencia = superintendencia; // ✅ NUEVO
     if (minCompliance !== undefined) filters.minCompliance = minCompliance;
     if (maxCompliance !== undefined) filters.maxCompliance = maxCompliance;
 
@@ -159,6 +169,7 @@ export class InstancesController {
       // 2. Extraer información del template
       const template = inspeccion.templateId as any;
       const templateCode = template.code?.toUpperCase() || '';
+      const templateRevision = template.revision || '';
       const templateName = template.name?.toUpperCase() || '';
 
       console.log(
@@ -172,49 +183,38 @@ export class InstancesController {
       if (templateCode.includes('1.02.P06.F47')) {
         buffer = await this.calienteExcelService.generateExcel(inspeccion);
         serviceUsed = 'CalienteExcelService';
-      }else if (templateCode.includes('1.02.P06.F45')) {
+      } else if (templateCode.includes('1.02.P06.F45')) {
         buffer = await this.aislamientoExcelService.generateExcel(inspeccion);
         serviceUsed = 'AislamientoExcelService';
-      }
-      else if (templateCode.includes('1.02.P06.F50')) {
+      } else if (templateCode.includes('1.02.P06.F50')) {
         buffer = await this.izajeExcelService.generateExcel(inspeccion);
         serviceUsed = 'AislamientoExcelService';
-      }else if (templateCode.includes('1.02.P06.F51')) {
+      } else if (templateCode.includes('1.02.P06.F51')) {
         buffer = await this.sustanciaExcelService.generateExcel(inspeccion);
         serviceUsed = 'SustanciasExcelService';
-      }else if (templateCode.includes('1.02.P06.F52')) {
+      } else if (templateCode.includes('1.02.P06.F52')) {
         buffer = await this.electricActosExcelService.generateExcel(inspeccion);
         serviceUsed = 'ElectricExcelService';
-      }else if (templateCode.includes('1.02.P06.F46') ) {
-        buffer = await this.alturaExcelService.generateExcel(inspeccion);
-        serviceUsed = 'AlturaExcelService';
-      }else if (templateCode.includes('1.02.P06.F48')) {
+      } else if (templateCode.includes('1.02.P06.F46')) {
+        console.log(`Template Revision: ${templateRevision}`);
+        if (templateRevision === '4') {
+          buffer = await this.alturaV4ExcelService.generateExcel(inspeccion);
+          serviceUsed = 'alturaV4ExcelService';
+        } else {
+          buffer = await this.alturaExcelService.generateExcel(inspeccion);
+          serviceUsed = 'AlturaExcelService';
+        }
+      } else if (templateCode.includes('1.02.P06.F48')) {
         buffer = await this.confinadosExcelService.generateExcel(inspeccion);
         serviceUsed = 'ConfinadoExcelService';
-      }else if (templateCode.includes('1.02.P06.F53')) {
-        buffer = await this.electricCondicionesExcelService.generateExcel(inspeccion);
+      } else if (templateCode.includes('1.02.P06.F53')) {
+        buffer =
+          await this.electricCondicionesExcelService.generateExcel(inspeccion);
         serviceUsed = 'ElectricCondicionesExcelService';
-      }
-      
-      // Agregar más servicios aquí cuando los tengas
-      /*
-    else if (templateCode.includes('SAFETY') || 
-             templateCode.includes('SEGURIDAD') ||
-             templateName.includes('SEGURIDAD')) {
-      
-      buffer = await this.safetyExcelService.generateExcel(inspeccion);
-      serviceUsed = 'SafetyExcelService';
-      
-    } else if (templateCode.includes('MAINT') || 
-               templateCode.includes('MANTENIMIENTO') ||
-               templateName.includes('MANTENIMIENTO')) {
-      
-      buffer = await this.maintenanceExcelService.generateExcel(inspeccion);
-      serviceUsed = 'MaintenanceExcelService';
-      
-    }
-    */
-      else {
+      } else if (templateCode.includes('1.02.P06.F12')) {
+        buffer = await this.isopV7ExcelService.generateExcel(inspeccion);
+        serviceUsed = 'IsopV7ExcelService';
+      } else {
         // Si no encuentra ningún servicio compatible
         return res.status(400).json({
           message: `No se encontró un generador de Excel para el template: ${templateCode} - ${template.name}`,

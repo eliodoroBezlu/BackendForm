@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, NotFoundException, BadRequestException } from '@nestjs/common';
+import { 
+  Controller, 
+  Get, 
+  Post, 
+  Body, 
+  Patch, 
+  Param, 
+  Delete, 
+  Query, 
+  BadRequestException 
+} from '@nestjs/common';
 import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
@@ -13,18 +23,15 @@ export class TagController {
     return this.tagService.create(createDto);
   }
 
-  // En tu TagController
   @Get('por-area')
-async findTagByArea(@Query('area') area: string) {
-  if (!area) {
-    throw new BadRequestException ('Se requiere especificar un área');
+  async findTagByArea(@Query('area') area: string) {
+    if (!area) {
+      throw new BadRequestException('Se requiere especificar un área');
+    }
+    const tags = await this.tagService.findByArea(area);
+    // Devuelve directamente el array de tags
+    return tags;
   }
-  const tags = await this.tagService.findByArea(area);
-  // Devuelve directamente el array de tags
-  return tags;
-}
-
-
 
   @Get()
   findAll() {
@@ -33,16 +40,26 @@ async findTagByArea(@Query('area') area: string) {
 
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.tagService.findOne(+id);
+    return this.tagService.findOne(id);
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateTagDto: UpdateTagDto) {
-    return this.tagService.update(+id, updateTagDto);
+    return this.tagService.update(id, updateTagDto);
+  }
+
+  @Patch(':id/desactivar')
+  async desactivar(@Param('id') id: string) {
+    return this.tagService.desactivar(id);
+  }
+
+  @Patch(':id/activar')
+  async activar(@Param('id') id: string) {
+    return this.tagService.activar(id);
   }
 
   @Delete(':id')
   remove(@Param('id') id: string) {
-    return this.tagService.remove(+id);
+    return this.tagService.remove(id);
   }
 }

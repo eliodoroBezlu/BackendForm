@@ -50,14 +50,7 @@ export class TemplatesController {
     return this.templatesService.getStats();
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Obtener un template por ID' })
-  @ApiResponse({ status: 200, description: 'Template encontrado' })
-  @ApiResponse({ status: 404, description: 'Template no encontrado' })
-  findOne(@Param('id') id: string) {
-    return this.templatesService.findOne(id);
-  }
-
+  // ⚠️ IMPORTANTE: Este debe ir ANTES de @Get(':id')
   @Get('code/:code')
   @ApiOperation({ summary: 'Obtener un template por código' })
   @ApiResponse({ status: 200, description: 'Template encontrado' })
@@ -66,11 +59,19 @@ export class TemplatesController {
     return this.templatesService.findByCode(code);
   }
 
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener un template por ID' })
+  @ApiResponse({ status: 200, description: 'Template encontrado' })
+  @ApiResponse({ status: 404, description: 'Template no encontrado' })
+  findOne(@Param('id') id: string) {
+    return this.templatesService.findOne(id);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: "Actualizar un template" })
   @ApiResponse({ status: 200, description: "Template actualizado exitosamente" })
   @ApiResponse({ status: 404, description: "Template no encontrado" })
-  update(@Param('id') id: string, updateTemplateDto: UpdateTemplateDto) {
+  update(@Param('id') id: string, @Body() updateTemplateDto: UpdateTemplateDto) {
     return this.templatesService.update(id, updateTemplateDto);
   }
 
@@ -82,8 +83,11 @@ export class TemplatesController {
     return this.templatesService.desactivate(id);
   }
 
-  // @Delete(':id')
-  // remove(@Param('id') id: string) {
-  //   return this.templatesService.remove(+id);
-  // }
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar un template' })
+  @ApiResponse({ status: 200, description: 'Template eliminado exitosamente' })
+  @ApiResponse({ status: 404, description: 'Template no encontrado' })
+  remove(@Param('id') id: string) {
+    return this.templatesService.remove(id);
+  }
 }

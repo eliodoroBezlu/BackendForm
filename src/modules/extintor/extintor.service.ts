@@ -1,89 +1,188 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Extintor } from './schema/extintor.schema';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Cron } from '@nestjs/schedule';
+
+interface FiltrosExtintor {
+  area?: string;
+  tag?: string;
+  codigo?: string;
+  activo?: boolean;
+  inspeccionado?: boolean;
+}
 
 @Injectable()
 export class ExtintorService {
   private readonly logger = new Logger(ExtintorService.name);
+  
   constructor(
     @InjectModel(Extintor.name)
     private readonly extintorModel: Model<Extintor>,
   ) {}
 
   async create(createExtintorDto: CreateExtintorDto) {
-    const extintor = new this.extintorModel(createExtintorDto);
-    return await extintor.save();
+    try {
+      const extintor = new this.extintorModel(createExtintorDto);
+      return await extintor.save();
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new Error('Ya existe un extintor con ese código');
+      }
+      throw new Error(`Error al crear extintor: ${error.message}`);
+    }
   }
 
   async findAll() {
-    return await this.extintorModel.find().exec();
+    try {
+      return await this.extintorModel.find().exec();
+    } catch (error) {
+      throw new Error(`Error al obtener extintores: ${error.message}`);
+    }
+  }
+
+  async findOne(id: string) {
+    try {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('ID de extintor inválido');
+      }
+
+      const extintor = await this.extintorModel.findById(id).exec();
+      
+      if (!extintor) {
+        throw new NotFoundException('Extintor no encontrado');
+      }
+
+      return extintor;
+    } catch (error) {
+      throw new Error(`Error al obtener extintor: ${error.message}`);
+    }
+  }
+
+  async findWithFilters(filtros: FiltrosExtintor) {
+    try {
+      let query: any = {};
+
+      if (filtros.area) {
+        query.area = new RegExp(filtros.area, 'i');
+      }
+      if (filtros.tag) {
+        query.tag = new RegExp(filtros.tag, 'i');
+      }
+      if (filtros.codigo) {
+        query.CodigoExtintor = new RegExp(filtros.codigo, 'i');
+      }
+      if (filtros.activo !== undefined) {
+        query.activo = filtros.activo;
+      }
+      if (filtros.inspeccionado !== undefined) {
+        query.inspeccionado = filtros.inspeccionado;
+      }
+
+      return await this.extintorModel.find(query).exec();
+    } catch (error) {
+      throw new Error(`Error al buscar extintores con filtros: ${error.message}`);
+    }
   }
 
   async findByTag(tag: string) {
-  try {
-    console.log('Servicio - Buscando área:', tag);
-    console.log('Filtro de consulta:', {
-      area: new RegExp(tag, 'i'),
-      inspeccionado: false,
-      activo: true
-    });
+    try {
+      console.log('Servicio - Buscando tag:', tag);
+      
+      const result = await this.extintorModel
+        .find({
+          tag: new RegExp(`^${tag}$`, 'i'),
+          inspeccionado: false,
+          activo: true,
+        })
+        .select('CodigoExtintor Ubicacion area tag inspeccionado activo')
+        .lean()
+        .exec();
 
-    const result = await this.extintorModel
-      .find({
-        tag: new RegExp(`^${tag}$`, 'i'),  // ← Corregido: area en lugar de tag
-        inspeccionado: false,
-        activo: true,
-      })
-      .select('CodigoExtintor Ubicacion area tag inspeccionado activo') // ← Agregados los campos faltantes
-      .lean()
-      .exec();
+      const uniqueTags = [...new Set(result.map(extintor => extintor.tag))];
+      const tagCountMap = {};
+      
+      for (const tagItem of uniqueTags) {
+        const count = await this.extintorModel
+          .countDocuments({ 
+            tag: tagItem,
+            activo: true 
+          })
+          .exec();
+        tagCountMap[tagItem] = count;
+      }
 
-    // Obtener todos los tags únicos de los extintores encontrados
-    const uniqueTags = [...new Set(result.map(extintor => extintor.tag))];
+      const extintoresConTotal = result.map(extintor => ({
+        ...extintor,
+        totalActivos: tagCountMap[extintor.tag]
+      }));
 
-    // Contar extintores activos por cada tag
-    const tagCountMap = {};
-    for (const tag of uniqueTags) {
-      const count = await this.extintorModel
+      const totalExtintoresActivosArea = await this.extintorModel
         .countDocuments({ 
-          tag: tag,
+          tag: new RegExp(`^${tag}$`, 'i'),
           activo: true 
         })
         .exec();
-      tagCountMap[tag] = count;
+
+      return {
+        extintores: extintoresConTotal,
+        totalActivosArea: totalExtintoresActivosArea
+      };
+    } catch (error) {
+      console.error('Error en findByTag service:', error);
+      throw new Error(`Error al buscar extintores: ${error.message}`);
     }
+  }
 
-    // Agregar el totalActivos a cada extintor
-    const extintoresConTotal = result.map(extintor => ({
-      ...extintor,
-      totalActivos: tagCountMap[extintor.tag]
-    }));
+  async findByArea(area: string) {
+    try {
+      console.log('Servicio - Buscando área:', area);
+      
+      const result = await this.extintorModel
+        .find({
+          area: new RegExp(area, 'i'),
+          activo: true,
+        })
+        .select('CodigoExtintor Ubicacion area tag inspeccionado activo')
+        .lean()
+        .exec();
 
-    console.log('Extintores encontrados:', extintoresConTotal);
+      const uniqueAreas = [...new Set(result.map(extintor => extintor.area))];
+      const areaCountMap = {};
+      
+      for (const areaItem of uniqueAreas) {
+        const count = await this.extintorModel
+          .countDocuments({ 
+            area: areaItem,
+            activo: true 
+          })
+          .exec();
+        areaCountMap[areaItem] = count;
+      }
+
+      const extintoresConTotal = result.map(extintor => ({
+        ...extintor,
+        totalActivos: areaCountMap[extintor.area]
+      }));
 
       const totalExtintoresActivosArea = await this.extintorModel
-      .countDocuments({ 
-        tag: new RegExp(`^${tag}$`, 'i'),
-        activo: true 
-      })
-      .exec();
-      console.log("extintores for area "+ totalExtintoresActivosArea)
+        .countDocuments({ 
+          area: new RegExp(area, 'i'),
+          activo: true 
+        })
+        .exec();
 
-    console.log('Extintores encontrados:', result);
-
-    return {
-      extintores: extintoresConTotal,
-      totalActivosArea: totalExtintoresActivosArea
-    };
-  } catch (error) {
-    console.error('Error en findByArea service:', error);
-    throw new Error(`Error al buscar extintores: ${error.message}`);
+      return {
+        extintores: extintoresConTotal,
+        totalActivosArea: totalExtintoresActivosArea
+      };
+    } catch (error) {
+      console.error('Error en findByArea service:', error);
+      throw new Error(`Error al buscar extintores: ${error.message}`);
+    }
   }
-}
 
   async findByCodigo(codigoExtintor: string) {
     try {
@@ -91,7 +190,6 @@ export class ExtintorService {
         throw new Error('El código del extintor es requerido');
       }
 
-      // Corregido: campo "CodigoExtintor" en lugar de "Codigo" y exec() con paréntesis
       const result = await this.extintorModel
         .find({
           CodigoExtintor: codigoExtintor,
@@ -108,12 +206,42 @@ export class ExtintorService {
     }
   }
 
-  update(id: number, updateExtintorDto: UpdateExtintorDto) {
-    return `This action updates a #${id} extintor`;
+  async update(id: string, updateExtintorDto: UpdateExtintorDto) {
+    try {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('ID de extintor inválido');
+      }
+
+      const extintor = await this.extintorModel
+        .findByIdAndUpdate(id, updateExtintorDto, { new: true })
+        .exec();
+
+      if (!extintor) {
+        throw new NotFoundException('Extintor no encontrado');
+      }
+
+      return extintor;
+    } catch (error) {
+      throw new Error(`Error al actualizar extintor: ${error.message}`);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} extintor`;
+  async remove(id: string) {
+    try {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new Error('ID de extintor inválido');
+      }
+
+      const result = await this.extintorModel.findByIdAndDelete(id).exec();
+      
+      if (!result) {
+        throw new NotFoundException('Extintor no encontrado');
+      }
+
+      return { deletedCount: 1 };
+    } catch (error) {
+      throw new Error(`Error al eliminar extintor: ${error.message}`);
+    }
   }
 
   async marcarExtintoresComoInspeccionados(codigosExtintores: string[]) {
@@ -134,8 +262,6 @@ export class ExtintorService {
     }
   }
 
-  async crearExtintor(codigosExtintores: string[]) {}
-
   async deshabilitarExtintor(codigoExtintor: string) {
     try {
       const resultado = await this.extintorModel.updateOne(
@@ -150,36 +276,13 @@ export class ExtintorService {
         };
       }
 
-      return { exito: true, mensaje: 'Extintor deshabilitado correctamente' };
+      return { 
+        exito: true, 
+        mensaje: 'Extintor desactivado correctamente' 
+      };
     } catch (error) {
-      console.error('Error al desactivar el extintor');
-    }
-  }
-
-  @Cron('59 23 L * *')
-  async resetearTodosLosExtintoresFinalMes() {
-    try {
-      this.logger.log(
-        'Ejecutando reseteo automático de estado de inspección de extintores fin de mes',
-      );
-
-      const resultado = await this.extintorModel.updateMany(
-        {}, // Sin filtros - aplica a todos los extintores
-        { $set: { inspeccionado: false } },
-      );
-
-      this.logger.log(
-        `Reseteo fin de mes completado. ${resultado.modifiedCount} extintores actualizados.`,
-      );
-      return { modified: resultado.modifiedCount };
-    } catch (error) {
-      this.logger.error(
-        `Error en reseteo automático: ${error.message}`,
-        error.stack,
-      );
-      throw new Error(
-        `Error al resetear estado de extintores: ${error.message}`,
-      );
+      console.error('Error al desactivar el extintor:', error);
+      throw new Error(`Error al desactivar extintor: ${error.message}`);
     }
   }
 
@@ -213,7 +316,6 @@ export class ExtintorService {
     let creados = 0;
     let actualizados = 0;
 
-    // Procesar cada extintor en la lista
     for (const extintor of extintores) {
       try {
         if (!extintor.codigo) {
@@ -221,11 +323,9 @@ export class ExtintorService {
           continue;
         }
 
-        // Verificar si el extintor ya existe
         const existentes = await this.findByCodigo(extintor.codigo);
 
         if (!existentes || existentes.length === 0) {
-          // El extintor no existe, crear uno nuevo
           const nuevoExtintor = new this.extintorModel({
             CodigoExtintor: extintor.codigo,
             Ubicacion: extintor.ubicacion || 'No especificada',
@@ -239,7 +339,6 @@ export class ExtintorService {
           creados++;
           this.logger.log(`Extintor creado: ${extintor.codigo} en área ${tag}`);
         } else {
-          // El extintor existe, actualizar si es necesario
           const extintorExistente = existentes[0];
           if (!extintorExistente.activo) {
             await this.extintorModel.updateOne(
@@ -268,63 +367,30 @@ export class ExtintorService {
     return { creados, actualizados };
   }
 
-  async findByArea(area: string) {
-  try {
-    console.log('Servicio - Buscando área:', area);
-    console.log('Filtro de consulta:', {
-      area: new RegExp(area, 'i'),
-      inspeccionado: false,
-      activo: true
-    });
+  @Cron('59 23 L * *')
+  async resetearTodosLosExtintoresFinalMes() {
+    try {
+      this.logger.log(
+        'Ejecutando reseteo automático de estado de inspección de extintores fin de mes',
+      );
 
-    const result = await this.extintorModel
-      .find({
-        area: new RegExp(area, 'i'),
-        activo: true,
-      })
-      .select('CodigoExtintor Ubicacion area tag inspeccionado activo')
-      .lean()
-      .exec();
+      const resultado = await this.extintorModel.updateMany(
+        {},
+        { $set: { inspeccionado: false } },
+      );
 
-    // Obtener todas las areas únicas de los extintores encontrados
-    const uniqueAreas = [...new Set(result.map(extintor => extintor.area))];
-
-    // Contar extintores activos por cada area
-    const areaCountMap = {};
-    for (const areaItem of uniqueAreas) {
-      const count = await this.extintorModel
-        .countDocuments({ 
-          area: areaItem,
-          activo: true 
-        })
-        .exec();
-      areaCountMap[areaItem] = count;
+      this.logger.log(
+        `Reseteo fin de mes completado. ${resultado.modifiedCount} extintores actualizados.`,
+      );
+      return { modified: resultado.modifiedCount };
+    } catch (error) {
+      this.logger.error(
+        `Error en reseteo automático: ${error.message}`,
+        error.stack,
+      );
+      throw new Error(
+        `Error al resetear estado de extintores: ${error.message}`,
+      );
     }
-
-    // Agregar el totalActivos a cada extintor
-    const extintoresConTotal = result.map(extintor => ({
-      ...extintor,
-      totalActivos: areaCountMap[extintor.area]
-    }));
-
-    console.log('Extintores encontrados:', extintoresConTotal);
-
-    const totalExtintoresActivosArea = await this.extintorModel
-      .countDocuments({ 
-        area: new RegExp(area, 'i'),
-        activo: true 
-      })
-      .exec();
-    
-    console.log("extintores for area " + totalExtintoresActivosArea);
-
-    return {
-      extintores: extintoresConTotal,
-      totalActivosArea: totalExtintoresActivosArea
-    };
-  } catch (error) {
-    console.error('Error en findByArea service:', error);
-    throw new Error(`Error al buscar extintores: ${error.message}`);
   }
-}
 }

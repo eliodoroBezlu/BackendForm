@@ -21,9 +21,9 @@ export class CreateVerificationFieldDto {
   
   @ApiProperty({
     description: "Tipo de campo",
-    enum: ["text", "date", "number", "select"],
+    enum: ["text", "date", "number", "select", "autocomplete"],
   })
-  @IsEnum(["text", "date", "number", "select"])
+  @IsEnum(["text", "date", "number", "select", "autocomplete"])
   type: string
   
   @ApiProperty({
@@ -40,6 +40,11 @@ export class CreateVerificationFieldDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean
+
+  @ApiProperty({ description: "Fuente de datos para autocompletado", required: false })
+  @IsOptional()
+  @IsString()
+  dataSource?: string
 }
 
 export class CreateQuestionDto {
@@ -54,11 +59,17 @@ export class CreateQuestionDto {
   obligatorio: boolean
 }
 
+// ⭐ DTO recursivo para Section
 export class CreateSectionDto {
   @ApiProperty({ description: "Título de la sección" })
   @IsString()
   @IsNotEmpty()
   title: string
+  
+  @ApiProperty({ description: "Descripción de la sección (opcional)", required: false })
+  @IsOptional()
+  @IsString()
+  description?: string
   
   @ApiProperty({ description: "Puntaje máximo de la sección" })
   @IsNumber()
@@ -70,10 +81,36 @@ export class CreateSectionDto {
     type: [CreateQuestionDto],
   })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateQuestionDto)
   questions: CreateQuestionDto[]
+  
+  @ApiProperty({ description: "Orden de la sección", required: false })
+  @IsOptional()
+  @IsNumber()
+  order?: number
+  
+  @ApiProperty({ description: "Si la sección es padre (contiene subsecciones)", required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isParent?: boolean
+  
+  @ApiProperty({ description: "ID de la sección padre", required: false })
+  @IsOptional()
+  @IsString()
+  parentId?: string | null
+  
+  // ⭐ RECURSIVIDAD: Una sección puede tener subsecciones
+  @ApiProperty({
+    description: "Subsecciones anidadas",
+    type: [CreateSectionDto],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSectionDto)
+  subsections?: CreateSectionDto[]
 }
 
 export class CreateSimpleQuestionDto {
@@ -82,28 +119,61 @@ export class CreateSimpleQuestionDto {
   @IsNotEmpty()
   text: string
   
-  @ApiProperty({ description: "URL de la imagen (opcional)", required: false })
+  @ApiProperty({ description: "Imagen en base64 o URL (opcional)", required: false })
   @IsOptional()
   @IsString()
   image?: string
 }
 
+// ⭐ DTO recursivo para SimpleSection
 export class CreateSimpleSectionDto {
   @ApiProperty({ description: "Título de la sección simple" })
   @IsString()
   @IsNotEmpty()
   title: string
   
+  @ApiProperty({ description: "Descripción de la sección (opcional)", required: false })
+  @IsOptional()
+  @IsString()
+  description?: string
+  
   @ApiProperty({
     description: "Lista de preguntas simples de la sección",
     type: [CreateSimpleQuestionDto],
   })
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CreateSimpleQuestionDto)
   questions: CreateSimpleQuestionDto[]
+  
+  @ApiProperty({ description: "Orden de la sección", required: false })
+  @IsOptional()
+  @IsNumber()
+  order?: number
+  
+  @ApiProperty({ description: "Si la sección es padre", required: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  isParent?: boolean
+  
+  @ApiProperty({ description: "ID de la sección padre", required: false })
+  @IsOptional()
+  @IsString()
+  parentId?: string | null
+  
+  // ⭐ RECURSIVIDAD para SimpleSection
+  @ApiProperty({
+    description: "Subsecciones anidadas",
+    type: [CreateSimpleSectionDto],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSimpleSectionDto)
+  subsections?: CreateSimpleSectionDto[]
 }
+
 
 export class CreateTemplateDto {
   @ApiProperty({ description: "Código único del template" })

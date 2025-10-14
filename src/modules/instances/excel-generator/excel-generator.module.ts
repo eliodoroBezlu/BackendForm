@@ -5,9 +5,11 @@ import { ExcelCalienteService } from './excel-generator.service';
 import { ExcelIzajeService } from './excel-generator-izaje.service';
 import { ExcelSustanciasService } from './excel-generator-sustancias.service';
 import { ExcelElectricoActosService } from './excel-generator-electrcio-actos.service';
-import { ExcelAlturaService } from './excel-generator-altura.service';
+import { ExcelAlturav3Service } from './excel-generator-alturav3.service';
 import { ExcelConfinadoService } from './excel-generator-confinado.service';
 import { ExcelElectricoCondicionesService } from './excel-generator-electrcio-condiciones.service';
+import { ExcelAlturav4Service } from './excel-generator-alturav4.service';
+import { ExcelIsopV7Service } from './excel-generator-isop.service';
 
 @Module({
   imports: [ConfigModule], // Asegura que ConfigModule está disponible
@@ -17,9 +19,11 @@ import { ExcelElectricoCondicionesService } from './excel-generator-electrcio-co
     ExcelIzajeService,
     ExcelSustanciasService,
     ExcelElectricoActosService,
-    ExcelAlturaService,
+    ExcelAlturav3Service,
     ExcelConfinadoService,
-    ExcelElectricoCondicionesService
+    ExcelElectricoCondicionesService,
+    ExcelAlturav4Service,
+    ExcelIsopV7Service
   ],
   exports: [
     ExcelCalienteService,
@@ -27,9 +31,11 @@ import { ExcelElectricoCondicionesService } from './excel-generator-electrcio-co
     ExcelIzajeService,
     ExcelSustanciasService,
     ExcelElectricoActosService,
-    ExcelAlturaService,
+    ExcelAlturav3Service,
     ExcelConfinadoService,
-    ExcelElectricoCondicionesService
+    ExcelElectricoCondicionesService,
+    ExcelAlturav4Service,
+    ExcelIsopV7Service
   ],
 })
 export class ExcelIsoIroModule {}
