@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schema/tag.schema';
@@ -42,12 +42,30 @@ export class TagService {
   }
 
   async findByArea(area: string): Promise<string[]> {
-    const resultados = await this.ordenTrabajoModel.find({ 
-      area,
-      activo: true // Solo tags activos
-    }).exec();
-    // Extrae solo los valores de tag y los devuelve como array
-    return resultados.map(doc => doc.tag);
+    if (!area || area.trim() === '') {
+      throw new BadRequestException('El área no puede estar vacía');
+    }
+
+    try {
+      const areaTrimmed = area.trim();
+
+      // Primero intentar búsqueda exacta
+      let resultados = await this.ordenTrabajoModel
+        .find({
+          area: areaTrimmed,
+          activo: true,
+        })
+        .select('tag')
+        .lean()
+        .exec();
+
+      const tags = resultados.map((doc) => doc.tag);
+      
+
+      return tags;
+    } catch (error) {
+      throw new BadRequestException('Error al buscar tags por área');
+    }
   }
 
   async findAll(): Promise<OrdenTrabajo[]> {

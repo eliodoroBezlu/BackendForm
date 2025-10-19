@@ -43,20 +43,7 @@ export class ExtintorController {
     }
   }
 
-  // Obtener extintor por ID
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    try {
-      return await this.extintorService.findOne(id);
-    } catch (error) {
-      throw new HttpException(
-        error.message || 'Error al obtener extintor',
-        HttpStatus.NOT_FOUND,
-      );
-    }
-  }
-
-  // Obtener extintores con filtros
+  // ✅ RUTAS ESPECÍFICAS PRIMERO - Obtener extintores con filtros
   @Get('filtrar')
   async findWithFilters(
     @Query('area') area?: string,
@@ -83,6 +70,7 @@ export class ExtintorController {
     }
   }
 
+  // Obtener extintores por tag
   @Get('tag/:tag')
   async findByTag(@Param('tag') tag: string) {
     try {
@@ -105,6 +93,7 @@ export class ExtintorController {
     }
   }
 
+  // Obtener extintores por área
   @Get('area/:area')
   async findByArea(@Param('area') area: string) {
     try {
@@ -123,6 +112,19 @@ export class ExtintorController {
       throw new HttpException(
         error.message || 'Error al buscar extintores',
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ✅ RUTA GENÉRICA AL FINAL - Obtener extintor por ID
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    try {
+      return await this.extintorService.findOne(id);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al obtener extintor',
+        HttpStatus.NOT_FOUND,
       );
     }
   }

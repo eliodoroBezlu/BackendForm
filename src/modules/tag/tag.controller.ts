@@ -1,13 +1,15 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
-  Query, 
-  BadRequestException 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  BadRequestException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
@@ -20,46 +22,106 @@ export class TagController {
 
   @Post()
   async create(@Body() createDto: CreateTagDto): Promise<OrdenTrabajo> {
-    return this.tagService.create(createDto);
-  }
-
-  @Get('por-area')
-  async findTagByArea(@Query('area') area: string) {
-    if (!area) {
-      throw new BadRequestException('Se requiere especificar un área');
+    try {
+      return await this.tagService.create(createDto);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al crear tag',
+        error.status || HttpStatus.BAD_REQUEST,
+      );
     }
-    const tags = await this.tagService.findByArea(area);
-    // Devuelve directamente el array de tags
-    return tags;
   }
 
   @Get()
-  findAll() {
-    return this.tagService.findAll();
+  async findAll() {
+    try {
+      return await this.tagService.findAll();
+    } catch (error) {
+      throw new HttpException(
+        'Error al obtener tags',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
+  // ✅ Ruta específica ANTES de la genérica
+  @Get('por-area')
+  async findTagByArea(@Query('area') area: string) {
+    if (!area || area.trim() === '') {
+      throw new BadRequestException('Se requiere especificar un área válida');
+    }
+
+    try {
+      const tags = await this.tagService.findByArea(area);
+      
+      return tags;
+    } catch (error) {
+      console.error('❌ Error al buscar tags por área:', error);
+      throw new HttpException(
+        error.message || 'Error al buscar tags por área',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // ✅ Ruta genérica AL FINAL
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.tagService.findOne(id);
+  async findOne(@Param('id') id: string) {
+    try {
+      return await this.tagService.findOne(id);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al obtener tag',
+        HttpStatus.NOT_FOUND,
+      );
+    }
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateTagDto: UpdateTagDto) {
-    return this.tagService.update(id, updateTagDto);
+  async update(@Param('id') id: string, @Body() updateTagDto: UpdateTagDto) {
+    try {
+      return await this.tagService.update(id, updateTagDto);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al actualizar tag',
+        error.status || HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Patch(':id/desactivar')
   async desactivar(@Param('id') id: string) {
-    return this.tagService.desactivar(id);
+    try {
+      return await this.tagService.desactivar(id);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al desactivar tag',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Patch(':id/activar')
   async activar(@Param('id') id: string) {
-    return this.tagService.activar(id);
+    try {
+      return await this.tagService.activar(id);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al activar tag',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.tagService.remove(id);
+  async remove(@Param('id') id: string) {
+    try {
+      return await this.tagService.remove(id);
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Error al eliminar tag',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 }
