@@ -10,9 +10,10 @@ import { Model, Types } from 'mongoose';
 import {
   Instance,
   SectionResponse,
+  QuestionResponse,
 } from './schemas/instance.schema';
 import { TemplatesService } from '../templates/templates.service';
-import { Section, Template } from '../templates/schemas/template.schema';
+import { Section } from '../templates/schemas/template.schema';
 
 @Injectable()
 export class InstancesService {
@@ -22,154 +23,210 @@ export class InstancesService {
     private templatesService: TemplatesService,
   ) {}
 
+  /**
+   * Crea una nueva instancia con cálculos automáticos
+   */
   async create(createInstanceDto: CreateInstanceDto): Promise<Instance> {
-  // Verificar que el template existe
-  const template = await this.templatesService.findOne(
-    createInstanceDto.templateId,
-  );
-
-  // ✅ NUEVO: Aplanar secciones del template para validación
-  const flatSections = this.flattenSections(template.sections);
-
-  // ✅ NUEVO: Validar que todas las secciones enviadas existen en el template
-  const validSectionIds = new Set(flatSections.map(s => s._id.toString()));
-  const invalidSections = createInstanceDto.sections.filter(
-    s => !validSectionIds.has(s.sectionId)
-  );
-
-  if (invalidSections.length > 0) {
-    throw new BadRequestException(
-      `Las siguientes secciones no existen en el template: ${invalidSections.map(s => s.sectionId).join(', ')}`
+    // Verificar que el template existe
+    const template = await this.templatesService.findOne(
+      createInstanceDto.templateId,
     );
+
+    // Aplanar secciones del template para validación
+    const flatSections = this.flattenSections(template.sections);
+
+    // Validar que todas las secciones enviadas existen en el template
+    const validSectionIds = new Set(flatSections.map((s) => s._id.toString()));
+    const invalidSections = createInstanceDto.sections.filter(
+      (s) => !validSectionIds.has(s.sectionId),
+    );
+
+    if (invalidSections.length > 0) {
+      throw new BadRequestException(
+        `Las siguientes secciones no existen en el template: ${invalidSections.map((s) => s.sectionId).join(', ')}`,
+      );
+    }
+
+    // ✅ CALCULAR MÉTRICAS AUTOMÁTICAMENTE EN EL BACKEND
+    const calculatedSections = this.calculateAllSectionMetrics(
+      createInstanceDto.sections,
+      flatSections,
+    );
+
+    const instanceTotals = this.calculateInstanceTotals(calculatedSections);
+
+    const instanceData = {
+      templateId: new Types.ObjectId(createInstanceDto.templateId),
+      verificationList: new Map(
+        Object.entries(createInstanceDto.verificationList || {}),
+      ),
+      inspectionTeam: createInstanceDto.inspectionTeam,
+      valoracionCriterio: createInstanceDto.valoracionCriterio,
+      sections: calculatedSections,
+      aspectosPositivos: createInstanceDto.aspectosPositivos || '',
+      aspectosAdicionales: createInstanceDto.aspectosAdicionales || '',
+      personalInvolucrado: createInstanceDto.personalInvolucrado,
+      ...instanceTotals,
+      status: createInstanceDto.status || 'borrador',
+      createdBy: createInstanceDto.createdBy || 'system',
+    };
+
+    try {
+      const createdInstance = new this.instanceModel(instanceData);
+      const saved = await createdInstance.save();
+      console.log('✅ Instance saved with calculated metrics:', {
+        id: saved._id,
+        totalObtained: saved.totalObtainedPoints,
+        compliance: saved.overallCompliancePercentage,
+      });
+      return saved;
+    } catch (error) {
+      console.error('❌ Error saving instance:', error);
+      throw new BadRequestException('Error al crear la instancia');
+    }
   }
 
-  // Calcular automáticamente los campos de cumplimiento
-  const calculatedSections = this.calculateSectionMetrics(
-    createInstanceDto.sections,
-  );
-  const instanceTotals = this.calculateInstanceTotals(calculatedSections);
+  /**
+   * Actualiza una instancia recalculando métricas si es necesario
+   */
+  async update(
+    id: string,
+    updateInstanceDto: UpdateInstanceDto,
+  ): Promise<Instance> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID de instancia inválido');
+    }
 
-  const instanceData = {
-    templateId: new Types.ObjectId(createInstanceDto.templateId),
-    verificationList: new Map(
-      Object.entries(createInstanceDto.verificationList || {}),
-    ),
-    inspectionTeam: createInstanceDto.inspectionTeam,
-    valoracionCriterio: createInstanceDto.valoracionCriterio,
-    sections: calculatedSections,
-    aspectosPositivos: createInstanceDto.aspectosPositivos || '',
-    aspectosAdicionales: createInstanceDto.aspectosAdicionales || '',
-    personalInvolucrado: createInstanceDto.personalInvolucrado,
-    ...instanceTotals,
-    status: createInstanceDto.status || 'borrador',
-    createdBy: createInstanceDto.createdBy || 'system',
-  };
+    // Si se actualizan las secciones, recalcular métricas
+    if (updateInstanceDto.sections) {
+      const instance = await this.findOne(id);
+      const template = await this.templatesService.findOne(
+        instance.templateId.toString(),
+      );
 
-  try {
-    const createdInstance = new this.instanceModel(instanceData);
-    const saved = await createdInstance.save();
-    console.log('Instance saved successfully with ID:', saved._id);
-    return saved;
-  } catch (error) {
-    console.error('Error saving instance:', error);
-    throw new BadRequestException('Error al crear la instancia');
+      const flatSections = this.flattenSections(template.sections);
+
+      // ✅ RECALCULAR MÉTRICAS
+      const calculatedSections = this.calculateAllSectionMetrics(
+        updateInstanceDto.sections,
+        flatSections,
+      );
+      const instanceTotals = this.calculateInstanceTotals(calculatedSections);
+
+      updateInstanceDto.sections = calculatedSections;
+      Object.assign(updateInstanceDto, instanceTotals);
+    }
+
+    updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
+
+    const updatedInstance = await this.instanceModel
+      .findByIdAndUpdate(id, updateInstanceDto, {
+        new: true,
+        runValidators: true,
+      })
+      .populate('templateId')
+      .exec();
+
+    if (!updatedInstance) {
+      throw new NotFoundException('Instancia no encontrada');
+    }
+
+    return updatedInstance;
   }
-}
 
   async findAll(filters?: {
-  templateId?: string;
-  status?: string;
-  createdBy?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
-  area?: string; // ✅ NUEVO
-  superintendencia?: string; // ✅ NUEVO
-  minCompliance?: number;
-  maxCompliance?: number;
-  page?: number;
-  limit?: number;
-}): Promise<{
-  data: Instance[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}> {
-  const query: any = {};
+    templateId?: string;
+    status?: string;
+    createdBy?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    area?: string;
+    superintendencia?: string;
+    minCompliance?: number;
+    maxCompliance?: number;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    data: Instance[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const query: any = {};
 
-  if (filters?.templateId) {
-    query.templateId = new Types.ObjectId(filters.templateId);
-  }
-
-  if (filters?.status) {
-    query.status = filters.status;
-  }
-
-  if (filters?.createdBy) {
-    query.createdBy = filters.createdBy;
-  }
-
-  if (filters?.dateFrom || filters?.dateTo) {
-    query.createdAt = {};
-    if (filters.dateFrom) {
-      query.createdAt.$gte = filters.dateFrom;
+    if (filters?.templateId) {
+      query.templateId = new Types.ObjectId(filters.templateId);
     }
-    if (filters.dateTo) {
-      query.createdAt.$lte = filters.dateTo;
-    }
-  }
 
-  // ✅ NUEVO: Filtros para verificationList (Map)
-  if (filters?.area) {
-    query['verificationList.Área'] = { 
-      $regex: filters.area, 
-      $options: 'i' // Case insensitive
+    if (filters?.status) {
+      query.status = filters.status;
+    }
+
+    if (filters?.createdBy) {
+      query.createdBy = filters.createdBy;
+    }
+
+    if (filters?.dateFrom || filters?.dateTo) {
+      query.createdAt = {};
+      if (filters.dateFrom) {
+        query.createdAt.$gte = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        query.createdAt.$lte = filters.dateTo;
+      }
+    }
+
+    if (filters?.area) {
+      query['verificationList.Área'] = {
+        $regex: filters.area,
+        $options: 'i',
+      };
+    }
+
+    if (filters?.superintendencia) {
+      query['verificationList.Superintendencia'] = {
+        $regex: filters.superintendencia,
+        $options: 'i',
+      };
+    }
+
+    if (
+      filters?.minCompliance !== undefined ||
+      filters?.maxCompliance !== undefined
+    ) {
+      query.overallCompliancePercentage = {};
+      if (filters.minCompliance !== undefined) {
+        query.overallCompliancePercentage.$gte = filters.minCompliance;
+      }
+      if (filters.maxCompliance !== undefined) {
+        query.overallCompliancePercentage.$lte = filters.maxCompliance;
+      }
+    }
+
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.instanceModel
+        .find(query)
+        .populate('templateId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.instanceModel.countDocuments(query).exec(),
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     };
   }
-
-  if (filters?.superintendencia) {
-    query['verificationList.Superintendencia'] = { 
-      $regex: filters.superintendencia, 
-      $options: 'i' // Case insensitive
-    };
-  }
-
-  if (
-    filters?.minCompliance !== undefined ||
-    filters?.maxCompliance !== undefined
-  ) {
-    query.overallCompliancePercentage = {};
-    if (filters.minCompliance !== undefined) {
-      query.overallCompliancePercentage.$gte = filters.minCompliance;
-    }
-    if (filters.maxCompliance !== undefined) {
-      query.overallCompliancePercentage.$lte = filters.maxCompliance;
-    }
-  }
-
-  const page = filters?.page || 1;
-  const limit = filters?.limit || 10;
-  const skip = (page - 1) * limit;
-
-  const [data, total] = await Promise.all([
-    this.instanceModel
-      .find(query)
-      .populate('templateId')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .exec(),
-    this.instanceModel.countDocuments(query).exec(),
-  ]);
-
-  return {
-    data,
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-  };
-}
 
   async findOne(id: string): Promise<Instance> {
     if (!Types.ObjectId.isValid(id)) {
@@ -188,54 +245,11 @@ export class InstancesService {
     return instance;
   }
 
-  // async update(
-  //   id: string,
-  //   updateInstanceDto: UpdateInstanceDto,
-  // ): Promise<Instance> {
-  //   if (!Types.ObjectId.isValid(id)) {
-  //     throw new BadRequestException('ID de instancia inválido');
-  //   }
-
-  //   // Si se actualizan las secciones, recalcular métricas
-  //   if (updateInstanceDto.sections) {
-  //     const instance = await this.findOne(id);
-  //     const template = await this.templatesService.findOne(
-  //       instance.templateId.toString(),
-  //     );
-
-  //     await this.validateSectionsAgainstTemplate(
-  //       updateInstanceDto.sections,
-  //       template,
-  //     );
-
-  //     const calculatedSections = this.calculateSectionMetrics(
-  //       updateInstanceDto.sections,
-  //     );
-  //     const instanceTotals = this.calculateInstanceTotals(calculatedSections);
-
-  //     updateInstanceDto.sections = calculatedSections;
-  //     Object.assign(updateInstanceDto, instanceTotals);
-  //   }
-
-  //   updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
-
-  //   const updatedInstance = await this.instanceModel
-  //     .findByIdAndUpdate(id, updateInstanceDto, {
-  //       new: true,
-  //       runValidators: true,
-  //     })
-  //     .populate('templateId')
-  //     .exec();
-
-  //   if (!updatedInstance) {
-  //     throw new NotFoundException('Instancia no encontrada');
-  //   }
-
-  //   return updatedInstance;
-  // }
-
-  remove(id: string) {
-    return `This action removes a #${id} instance`;
+  async remove(id: string): Promise<void> {
+    const result = await this.instanceModel.findByIdAndDelete(id).exec();
+    if (!result) {
+      throw new NotFoundException('Instancia no encontrada');
+    }
   }
 
   async updateStatus(
@@ -272,6 +286,130 @@ export class InstancesService {
     return instance;
   }
 
+  // ========================================
+  // MÉTODOS PRIVADOS PARA CÁLCULOS
+  // ========================================
+
+  /**
+   * Aplana secciones recursivamente (incluye subsecciones)
+   */
+  private flattenSections(sections: any[]): any[] {
+    const flattened: any[] = [];
+
+    const flatten = (section: any) => {
+      // Solo agregar secciones que NO sean padre
+      if (!section.isParent) {
+        flattened.push(section);
+      }
+
+      // Procesar subsecciones recursivamente
+      if (section.subsections && section.subsections.length > 0) {
+        section.subsections.forEach(flatten);
+      }
+    };
+
+    sections.forEach(flatten);
+    return flattened;
+  }
+
+  /**
+   * ✅ MÉTODO PRINCIPAL: Calcula métricas para todas las secciones
+   */
+  private calculateAllSectionMetrics(
+    sections: any[],
+    templateSections: Section[],
+  ): SectionResponse[] {
+    return sections.map((section) => {
+      // Buscar la sección correspondiente en el template para obtener maxPoints
+      const templateSection = templateSections.find(
+        (ts) => ts._id && ts._id.toString() === section.sectionId,
+      );
+
+      if (!templateSection) {
+        throw new BadRequestException(
+          `Sección ${section.sectionId} no encontrada en el template`,
+        );
+      }
+
+      // Calcular métricas de cada pregunta
+      const calculatedQuestions = section.questions.map((q: any) => ({
+        ...q,
+        points: q.response === 'N/A' ? 0 : Number(q.response) || 0,
+      }));
+
+      // Contar respuestas N/A
+      const naCount = calculatedQuestions.filter(
+        (q: QuestionResponse) => q.response === 'N/A',
+      ).length;
+
+      // Sumar puntos obtenidos
+      const obtainedPoints = calculatedQuestions.reduce(
+        (sum: number, q: QuestionResponse) => sum + q.points,
+        0,
+      );
+
+      // maxPoints viene del template (es fijo)
+      const maxPoints = templateSection.maxPoints;
+
+      // applicablePoints = maxPoints (no cambia aunque haya N/A)
+      const applicablePoints = maxPoints;
+
+      // Calcular porcentaje de cumplimiento
+      const compliancePercentage =
+        applicablePoints > 0 ? (obtainedPoints / applicablePoints) * 100 : 0;
+
+      return {
+        sectionId: section.sectionId,
+        questions: calculatedQuestions,
+        maxPoints: Math.round(maxPoints * 100) / 100,
+        obtainedPoints: Math.round(obtainedPoints * 100) / 100,
+        applicablePoints: Math.round(applicablePoints * 100) / 100,
+        naCount,
+        compliancePercentage: Math.round(compliancePercentage * 100) / 100,
+        sectionComment: section.sectionComment || '',
+      };
+    });
+  }
+
+  /**
+   * ✅ Calcula totales generales de la instancia
+   */
+  private calculateInstanceTotals(sections: SectionResponse[]) {
+    const totalObtainedPoints = sections.reduce(
+      (sum, section) => sum + section.obtainedPoints,
+      0,
+    );
+    const totalApplicablePoints = sections.reduce(
+      (sum, section) => sum + section.applicablePoints,
+      0,
+    );
+    const totalMaxPoints = sections.reduce(
+      (sum, section) => sum + section.maxPoints,
+      0,
+    );
+    const totalNaCount = sections.reduce(
+      (sum, section) => sum + section.naCount,
+      0,
+    );
+    const overallCompliancePercentage =
+      totalApplicablePoints > 0
+        ? (totalObtainedPoints / totalApplicablePoints) * 100
+        : 0;
+
+    return {
+      totalObtainedPoints: Math.round(totalObtainedPoints * 100) / 100,
+      totalApplicablePoints: Math.round(totalApplicablePoints * 100) / 100,
+      totalMaxPoints: Math.round(totalMaxPoints * 100) / 100,
+      totalNaCount,
+      overallCompliancePercentage:
+        Math.round(overallCompliancePercentage * 100) / 100,
+    };
+  }
+
+  // ========================================
+  // MÉTODOS DE ESTADÍSTICAS Y REPORTES
+  // ========================================
+
   async getStats(templateId?: string): Promise<{
     total: number;
     byStatus: Record<string, number>;
@@ -291,7 +429,6 @@ export class InstancesService {
 
     const [statusStats, templateStats, recentStats, complianceStats] =
       await Promise.all([
-        // Estadísticas por estado
         this.instanceModel
           .aggregate([
             { $match: matchStage },
@@ -299,7 +436,6 @@ export class InstancesService {
           ])
           .exec(),
 
-        // Estadísticas por template
         this.instanceModel
           .aggregate([
             { $match: matchStage },
@@ -322,7 +458,6 @@ export class InstancesService {
           ])
           .exec(),
 
-        // Actividad reciente (últimos 7 días)
         this.instanceModel
           .aggregate([
             {
@@ -345,7 +480,6 @@ export class InstancesService {
           ])
           .exec(),
 
-        // Distribución de cumplimiento
         this.instanceModel
           .aggregate([
             { $match: matchStage },
@@ -363,7 +497,6 @@ export class InstancesService {
 
     const total = await this.instanceModel.countDocuments(matchStage).exec();
 
-    // Calcular promedio de cumplimiento
     const avgResult = await this.instanceModel
       .aggregate([
         { $match: matchStage },
@@ -375,7 +508,6 @@ export class InstancesService {
 
     const averageCompliance = avgResult[0]?.avg || 0;
 
-    // Formatear distribución de cumplimiento
     const complianceRanges = ['0-25%', '25-50%', '50-75%', '75-90%', '90-100%'];
     const complianceDistribution = complianceStats.map((stat, index) => ({
       range: complianceRanges[index] || '100%+',
@@ -435,7 +567,6 @@ export class InstancesService {
       };
     }
 
-    // Calcular promedios por sección
     const sectionStats: Record<
       string,
       {
@@ -475,7 +606,6 @@ export class InstancesService {
       }),
     );
 
-    // Encontrar mejor y peor sección
     const sortedSections = sectionAnalysis.sort(
       (a, b) => b.averageCompliance - a.averageCompliance,
     );
@@ -498,92 +628,6 @@ export class InstancesService {
         worstPerformingSection,
       },
       sectionAnalysis,
-    };
-  }
-
-  private flattenSections(sections: any[]): any[] {
-  const flattened: any[] = [];
-
-  const flatten = (section: any) => {
-    // Solo agregar secciones que NO sean padre
-    if (!section.isParent) {
-      flattened.push(section);
-    }
-
-    // Procesar subsecciones recursivamente
-    if (section.subsections && section.subsections.length > 0) {
-      section.subsections.forEach(flatten);
-    }
-  };
-
-  sections.forEach(flatten);
-  return flattened;
-}
-
-  // Métodos privados para cálculos
-  private calculateSectionMetrics(sections: any[]): SectionResponse[] {
-  return sections.map((section) => {
-    const calculatedQuestions = section.questions.map((q) => ({
-      ...q,
-      points: q.response === 'N/A' ? 0 : Number(q.response),
-    }));
-
-    const naCount = calculatedQuestions.filter(
-      (q) => q.response === 'N/A',
-    ).length;
-    
-    const obtainedPoints = calculatedQuestions.reduce(
-      (sum, q) => sum + q.points,
-      0,
-    );
-
-    // ✅ CAMBIO PRINCIPAL: Calcular applicablePoints correctamente
-    // Si todas son N/A, applicablePoints = 0, sino = maxPoints
-    const applicablePoints = section.maxPoints;
-    
-    const compliancePercentage =
-      applicablePoints > 0 ? (obtainedPoints / applicablePoints) * 100 : 0;
-
-    return {
-      ...section,
-      questions: calculatedQuestions,
-      obtainedPoints: Math.round(obtainedPoints * 100) / 100,
-      applicablePoints: Math.round(applicablePoints * 100) / 100,
-      naCount,
-      compliancePercentage: Math.round(compliancePercentage * 100) / 100,
-    };
-  });
-}
-
-  private calculateInstanceTotals(sections: SectionResponse[]) {
-    const totalObtainedPoints = sections.reduce(
-      (sum, section) => sum + section.obtainedPoints,
-      0,
-    );
-    const totalApplicablePoints = sections.reduce(
-      (sum, section) => sum + section.applicablePoints,
-      0,
-    );
-    const totalMaxPoints = sections.reduce(
-      (sum, section) => sum + section.maxPoints,
-      0,
-    );
-    const totalNaCount = sections.reduce(
-      (sum, section) => sum + section.naCount,
-      0,
-    );
-    const overallCompliancePercentage =
-      totalApplicablePoints > 0
-        ? (totalObtainedPoints / totalApplicablePoints) * 100
-        : 0;
-
-    return {
-      totalObtainedPoints,
-      totalApplicablePoints,
-      totalMaxPoints,
-      totalNaCount,
-      overallCompliancePercentage:
-        Math.round(overallCompliancePercentage * 100) / 100,
     };
   }
 }

@@ -35,6 +35,9 @@ export class Question {
 
 @Schema()
 export class Section {
+
+  _id?: Types.ObjectId;
+  
   @Prop({ required: true })
   title: string;
 

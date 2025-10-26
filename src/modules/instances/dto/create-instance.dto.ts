@@ -61,11 +61,11 @@ export class CreateQuestionResponseDto {
     example: 3,
     oneOf: [
       { type: 'number', minimum: 0, maximum: 3 },
-      { type: 'string', enum: ['N/A'] },
+      { type: 'string', enum: ['N/A', ''] },
     ],
   })
   @Transform(({ value }) => {
-    if (value === 'N/A') return 'N/A';
+    if (value === 'N/A' || value === '') return value;
     const num = Number(value);
     return !isNaN(num) ? num : value;
   })
@@ -73,13 +73,15 @@ export class CreateQuestionResponseDto {
   response: number | string;
 
   @ApiProperty({
-    description: 'Puntaje obtenido: 0 si N/A, sino igual al response numérico',
+    description: 'Puntaje obtenido (calculado automáticamente por el backend)',
     example: 3,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(3)
-  points: number;
+  points?: number;
 
   @ApiProperty({
     description: 'Comentario específico de esta pregunta',
@@ -108,48 +110,59 @@ export class CreateSectionResponseDto {
   @Type(() => CreateQuestionResponseDto)
   questions: CreateQuestionResponseDto[];
 
+  // ✅ CAMPOS CALCULADOS OPCIONALES (el backend los calcula)
   @ApiProperty({
-    description: 'Máximo teórico de puntos posibles',
+    description: 'Máximo teórico de puntos posibles (calculado por backend)',
     example: 27,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  maxPoints: number;
+  maxPoints?: number;
 
   @ApiProperty({
-    description: 'Puntos realmente obtenidos',
+    description: 'Puntos realmente obtenidos (calculado por backend)',
     example: 20,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  obtainedPoints: number;
+  obtainedPoints?: number;
 
   @ApiProperty({
-    description: 'Puntos aplicables (excluyendo N/A)',
+    description: 'Puntos aplicables (calculado por backend)',
     example: 24,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  applicablePoints: number;
+  applicablePoints?: number;
 
   @ApiProperty({
-    description: 'Cantidad de preguntas marcadas como N/A',
+    description: 'Cantidad de preguntas N/A (calculado por backend)',
     example: 1,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  naCount: number;
+  naCount?: number;
 
   @ApiProperty({
-    description: 'Porcentaje de cumplimiento de la sección',
+    description: 'Porcentaje de cumplimiento (calculado por backend)',
     example: 83.33,
     minimum: 0,
     maximum: 100,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  compliancePercentage: number;
+  compliancePercentage?: number;
 
   @ApiProperty({
     description: 'Comentario general de la sección',
@@ -171,6 +184,7 @@ export class CreatePersonalInvolucradoDto {
   @IsNotEmpty()
   ci: string;
 }
+
 export class CreateInstanceDto {
   @ApiProperty({ description: 'ID del template utilizado' })
   @IsMongoId()
@@ -238,49 +252,59 @@ export class CreateInstanceDto {
   @Type(() => CreatePersonalInvolucradoDto)
   personalInvolucrado?: CreatePersonalInvolucradoDto[];
 
-  // Campos calculados automáticamente
+  // ✅ CAMPOS TOTALES OPCIONALES - El backend los calcula automáticamente
   @ApiProperty({
-    description: 'Suma de obtainedPoints de todas las secciones',
+    description: 'Suma de obtainedPoints (calculado automáticamente)',
     example: 85,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalObtainedPoints: number;
+  totalObtainedPoints?: number;
 
   @ApiProperty({
-    description: 'Suma de applicablePoints de todas las secciones',
+    description: 'Suma de applicablePoints (calculado automáticamente)',
     example: 95,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalApplicablePoints: number;
+  totalApplicablePoints?: number;
 
   @ApiProperty({
-    description: 'Suma de maxPoints de todas las secciones',
+    description: 'Suma de maxPoints (calculado automáticamente)',
     example: 100,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalMaxPoints: number;
+  totalMaxPoints?: number;
 
   @ApiProperty({
-    description: 'Total de preguntas N/A en toda la instancia',
+    description: 'Total de preguntas N/A (calculado automáticamente)',
     example: 2,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  totalNaCount: number;
+  totalNaCount?: number;
 
   @ApiProperty({
-    description: 'Porcentaje general de cumplimiento',
+    description: 'Porcentaje general de cumplimiento (calculado automáticamente)',
     example: 89.47,
     minimum: 0,
     maximum: 100,
+    required: false,
   })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(100)
-  overallCompliancePercentage: number;
+  overallCompliancePercentage?: number;
 
   @ApiProperty({
     description: 'Estado de la instancia',
