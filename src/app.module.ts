@@ -14,6 +14,8 @@ import { QrGeneratorModule } from './modules/qr-generator/qr-generator.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { InstancesModule } from './modules/instances/instances.module';
 import { TemplateHerraEquiposModule } from './modules/template-herra-equipos/template-herra-equipos.module';
+import { InspectionsHerraEquiposModule } from './modules/inspection-herra-equipos/inspection-herra-equipos.module';
+import { EquipmentTrackingModule } from './modules/equipment-tracking/equipment-tracking.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { TemplateHerraEquiposModule } from './modules/template-herra-equipos/tem
     TemplatesModule,
     InstancesModule,
     TemplateHerraEquiposModule,
+    InspectionsHerraEquiposModule,
+    EquipmentTrackingModule,
   ],
   providers: [],
 })

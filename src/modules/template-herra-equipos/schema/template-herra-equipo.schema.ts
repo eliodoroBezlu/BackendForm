@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import mongoose, { Document } from 'mongoose';
+import mongoose from 'mongoose';
 
 export type ResponseType =
   | 'si_no_na'
@@ -10,6 +10,10 @@ export type ResponseType =
   | 'multiselect'
   | 'date'
   | 'textarea';
+
+// ============================================
+// SUB-SCHEMAS
+// ============================================
 
 @Schema({})
 export class ResponseOption {
@@ -46,7 +50,7 @@ export class QuestionImage {
   @Prop({ required: true })
   url: string;
 
-  @Prop({ required: true }) // ← Cambio: ahora es obligatorio
+  @Prop({ required: true })
   caption: string;
 }
 
@@ -73,14 +77,17 @@ export class SectionImage {
   @Prop({ required: true })
   url: string;
 
-  @Prop({ required: true }) // ← Cambio: ahora es obligatorio
+  @Prop({ required: true })
   caption: string;
 
   @Prop()
   order?: number;
 }
 
-// ← IMPORTANTE: Definir la clase Section ANTES del SchemaFactory
+// ============================================
+// SECTION (con recursión)
+// ============================================
+
 @Schema({})
 export class Section {
   @Prop({ required: true })
@@ -104,18 +111,20 @@ export class Section {
   @Prop({ type: mongoose.Schema.Types.String, default: null })
   parentId?: string | null;
 
-  // ← RECURSIÓN: Section puede contener más Sections
-  //@Prop({ type: [Section] })
   subsections?: Section[];
 }
 
-// Crear el schema DESPUÉS de definir la clase
+// Crear schema de Section
 export const SectionSchema = SchemaFactory.createForClass(Section);
 
-// ← CRUCIAL: Registrar el schema recursivo manualmente
+// Agregar recursión manualmente
 SectionSchema.add({
   subsections: [SectionSchema]
 });
+
+// ============================================
+// VERIFICATION FIELD
+// ============================================
 
 @Schema({})
 export class VerificationField {
@@ -132,8 +141,12 @@ export class VerificationField {
   dataSource?: string;
 }
 
+// ============================================
+// SCHEMA PRINCIPAL - TemplateHerraEquipos
+// ============================================
+
 @Schema({ timestamps: true })
-export class TemplateHerraEquipos extends Document {
+export class TemplateHerraEquipos {
   @Prop({ required: true })
   name: string;
 
@@ -149,7 +162,7 @@ export class TemplateHerraEquipos extends Document {
   @Prop({ type: [VerificationField], required: true })
   verificationFields: VerificationField[];
 
-  @Prop({ type: [SectionSchema], required: true }) // ← Usar SectionSchema
+  @Prop({ type: [SectionSchema], required: true })
   sections: Section[];
 
   @Prop()
@@ -159,10 +172,18 @@ export class TemplateHerraEquipos extends Document {
   updatedAt?: Date;
 }
 
+// ============================================
+// EXPORTACIONES
+// ============================================
+
+export type TemplateHerraEquiposDocument = TemplateHerraEquipos & mongoose.Document;
 export const TemplateHerraEquiposSchema = SchemaFactory.createForClass(TemplateHerraEquipos);
 
-// Índices para mejor performance
+// ============================================
+// ÍNDICES
+// ============================================
+
 TemplateHerraEquiposSchema.index({ code: 1 });
 TemplateHerraEquiposSchema.index({ type: 1 });
 TemplateHerraEquiposSchema.index({ createdAt: -1 });
-TemplateHerraEquiposSchema.index({ name: 'text', code: 'text' }); // Para búsqueda
+TemplateHerraEquiposSchema.index({ name: 'text', code: 'text' });
