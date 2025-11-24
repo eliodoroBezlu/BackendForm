@@ -18,12 +18,14 @@ import { CreateFormularioInspeccionDto } from './dto/create-inspecciones-emergen
 import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emergencia.dto';
 import { InspeccionesEmergenciaExcelService } from './inspecciones-emergencia-excel/inspecciones-emergencia-excel.service'
 import { ExtintorService } from '../extintor/extintor.service';
+import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(
     private readonly inspeccionesEmergenciaService: InspeccionesEmergenciaService,
     private readonly formularioInspeccionEmergencia: InspeccionesEmergenciaExcelService,
     private readonly extintorService: ExtintorService,
+    private readonly excelToPdfService: ExcelToPdfService,
   ) {}
 
   @Post('crear-formulario')
@@ -156,4 +158,52 @@ async actualizarExtintores(
 
     return await this.inspeccionesEmergenciaService.verificarInspecciones(area, mesActual);
   }
+
+  @Get(':id/pdf')
+async downloadPdf(@Param('id') id: string, @Res() res: Response) {
+  try {
+    console.log(`📄 Generando PDF para inspección de emergencia ID: ${id}`);
+
+    const inspeccion = await this.inspeccionesEmergenciaService.findOne(id);
+    if (!inspeccion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Inspección no encontrada',
+      });
+    }
+
+    // Generar Excel
+    const excelBuffer = await this.formularioInspeccionEmergencia.generateExcelSingle(inspeccion);
+    if (!excelBuffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo generar el archivo Excel base',
+      });
+    }
+
+    // Convertir a PDF
+    const pdfBuffer = await this.excelToPdfService.convertExcelToPdf(excelBuffer, { quality: 'high' });
+
+    // Nombre del archivo
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `inspeccion-emergencia-${id}-${timestamp}.pdf`;
+
+    // Respuesta
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': pdfBuffer.length.toString(),
+      'Cache-Control': 'no-cache',
+    });
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('❌ Error al generar PDF (emergencia):', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al generar el archivo PDF',
+      error: error.message,
+    });
+  }
+}
 }

@@ -157,22 +157,27 @@ export class InspectionsHerraEquiposService {
   // ============================================
   // OBTENER TODAS LAS INSPECCIONES (con filtros)
   // ============================================
-  async findAll(filters?: any): Promise<InspectionHerraEquiposDocument[]> {
-    const query: any = {};
+  // En inspection-herra-equipos.service.ts
+async findAll(filters?: any): Promise<InspectionHerraEquiposDocument[]> {
+  const query: any = {};
 
-    if (filters?.status) query.status = filters.status;
-    if (filters?.templateCode) query.templateCode = filters.templateCode;
-    if (filters?.submittedBy) query.submittedBy = filters.submittedBy;
+  if (filters?.status) query.status = filters.status;
+  if (filters?.templateCode) query.templateCode = filters.templateCode;
+  if (filters?.submittedBy) query.submittedBy = filters.submittedBy;
 
-    if (filters?.startDate || filters?.endDate) {
-      query.submittedAt = {};
-      if (filters.startDate)
-        query.submittedAt.$gte = new Date(filters.startDate);
-      if (filters.endDate) query.submittedAt.$lte = new Date(filters.endDate);
-    }
-
-    return this.inspectionModel.find(query).sort({ submittedAt: -1 }).exec();
+  if (filters?.startDate || filters?.endDate) {
+    query.submittedAt = {};
+    if (filters.startDate)
+      query.submittedAt.$gte = new Date(filters.startDate);
+    if (filters.endDate) query.submittedAt.$lte = new Date(filters.endDate);
   }
+
+  return this.inspectionModel
+    .find(query)
+    .populate('templateId') // ← AGREGAR ESTE POPULATE
+    .sort({ submittedAt: -1 })
+    .exec();
+}
   async findOne(id: string): Promise<InspectionHerraEquiposDocument> {
 
     const inspection = await this.inspectionModel

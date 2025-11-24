@@ -3,6 +3,9 @@ import mongoose from 'mongoose';
 
 export type ResponseType =
   | 'si_no_na'
+  | "bien_mal"
+  | "bueno_malo_na"
+  | "operativo_mantenimiento"
   | 'text'
   | 'number'
   | 'boolean'

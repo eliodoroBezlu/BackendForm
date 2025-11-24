@@ -11,9 +11,22 @@ import { ExcelEsmerilService } from './esmeril.service';
 import { ExcelAmoladoraService } from './amoladora.service';
 import { ExcelCilindrosService } from './cilindros.service';
 import { ExcelAndamiosService } from './andamio.service';
+import { ExcelFrecuenteTecleService } from './frecuente-tecles.service';
+import { ExcelPreUsoTecleService } from './preuso-tecle.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import { InspectionHerraEquipos, InspectionHerraEquiposSchema } from '../schemas/inspection-herra-equipos.schema';
+import { ExcelElementosIzajeService } from './elementos-izaje.service';
 
 @Module({
-  imports: [ConfigModule], // Asegura que ConfigModule está disponible
+  imports: [
+    ConfigModule,
+    MongooseModule.forFeature([
+      {
+        name: InspectionHerraEquipos.name,
+        schema: InspectionHerraEquiposSchema,
+      },
+    ]),
+  ], // Asegura que ConfigModule está disponible
   providers: [
     ExcelVehicleService,
     ExcelManLiftService,
@@ -26,6 +39,9 @@ import { ExcelAndamiosService } from './andamio.service';
     ExcelAmoladoraService,
     ExcelCilindrosService,
     ExcelAndamiosService,
+    ExcelFrecuenteTecleService,
+    ExcelPreUsoTecleService,
+    ExcelElementosIzajeService,
   ],
   exports: [
     ExcelVehicleService,
@@ -39,6 +55,9 @@ import { ExcelAndamiosService } from './andamio.service';
     ExcelAmoladoraService,
     ExcelCilindrosService,
     ExcelAndamiosService,
+    ExcelFrecuenteTecleService,
+    ExcelPreUsoTecleService,
+    ExcelElementosIzajeService, 
   ],
 })
 export class ExcelHerraEquipoModule {}

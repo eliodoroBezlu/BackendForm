@@ -127,6 +127,11 @@ export class Instance {
     default: "borrador",
   })
   status: string
+  @Prop()
+  createdAt?: Date
+
+  @Prop()
+  updatedAt?: Date
 
   @Prop()
   createdBy?: string

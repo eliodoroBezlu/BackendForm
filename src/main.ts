@@ -3,15 +3,25 @@ import { AppModule } from './app.module';
 import { ConfigService } from "@nestjs/config";
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import * as express from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  
+  // 🔥 Crear la aplicación con NestExpressApplication para habilitar métodos de archivos estáticos
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+  // 🔥 Servir archivos estáticos (uploads)
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
+  logger.log(`📁 Archivos estáticos servidos desde: ${join(__dirname, '..', 'uploads')}`);
 
   // Configuración de Swagger
   const config = new DocumentBuilder()
@@ -20,6 +30,7 @@ async function bootstrap() {
     .setVersion("1.0")
     .addTag("templates", "Gestión de plantillas de formularios")
     .addTag("instances", "Gestión de instancias de formularios")
+    .addTag("upload", "Gestión de archivos")
     .setContact(
       'API Support',
       'https://example.com/support',
@@ -112,6 +123,7 @@ async function bootstrap() {
   logger.log(`🚀 Servidor corriendo en http://localhost:${port}`);
   logger.log(`📚 Documentación Swagger: http://localhost:${port}/api/docs`);
   logger.log(`💚 Health check: http://localhost:${port}/health`);
+  logger.log(`📤 Uploads disponibles en: http://localhost:${port}/uploads`);
 }
 
 // 🛑 Manejo de errores globales

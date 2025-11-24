@@ -16,12 +16,20 @@ import { InstancesModule } from './modules/instances/instances.module';
 import { TemplateHerraEquiposModule } from './modules/template-herra-equipos/template-herra-equipos.module';
 import { InspectionsHerraEquiposModule } from './modules/inspection-herra-equipos/inspection-herra-equipos.module';
 import { EquipmentTrackingModule } from './modules/equipment-tracking/equipment-tracking.module';
+import { MLRecommendationsModule } from './modules/ml-recomendations/ml-recomendations.module';
+import { PlanesAccionModule } from './modules/planes-accion/planes-accion.module';
+import { UploadModule } from './modules/upload/upload.module';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+    }),
+    HttpModule.register({
+      timeout: 60000,        // opcional: 60 segundos
+      maxRedirects: 5,
     }),
 
     // Configuración de MongoDB
@@ -49,6 +57,9 @@ import { EquipmentTrackingModule } from './modules/equipment-tracking/equipment-
     TemplateHerraEquiposModule,
     InspectionsHerraEquiposModule,
     EquipmentTrackingModule,
+    MLRecommendationsModule,
+    PlanesAccionModule,
+    UploadModule
   ],
   providers: [],
 })

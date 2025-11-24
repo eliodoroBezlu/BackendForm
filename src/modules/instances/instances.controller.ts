@@ -27,6 +27,7 @@ import { ExcelConfinadoService } from './excel-generator/excel-generator-confina
 import { ExcelElectricoCondicionesService } from './excel-generator/excel-generator-electrcio-condiciones.service';
 import { ExcelAlturav4Service } from './excel-generator/excel-generator-alturav4.service';
 import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.service';
+import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 
 @ApiTags('instances')
 @Controller('instances')
@@ -44,6 +45,7 @@ export class InstancesController {
     private readonly electricCondicionesExcelService: ExcelElectricoCondicionesService,
     private readonly alturaV4ExcelService: ExcelAlturav4Service,
     private readonly isopV7ExcelService: ExcelIsopV7Service,
+    private readonly excelToPdfService: ExcelToPdfService,
   ) {}
 
   @Post()
@@ -253,4 +255,84 @@ export class InstancesController {
       });
     }
   }
+
+  @Get(':id/pdf')
+async downloadPdf(@Param('id') id: string, @Res() res: Response) {
+  try {
+    console.log(`📄 Generando PDF para instancia ID: ${id}`);
+
+    const inspeccion = await this.instancesService.findOne(id);
+    if (!inspeccion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Instancia no encontrada',
+      });
+    }
+
+    // Extraer datos del template
+    const template = inspeccion.templateId as any;
+    const templateCode = template?.code?.toUpperCase() || '';
+
+    // Generar Excel (misma lógica que en /:id/excel)
+    let excelBuffer: Buffer;
+    if (templateCode.includes('1.02.P06.F47')) {
+      excelBuffer = await this.calienteExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F45')) {
+      excelBuffer = await this.aislamientoExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F50')) {
+      excelBuffer = await this.izajeExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F51')) {
+      excelBuffer = await this.sustanciaExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F52')) {
+      excelBuffer = await this.electricActosExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F46')) {
+      const revision = template?.revision || '';
+      excelBuffer = revision === '4'
+        ? await this.alturaV4ExcelService.generateExcel(inspeccion)
+        : await this.alturaExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F48')) {
+      excelBuffer = await this.confinadosExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F53')) {
+      excelBuffer = await this.electricCondicionesExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F12')) {
+      excelBuffer = await this.isopV7ExcelService.generateExcel(inspeccion);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `No se puede generar PDF para el template: ${templateCode}`,
+      });
+    }
+
+    if (!excelBuffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se pudo generar el archivo Excel base',
+      });
+    }
+
+    // Convertir a PDF
+    const pdfBuffer = await this.excelToPdfService.convertExcelToPdf(excelBuffer, { quality: 'high' });
+
+    // Nombre del archivo
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `instancia-${templateCode || 'UNKNOWN'}-${id}-${timestamp}.pdf`;
+
+    // Respuesta
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': pdfBuffer.length.toString(),
+      'Cache-Control': 'no-cache',
+    });
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('❌ Error al generar PDF (instancia):', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al generar el archivo PDF',
+      error: error.message,
+    });
+  }
+}
 }

@@ -12,7 +12,7 @@ export class ExcelFrecuenteTecleService {
   constructor(private readonly configService: ConfigService) {
     this.templatePath =
       this.configService.get<string>('VEHICLE_EXCEL_TEMPLATE_PATH') ||
-      path.join(process.cwd(), 'src', 'templates', 'FreceunteTecle.xlsx');
+      path.join(process.cwd(), 'src', 'templates', 'FrecuenteTecle.xlsx');
   }
 
   /**
@@ -32,7 +32,7 @@ export class ExcelFrecuenteTecleService {
 
     // Si se especifica revisión, validarla también
     if (revision) {
-      return codeMatch && revision === '2';
+      return codeMatch && revision === '4';
     }
 
     return codeMatch;
@@ -155,59 +155,64 @@ export class ExcelFrecuenteTecleService {
   /**
    * Llena los datos específicos del vehículo (tipo inspección, certificación, etc.)
    */
-  private async llenarDatosTecle(
-    worksheet: ExcelJS.Worksheet,
-    inspection: InspectionHerraEquipos,
-  ) {
-    try {
-      if (!inspection.verification) {
-        this.logger.warn('No se encontraron datos de verificación');
+ private async llenarDatosTecle(
+  worksheet: ExcelJS.Worksheet,
+  inspection: InspectionHerraEquipos,
+) {
+  try {
+    if (!inspection.outOfService) {
+      this.logger.warn('No se encontraron datos de verificación');
+      return;
+    }
+
+    this.logger.log('Iniciando llenado de datos específicos del taladro');
+
+    // Definir todas las celdas posibles
+    const celdas = {
+      apto: 'F38',
+      mantenimiento: 'H38',
+      rechazado: 'M38'
+    };
+
+    if (inspection.outOfService?.status) {
+      const status = inspection.outOfService.status.toLowerCase();
+      this.logger.log(`Procesando outOfService status: "${status}"`);
+
+      // Determinar qué celda marcar
+      let celdaSeleccionada: string | null = null;
+
+      if (status.includes('apto') || status === 'ap' || status === 'si') {
+        celdaSeleccionada = celdas.apto;
+      } else if (status.includes('mantenimiento') || status === 'man') {
+        celdaSeleccionada = celdas.mantenimiento;
+      } else if (status.includes('rechazado') || status === 'rech' || status === 'no') {
+        celdaSeleccionada = celdas.rechazado;
+      } else {
+        this.logger.warn(`Estado no reconocido: "${status}"`);
         return;
       }
 
-      this.logger.log('Iniciando llenado de datos específicos del taladro');
-
-      // Obtener el código de color (buscar con diferentes posibles nombres)
-      const codigoColor =
-        inspection.verification['codigoColor'] ||
-        inspection.verification['CÓDIGO COLOR'] ||
-        inspection.verification['codigo_color'] ||
-        inspection.verification['CodigoColor'];
-
-      if (codigoColor) {
-        this.logger.log(`Código de color detectado: "${codigoColor}"`);
-
-        // Mapeo de colores a celdas (ajusta según tu Excel)
-        const colorMapping: Record<string, string> = {
-          amarillo: 'L7',
-          verde: 'K8',
-          azul: 'K7',
-          blanco: 'L8',
-        };
-
-        const colorNormalizado = String(codigoColor).toLowerCase().trim();
-
-        // Marcar todas las casillas usando el método existente
-        for (const [color, cellRef] of Object.entries(colorMapping)) {
-          const estaMarcada = color === colorNormalizado;
-          await this.marcarCasilla(worksheet, cellRef, estaMarcada, true); // true = concatenar
-          this.logger.log(
-            `${estaMarcada ? '✅' : '☐'} ${color.toUpperCase()} en ${cellRef}`,
-          );
-        }
-      } else {
-        this.logger.warn('⚠️ No se encontró código de color en verification');
+      // Marcar TODAS las casillas: la seleccionada con ☑ y las demás con ☐
+      for (const [tipo, celda] of Object.entries(celdas)) {
+        const estaSeleccionada = celda === celdaSeleccionada;
+        await this.marcarCasilla(worksheet, celda, estaSeleccionada, true);
+        
+        this.logger.log(
+          `${estaSeleccionada ? '☑' : '☐'} ${tipo}: ${celda}`
+        );
       }
 
-      this.logger.log('✅ Datos específicos del taladro completados');
-    } catch (error) {
-      this.logger.error(
-        `❌ Error al llenar datos del taladro: ${error.message}`,
-      );
-      throw error;
+      this.logger.log(`✅ Estado "${status}" procesado correctamente`);
     }
-  }
 
+    this.logger.log('✅ Datos específicos del taladro completados');
+  } catch (error) {
+    this.logger.error(
+      `❌ Error al llenar datos del taladro: ${error.message}`,
+    );
+    throw error;
+  }
+}
   /**
    * Llena las respuestas de las preguntas de inspección
    */
@@ -227,8 +232,8 @@ export class ExcelFrecuenteTecleService {
     const allSections = [
       { 
         id: 'section_0', 
-        startRow: 15, 
-        endRow: 40, 
+        startRow: 12, 
+        endRow: 25, 
         name: 'CONDICIÓN ES ESTÁNDAR',
         skipRows: [36] // ← Filas a saltar
       },
@@ -303,8 +308,8 @@ export class ExcelFrecuenteTecleService {
                 worksheet.getCell(`${observacionesCol}${currentRow}`).value = response.observacion;
               }
 
-              if (response.descripcion?.trim()) {
-                worksheet.getCell(`${descripcionCol}${currentRow}`).value = response.descripcion;
+              if (response.description?.trim()) {
+                worksheet.getCell(`${descripcionCol}${currentRow}`).value = response.description;
               }
 
               currentRow++;
@@ -323,6 +328,56 @@ export class ExcelFrecuenteTecleService {
     throw error;
   }
 }
+
+private async llenarObservacionesGenerales(
+  worksheet: ExcelJS.Worksheet,
+  inspection: InspectionHerraEquipos,
+) {
+  try {
+    if (
+      inspection.generalObservations &&
+      inspection.generalObservations.trim() !== ''
+    ) {
+      const cell = worksheet.getCell('A39');
+      
+      // 1. RECUPERAR valor actual de la celda de forma segura
+      let valorActual = '';
+      
+      if (cell.value) {
+        // Si es un objeto de texto enriquecido (RichText)
+        if (typeof cell.value === 'object' && 'richText' in cell.value) {
+          valorActual = (cell.value as ExcelJS.CellRichTextValue).richText
+            .map(part => part.text)
+            .join('');
+        } 
+        // Si es una fórmula
+        else if (typeof cell.value === 'object' && 'result' in cell.value) {
+          valorActual = String((cell.value as ExcelJS.CellFormulaValue).result || '');
+        }
+        // Si es un valor simple
+        else {
+          valorActual = String(cell.value);
+        }
+      }
+      
+      // 2. CONCATENAR con las nuevas observaciones
+      const valorConcatenado = valorActual.trim()
+        ? `${valorActual}\n${inspection.generalObservations}`
+        : inspection.generalObservations;
+      
+      // 3. ASIGNAR el nuevo valor concatenado
+      cell.value = valorConcatenado;
+      
+      this.logger.log('Observaciones generales completadas y concatenadas');
+    }
+  } catch (error) {
+    this.logger.error(
+      `Error al llenar observaciones generales: ${error.message}`,
+    );
+    throw error;
+  }
+}
+  
   /**
    * Llena el diagrama de daños del vehículo
    */
@@ -334,91 +389,7 @@ export class ExcelFrecuenteTecleService {
   /**
    * Llena las firmas del inspector y supervisor
    */
-  private async llenarFirmas(
-    worksheet: ExcelJS.Worksheet,
-    inspection: InspectionHerraEquipos,
-  ) {
-    try {
-      this.logger.log('Iniciando llenado de firmas');
-
-      // Configuración de posiciones exactas
-      const posiciones = {
-        inspector: {
-          nombre: 'C9',
-          firma: 'H9',
-          fecha: 'B47',
-          cargo: 'A70',
-        },
-        supervisor: {
-          nombre: 'H45',
-          firma: 'H46',
-          fecha: 'H47',
-          cargo: 'I70',
-        },
-      };
-
-      // INSPECTOR
-      if (inspection.inspectorSignature) {
-        const insp = inspection.inspectorSignature;
-
-        if (insp.inspectorName)
-          worksheet.getCell(posiciones.inspector.nombre).value =
-            insp.inspectorName;
-
-        if (
-          insp.inspectorSignature &&
-          typeof insp.inspectorSignature === 'string' &&
-          insp.inspectorSignature.startsWith('data:image/')
-        ) {
-          await this.insertarImagen(
-            worksheet,
-            insp.inspectorSignature,
-            posiciones.inspector.firma,
-          );
-        }
-
-        // if (insp.inspectionDate)
-        //   worksheet.getCell(posiciones.inspector.fecha).value =
-        //     insp.inspectionDate;
-        // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
-      }
-
-      // SUPERVISOR
-      if (inspection.supervisorSignature) {
-        const sup = inspection.supervisorSignature;
-
-        // if (sup.supervisorName)
-        //   worksheet.getCell(posiciones.supervisor.nombre).value =
-        //     sup.supervisorName;
-
-        // if (
-        //   sup.supervisorSignature &&
-        //   typeof sup.supervisorSignature === 'string' &&
-        //   sup.supervisorSignature.startsWith('data:image/')
-        // ) {
-        //   await this.insertarImagen(
-        //     worksheet,
-        //     sup.supervisorSignature,
-        //     posiciones.supervisor.firma,
-        //   );
-        // }
-
-        // if (sup.supervisorDate)
-        //   worksheet.getCell(posiciones.supervisor.fecha).value =
-        //     sup.supervisorDate;
-        //  if (sup.cargo) worksheet.getCell(posiciones.supervisor.cargo).value = sup.cargo;
-      }
-
-      // Ajustar altura de filas para las imágenes de firma
-      //  worksheet.getRow(69).height = 40;
-
-      this.logger.log('Firmas completadas exitosamente');
-    } catch (error) {
-      this.logger.error(`Error al llenar firmas: ${error.message}`);
-      throw error;
-    }
-  }
-
+  
   /**
    * Genera el archivo Excel completo para inspección de vehículos
    */
@@ -446,7 +417,7 @@ export class ExcelFrecuenteTecleService {
 
       if (!worksheet) {
         worksheet =
-          workbook.getWorksheet('Hoja1') ||
+          workbook.getWorksheet('Formato') ||
           workbook.getWorksheet('Sheet1') ||
           workbook.getWorksheet('Formulario') ||
           workbook.getWorksheet('Inspección Vehículo') ||
@@ -467,8 +438,8 @@ export class ExcelFrecuenteTecleService {
       // 4. Llenar todas las secciones del Excel en orden
       await this.llenarCamposVerificacion(worksheet, inspection);
       await this.llenarRespuestas(worksheet, inspection);
-      await this.llenarFirmas(worksheet, inspection);
       await this.llenarDatosTecle(worksheet, inspection);
+      await this.llenarObservacionesGenerales(worksheet, inspection);
 
       // 5. Generar el buffer del Excel
       const excelBuffer = await workbook.xlsx.writeBuffer();

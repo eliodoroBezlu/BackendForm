@@ -8,6 +8,6 @@ import { Template, TemplateSchema } from './schemas/template.schema';
   imports: [MongooseModule.forFeature([{ name: Template.name, schema: TemplateSchema }])],
   controllers: [TemplatesController],
   providers: [TemplatesService],
-  exports: [TemplatesService]
+  exports: [TemplatesService, MongooseModule]
 })
 export class TemplatesModule {}

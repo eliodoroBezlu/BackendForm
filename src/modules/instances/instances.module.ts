@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Instance, InstanceSchema } from './schemas/instance.schema';
 import { TemplatesModule } from '../templates/templates.module';
 import { ExcelIsoIroModule } from './excel-generator/excel-generator.module';
+import { PdfHerraEquipoModule } from '../inspection-herra-equipos/pdf/excel-to-pdf.module';
 
 @Module({
   imports: [
@@ -12,11 +13,12 @@ import { ExcelIsoIroModule } from './excel-generator/excel-generator.module';
       { name: Instance.name, schema: InstanceSchema },
     ]),
     TemplatesModule,
-    ExcelIsoIroModule
+    ExcelIsoIroModule,
+    PdfHerraEquipoModule
   ],
 
   controllers: [InstancesController],
   providers: [InstancesService],
-  exports: [InstancesService],
+  exports: [InstancesService, MongooseModule],
 })
 export class InstancesModule {}
