@@ -1,3 +1,5 @@
+
+// dto/create-inspection-herra-equipo.dto.ts
 import { 
   IsString, 
   IsNotEmpty, 
@@ -5,9 +7,33 @@ import {
   IsOptional, 
   IsEnum, 
   IsDateString,
-  IsArray
+  IsArray,
+  IsBoolean
 } from 'class-validator';
 import { InspectionStatus } from '../types/IProps';
+
+// ✅ NUEVO: DTO para datos de aprobación
+export class ApprovalDataDto {
+  @IsEnum(['pending', 'approved', 'rejected'])
+  @IsNotEmpty()
+  status: 'pending' | 'approved' | 'rejected';
+
+  @IsString()
+  @IsOptional()
+  approvedBy?: string;
+
+  @IsDateString()
+  @IsOptional()
+  approvedAt?: string;
+
+  @IsString()
+  @IsOptional()
+  rejectionReason?: string;
+
+  @IsString()
+  @IsOptional()
+  supervisorComments?: string;
+}
 
 export class CreateInspectionHerraEquipoDto {
   @IsString()
@@ -85,4 +111,13 @@ export class CreateInspectionHerraEquipoDto {
   @IsString()
   @IsOptional()
   project?: string;
+
+  // ✅ NUEVOS CAMPOS
+  @IsBoolean()
+  @IsOptional()
+  requiresApproval?: boolean;
+
+  @IsObject()
+  @IsOptional()
+  approval?: ApprovalDataDto;
 }

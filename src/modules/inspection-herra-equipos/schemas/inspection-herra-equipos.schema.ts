@@ -30,7 +30,7 @@ export class GroupedQuestionData {
 @Schema({ strict: false})
 export class OutOfServiceData {
   @Prop()
-  status?: string; // "yes", "no", "na", "nr"
+  status?: string;
 
   @Prop()
   date?: string;
@@ -52,7 +52,6 @@ export class OutOfServiceData {
 
   @Prop()
   fechaCorrecion?: string;
-
 }
 
 @Schema({ })
@@ -79,10 +78,10 @@ export class VehicleData {
   damageObservations?: string;
 
   @Prop()
-  tipoInspeccion?: string; // "inicial" | "periodica"
+  tipoInspeccion?: string;
 
   @Prop()
-  certificacionMSC?: string; // "si" | "no"
+  certificacionMSC?: string;
 
   @Prop()
   fechaProximaInspeccion?: string;
@@ -100,13 +99,13 @@ export class RoutineInspectionEntry {
   inspector: string;
 
   @Prop({ required: true })
-  response: string; // "si" | "no"
+  response: string;
 
   @Prop()
   observations?: string;
 
   @Prop()
-  signature?: string; // base64
+  signature?: string;
 }
 
 @Schema({  })
@@ -115,7 +114,7 @@ export class ScaffoldData {
   routineInspections?: RoutineInspectionEntry[];
 
   @Prop()
-  finalConclusion?: string; // "liberated" | "not_liberated"
+  finalConclusion?: string;
 }
 
 @Schema({  })
@@ -125,6 +124,25 @@ export class AccesorioConfig {
 
   @Prop({ required: true })
   tipoServicio: string;
+}
+
+// ✅ NUEVO: Schema de Aprobación
+@Schema({ _id: false })
+export class ApprovalData {
+  @Prop({ required: true, enum: ['pending', 'approved', 'rejected'] })
+  status: 'pending' | 'approved' | 'rejected';
+
+  @Prop()
+  approvedBy?: string; // Email o nombre del supervisor
+
+  @Prop()
+  approvedAt?: Date;
+
+  @Prop()
+  rejectionReason?: string;
+
+  @Prop()
+  supervisorComments?: string;
 }
 
 // ============================================
@@ -142,7 +160,6 @@ export class InspectionHerraEquipos {
   @Prop({ required: true, type: Types.ObjectId, ref: 'TemplateHerraEquipos' })
   templateId: Types.ObjectId;
 
-
   @Prop({ required: true })
   templateCode: string;
 
@@ -159,7 +176,7 @@ export class InspectionHerraEquipos {
   // RESPUESTAS DE PREGUNTAS
   // ============================================
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
-  responses: Record<string, Record<string, any>>; // QuestionResponse | GroupedQuestionData
+  responses: Record<string, Record<string, any>>;
 
   // ============================================
   // OBSERVACIONES GENERALES
@@ -200,22 +217,31 @@ export class InspectionHerraEquipos {
   // ============================================
   // METADATOS
   // ============================================
-  @Prop({ required: true, enum: Object.values(InspectionStatus), default: InspectionStatus.DRAFT, })
+  @Prop({ 
+    required: true, 
+    enum: Object.values(InspectionStatus), 
+    default: InspectionStatus.DRAFT 
+  })
   status: InspectionStatus;
 
   @Prop({ required: true })
   submittedAt: Date;
 
   @Prop()
-  submittedBy?: string; // ID del usuario que envió
+  submittedBy?: string;
 
   @Prop()
-  location?: string; // Ubicación física donde se realizó
+  location?: string;
 
   @Prop()
-  project?: string; // Proyecto asociado
+  project?: string;
 
-  // Mongoose automáticamente agrega createdAt y updatedAt por timestamps: true
+  // ✅ NUEVOS CAMPOS DE APROBACIÓN
+  @Prop({ default: false })
+  requiresApproval?: boolean;
+
+  @Prop({ type: ApprovalData })
+  approval?: ApprovalData;
 }
 
 export type InspectionHerraEquiposDocument = InspectionHerraEquipos & Document;
@@ -226,7 +252,8 @@ export const InspectionHerraEquiposSchema = SchemaFactory.createForClass(Inspect
 // ============================================
 InspectionHerraEquiposSchema.index({ templateCode: 1, status: 1 });
 InspectionHerraEquiposSchema.index({ submittedAt: -1 });
-InspectionHerraEquiposSchema.index({ 'verification.numeroPlaca': 1 }); // Ejemplo
+InspectionHerraEquiposSchema.index({ 'verification.numeroPlaca': 1 });
 InspectionHerraEquiposSchema.index({ submittedBy: 1 });
-
-
+// ✅ NUEVO: Índice para búsquedas de aprobación
+InspectionHerraEquiposSchema.index({ status: 1, requiresApproval: 1 });
+InspectionHerraEquiposSchema.index({ 'approval.status': 1 });
