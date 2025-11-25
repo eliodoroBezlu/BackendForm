@@ -14,7 +14,8 @@ import {
 import { ExtintorService } from './extintor.service';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
-
+import { Resource } from 'nest-keycloak-connect';
+@Resource('extintor')
 @Controller('extintor')
 export class ExtintorController {
   constructor(private readonly extintorService: ExtintorService) {}

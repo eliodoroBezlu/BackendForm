@@ -19,6 +19,8 @@ import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emerg
 import { InspeccionesEmergenciaExcelService } from './inspecciones-emergencia-excel/inspecciones-emergencia-excel.service'
 import { ExtintorService } from '../extintor/extintor.service';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
+import { Resource } from 'nest-keycloak-connect';
+@Resource('inspecciones-emergencia')
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(

@@ -2,7 +2,9 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestj
 import { AreaService } from './area.service';
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
+import { Resource } from 'nest-keycloak-connect';
 
+@Resource ('area')
 @Controller('area')
 export class AreaController {
   constructor(private readonly areaService: AreaService) {}

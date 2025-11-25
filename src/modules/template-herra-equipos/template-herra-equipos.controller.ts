@@ -2,7 +2,8 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus
 import { TemplateHerraEquiposService } from './template-herra-equipos.service';
 import { CreateTemplateHerraEquipoDto } from './dto/create-template-herra-equipo.dto';
 import { UpdateTemplateHerraEquipoDto } from './dto/update-template-herra-equipo.dto';
-
+import { Resource } from 'nest-keycloak-connect';
+@Resource('template-herra-equipos')
 @Controller('template-herra-equipos')
 
 export class TemplateHerraEquiposController {

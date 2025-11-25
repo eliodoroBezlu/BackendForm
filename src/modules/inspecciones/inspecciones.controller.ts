@@ -18,7 +18,9 @@ import { InspeccionesService } from './inspecciones.service';
 import type { CreateInspeccionDto } from "./dto/create-inspeccion.dto"
 import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto'
 import { ExcelService } from '../excel/excel.service';
+import { Resource } from 'nest-keycloak-connect';
 
+@Resource('inspecciones')
 @Controller('inspecciones')
 //@UseGuards(JwtAuthGuard)
 export class InspeccionesController {

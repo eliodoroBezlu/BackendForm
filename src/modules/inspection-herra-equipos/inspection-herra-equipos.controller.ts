@@ -31,7 +31,9 @@ import { ExcelFrecuenteTecleService } from './excel-generator/frecuente-tecles.s
 import { ExcelPreUsoTecleService } from './excel-generator/preuso-tecle.service';
 import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.service';
 import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
-
+import { Resource } from 'nest-keycloak-connect';
+@Resource ('inspections-herra-equipos')
+@Resource ('inspections-herra-equipos')
 @Controller('inspections-herra-equipos')
 // @UseGuards(AuthGuard) // Si tienes autenticación
 export class InspectionsHerraEquiposController {

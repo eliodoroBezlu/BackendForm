@@ -12,9 +12,10 @@ import {
   HttpStatus 
 } from '@nestjs/common';
 import { EquipmentTrackingService } from './equipment-tracking.service';
-import { CreateEquipmentTrackingDto } from './dto/create-equipment-tracking.dto';
-import { UpdateEquipmentTrackingDto } from './dto/update-equipment-tracking.dto';
+import { Resource } from 'nest-keycloak-connect';
 
+
+@Resource('equipment-tracking')
 @Controller('equipment-tracking')
 export class EquipmentTrackingController {
   constructor(private readonly equipmentTrackingService: EquipmentTrackingService) {}

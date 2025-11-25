@@ -14,7 +14,9 @@ import { CreatePlanAccionDto } from './dto/create-planes-accion.dto';
 import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
 import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
+import { Resource } from 'nest-keycloak-connect';
 
+@Resource ('planes-accion')
 @ApiTags('planes-accion')
 @Controller('planes-accion')
 export class PlanesAccionController {

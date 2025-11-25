@@ -28,7 +28,9 @@ import { ExcelElectricoCondicionesService } from './excel-generator/excel-genera
 import { ExcelAlturav4Service } from './excel-generator/excel-generator-alturav4.service';
 import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.service';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
+import { Resource } from 'nest-keycloak-connect';
 
+@Resource('instances')
 @ApiTags('instances')
 @Controller('instances')
 export class InstancesController {

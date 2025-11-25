@@ -21,6 +21,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { Resource } from 'nest-keycloak-connect';
 
 class ColorOptions {
   @IsOptional()
@@ -59,6 +60,7 @@ class GenerateQRDto {
   errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
 }
 
+@Resource('qr-generator') 
 @Controller('qr')
 export class QrGeneratorController {
   constructor(private readonly qrService: QrGeneratorService) {}

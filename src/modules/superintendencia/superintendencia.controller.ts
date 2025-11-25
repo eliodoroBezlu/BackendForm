@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Res } from '@nestjs/common';
 import { SuperintendenciaService } from './superintendencia.service';
 import { CreateSuperintendenciaDto } from './dto/create-superintendencia.dto';
 import { UpdateSuperintendenciaDto } from './dto/update-superintendencia.dto';
-
+import { Resource } from 'nest-keycloak-connect';
+@Resource('superintendencia')
 @Controller('superintendencia')
 export class SuperintendenciaController {
   constructor(private readonly superintendenciaService: SuperintendenciaService) {}

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, RequestMethod } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { InspeccionesModule } from './modules/inspecciones/inspecciones.module';
@@ -40,7 +40,7 @@ import { KeycloakModule } from './modules/trabajadores/keycloak.module';
       cache: true,
     }),
     HttpModule.register({
-      timeout: 60000,        // opcional: 60 segundos
+      timeout: 60000, // opcional: 60 segundos
       maxRedirects: 5,
     }),
 
@@ -88,6 +88,7 @@ import { KeycloakModule } from './modules/trabajadores/keycloak.module';
           bearerOnly: true,
           serverUrl: authServerUrl,
           verifyTokenAudience: false,
+          
         };
       },
       inject: [ConfigService],
@@ -112,7 +113,7 @@ import { KeycloakModule } from './modules/trabajadores/keycloak.module';
     MLRecommendationsModule,
     PlanesAccionModule,
     UploadModule,
-    KeycloakModule 
+    KeycloakModule,
   ],
   providers: [
     // Guards globales de Keycloak

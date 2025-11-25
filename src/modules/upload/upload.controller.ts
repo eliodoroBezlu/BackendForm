@@ -5,14 +5,16 @@ import {
   UseInterceptors,
   BadRequestException,
   OnModuleInit,
+  Res,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { Resource } from 'nest-keycloak-connect';
 
+@Resource('upload')
 @ApiTags('upload')
 @Controller('upload')
 export class UploadController implements OnModuleInit {
