@@ -9,10 +9,27 @@ import * as express from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  
-  // 🔥 Crear la aplicación con NestExpressApplication para habilitar métodos de archivos estáticos
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
+
+  const requiredKeycloakVars = [
+    'KEYCLOAK_AUTH_SERVER_URL',
+    'KEYCLOAK_REALM',
+    'KEYCLOAK_CLIENT_ID',
+    'KEYCLOAK_SECRET'
+  ];
+
+  const missingVars = requiredKeycloakVars.filter(
+    varName => !configService.get<string>(varName)
+  );
+
+  if (missingVars.length > 0) {
+    logger.error(`❌ Variables de Keycloak faltantes: ${missingVars.join(', ')}`);
+    process.exit(1);
+  }
+  
+  // 🔥 Crear la aplicación con NestExpressApplication para habilitar métodos de archivos estáticos
+  
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
