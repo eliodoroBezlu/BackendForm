@@ -1,16 +1,37 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Res } from '@nestjs/common';
+import { 
+  Controller, 
+  Get, 
+  Post, 
+  Body, 
+  Patch, 
+  Param, 
+  Delete, 
+  Put,
+  Query,
+  Request
+} from '@nestjs/common';
 import { SuperintendenciaService } from './superintendencia.service';
 import { CreateSuperintendenciaDto } from './dto/create-superintendencia.dto';
 import { UpdateSuperintendenciaDto } from './dto/update-superintendencia.dto';
 import { Resource } from 'nest-keycloak-connect';
+
 @Resource('superintendencia')
 @Controller('superintendencia')
 export class SuperintendenciaController {
   constructor(private readonly superintendenciaService: SuperintendenciaService) {}
 
   @Post()
-  async create(@Body() createSuperintendenciaDto: CreateSuperintendenciaDto) {
-    return this.superintendenciaService.create(createSuperintendenciaDto);
+  async create(
+    @Body() createSuperintendenciaDto: CreateSuperintendenciaDto,
+    @Request() req: any
+  ) {
+    const usuario = req.user?.preferred_username || 'Sistema';
+    return this.superintendenciaService.create(createSuperintendenciaDto, usuario);
+  }
+
+  @Get('buscar')
+  async buscarSuperintendencias(@Query('query') query: string): Promise<string[]> {
+    return this.superintendenciaService.buscarSuperintendencia(query);
   }
 
   @Get()
@@ -19,17 +40,34 @@ export class SuperintendenciaController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.superintendenciaService.findOne(+id);
+  async findOne(@Param('id') id: string) {
+    return this.superintendenciaService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateSuperintendenciaDto: UpdateSuperintendenciaDto) {
-    return this.superintendenciaService.update(+id, updateSuperintendenciaDto);
+  async update(
+    @Param('id') id: string, 
+    @Body() updateSuperintendenciaDto: UpdateSuperintendenciaDto,
+    @Request() req: any
+  ) {
+    const usuario = req.user?.preferred_username || 'Sistema';
+    return this.superintendenciaService.update(id, updateSuperintendenciaDto, usuario);
+  }
+
+  @Put('desactivar/:id')
+  async desactivar(@Param('id') id: string, @Request() req: any) {
+    const usuario = req.user?.preferred_username || 'Sistema';
+    return this.superintendenciaService.desactivar(id, usuario);
+  }
+
+  @Put('activar/:id')
+  async activar(@Param('id') id: string, @Request() req: any) {
+    const usuario = req.user?.preferred_username || 'Sistema';
+    return this.superintendenciaService.activar(id, usuario);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.superintendenciaService.remove(+id);
+  async remove(@Param('id') id: string) {
+    return this.superintendenciaService.remove(id);
   }
 }

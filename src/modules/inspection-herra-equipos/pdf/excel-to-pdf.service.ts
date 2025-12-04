@@ -32,8 +32,7 @@ export class ExcelToPdfService {
     try {
       this.logger.log(`Iniciando conversión Excel → PDF (${(excelBuffer.length / 1024).toFixed(2)} KB)`);
 
-      // FORMA QUE NUNCA FALLA
-      const form = new FormData();  // ← Aquí ya NO explota
+      const form = new FormData(); 
 
       form.append('file', excelBuffer, {
         filename: 'document.xlsx',
@@ -45,7 +44,7 @@ export class ExcelToPdfService {
       const response = await firstValueFrom(
         this.httpService.post(url, form, {
           params: options?.quality ? { quality: options.quality } : {},
-          headers: form.getHeaders(), // ← También funciona así
+          headers: form.getHeaders(), 
           responseType: 'arraybuffer',
           timeout: 120000,
         }),

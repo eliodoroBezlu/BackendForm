@@ -15,6 +15,15 @@ export class Area extends Document {
     required: true,
   })
   superintendencia: Superintendencia; // Relación con Superintendencia
+
+  @Prop({ default: true })
+activo: boolean;
+
+@Prop()
+creadoPor: string;
+
+@Prop()
+actualizadoPor: string;
 }
 
 export const AreaSchema = SchemaFactory.createForClass(Area); // Crea el esquema

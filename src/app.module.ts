@@ -32,6 +32,7 @@ import {
 
 import { APP_GUARD } from '@nestjs/core';
 import { KeycloakModule } from './modules/trabajadores/keycloak.module';
+import { InspectionScheduleModule } from './modules/inspection-schedule/inspection-schedule.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { KeycloakModule } from './modules/trabajadores/keycloak.module';
     PlanesAccionModule,
     UploadModule,
     KeycloakModule,
+    InspectionScheduleModule
   ],
   providers: [
     // Guards globales de Keycloak

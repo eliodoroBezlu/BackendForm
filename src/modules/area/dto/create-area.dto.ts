@@ -1,5 +1,15 @@
-// create-area.dto.ts
+import { IsString, IsNotEmpty, IsBoolean, IsOptional, IsMongoId } from 'class-validator';
+
 export class CreateAreaDto {
-    nombre: string;
-    superintendencia: string; // ID de la superintendencia
-  }
+  @IsString()
+  @IsNotEmpty()
+  nombre: string;
+
+  @IsMongoId()
+  @IsNotEmpty()
+  superintendencia: string;
+
+  @IsBoolean()
+  @IsOptional()
+  activo?: boolean;
+}
