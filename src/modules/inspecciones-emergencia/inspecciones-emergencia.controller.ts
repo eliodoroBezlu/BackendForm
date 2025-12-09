@@ -161,6 +161,12 @@ async actualizarExtintores(
     return await this.inspeccionesEmergenciaService.verificarInspecciones(area, mesActual);
   }
 
+  @Get(':id') 
+  async findOne(@Param('id') id: string) {
+    // Ya tienes el método findOne en tu servicio, solo faltaba exponerlo aquí
+    return await this.inspeccionesEmergenciaService.findOne(id);
+  }
+
   @Get(':id/pdf')
 async downloadPdf(@Param('id') id: string, @Res() res: Response) {
   try {

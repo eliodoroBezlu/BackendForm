@@ -53,7 +53,7 @@ export class TrabajadoresController {
   }
 
   @Get()
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
+  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
   @ApiOperation({ summary: 'Obtener todos los trabajadores' })
   @ApiResponse({ status: 200, description: 'Lista de trabajadores' })
   findAll() {
@@ -61,7 +61,7 @@ export class TrabajadoresController {
   }
 
   @Get('nombres/all')
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
+  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
   @ApiOperation({ summary: 'Obtener solo nombres de todos los trabajadores (para autocomplete)' })
   @ApiResponse({ status: 200, description: 'Lista de nombres de trabajadores' })
   async findAllNames(): Promise<string[]> {
@@ -77,7 +77,7 @@ export class TrabajadoresController {
   }
 
   @Get('buscar')
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
+  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
   @ApiOperation({ summary: 'Buscar trabajadores por nómina o CI' })
   @ApiResponse({ status: 200, description: 'Trabajadores encontrados' })
   async buscarTrabajadores(@Query('query') query: string) {
@@ -86,7 +86,7 @@ export class TrabajadoresController {
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('completos')
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
+  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
   @ApiOperation({ summary: 'Obtener trabajadores completos (nomina, CI, puesto)' })
   @ApiResponse({ 
     status: 200, 
