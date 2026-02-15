@@ -10,12 +10,14 @@ import {
   HttpStatus,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ExtintorService } from './extintor.service';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
 import { Resource } from 'nest-keycloak-connect';
-@Resource('extintor')
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+@UseGuards(JwtAuthGuard)
 @Controller('extintor')
 export class ExtintorController {
   constructor(private readonly extintorService: ExtintorService) {}

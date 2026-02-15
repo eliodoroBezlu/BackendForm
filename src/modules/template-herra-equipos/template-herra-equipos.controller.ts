@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, HttpCode, HttpStatus, Query, UseGuards } from '@nestjs/common';
 import { TemplateHerraEquiposService } from './template-herra-equipos.service';
 import { CreateTemplateHerraEquipoDto } from './dto/create-template-herra-equipo.dto';
 import { UpdateTemplateHerraEquipoDto } from './dto/update-template-herra-equipo.dto';
 import { Resource } from 'nest-keycloak-connect';
-@Resource('template-herra-equipos')
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+@UseGuards(JwtAuthGuard)
 @Controller('template-herra-equipos')
 
 export class TemplateHerraEquiposController {

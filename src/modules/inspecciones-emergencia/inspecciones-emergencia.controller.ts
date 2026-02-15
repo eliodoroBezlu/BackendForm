@@ -11,6 +11,7 @@ import {
   HttpException,
   HttpStatus,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
@@ -20,7 +21,9 @@ import { InspeccionesEmergenciaExcelService } from './inspecciones-emergencia-ex
 import { ExtintorService } from '../extintor/extintor.service';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
-@Resource('inspecciones-emergencia')
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+@UseGuards(JwtAuthGuard)
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(

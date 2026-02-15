@@ -6,15 +6,18 @@ import {
   BadRequestException,
   OnModuleInit,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { existsSync, mkdirSync } from 'fs';
-import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@Resource('upload')
+
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('upload')
 @Controller('upload')
 export class UploadController implements OnModuleInit {

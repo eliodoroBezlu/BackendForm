@@ -7,23 +7,40 @@ import {
   Param,
   Delete,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { TrabajadoresService } from './trabajadores.service';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
-import { Resource, Roles, AuthenticatedUser } from 'nest-keycloak-connect';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CreateUserForWorkerDto } from './dto/create-user-for-worker.dto';
-import { DisableUserDto, UpdateUserPasswordDto, UpdateUserRolesDto } from './dto/user-management.dto';
+import {
+  DisableUserDto,
+  UpdateUserPasswordDto,
+  UpdateUserRolesDto,
+} from './dto/user-management.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 
+interface AuthenticatedUserData {
+  id: string;
+  sub: string;
+  username: string;
+  email?: string;
+  roles: Role[];
+  fullName?: string;
+}
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('trabajadores')
 @Controller('trabajadores')
-@Resource('trabajadores')
 export class TrabajadoresController {
   constructor(private readonly trabajadoresService: TrabajadoresService) {}
 
   @Post()
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Crear trabajador básico' })
   @ApiResponse({ status: 201, description: 'Trabajador creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -33,7 +50,7 @@ export class TrabajadoresController {
   }
 
   @Post('with-user')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Crear trabajador con usuario de sistema (solo admin)',
   })
@@ -47,13 +64,13 @@ export class TrabajadoresController {
   })
   async createWithUser(
     @Body() createDto: CreateTrabajadorWithUserDto,
-    @AuthenticatedUser() user: any,
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.createWithUser(createDto, user);
   }
 
   @Get()
-  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
   @ApiOperation({ summary: 'Obtener todos los trabajadores' })
   @ApiResponse({ status: 200, description: 'Lista de trabajadores' })
   findAll() {
@@ -61,23 +78,33 @@ export class TrabajadoresController {
   }
 
   @Get('nombres/all')
-  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
-  @ApiOperation({ summary: 'Obtener solo nombres de todos los trabajadores (para autocomplete)' })
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @ApiOperation({
+    summary:
+      'Obtener solo nombres de todos los trabajadores (para autocomplete)',
+  })
   @ApiResponse({ status: 200, description: 'Lista de nombres de trabajadores' })
   async findAllNames(): Promise<string[]> {
     return this.trabajadoresService.findAllNames();
   }
 
   @Get('buscar/autocomplete')
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
-  @ApiOperation({ summary: 'Buscar trabajadores y devolver solo nombres (para autocomplete)' })
-  @ApiResponse({ status: 200, description: 'Nombres de trabajadores encontrados' })
-  async buscarTrabajadoresNames(@Query('query') query: string): Promise<string[]> {
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @ApiOperation({
+    summary: 'Buscar trabajadores y devolver solo nombres (para autocomplete)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Nombres de trabajadores encontrados',
+  })
+  async buscarTrabajadoresNames(
+    @Query('query') query: string,
+  ): Promise<string[]> {
     return this.trabajadoresService.buscarTrabajadoresNames(query);
   }
 
   @Get('buscar')
-  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
   @ApiOperation({ summary: 'Buscar trabajadores por nómina o CI' })
   @ApiResponse({ status: 200, description: 'Trabajadores encontrados' })
   async buscarTrabajadores(@Query('query') query: string) {
@@ -86,17 +113,19 @@ export class TrabajadoresController {
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('completos')
-  @Roles({ roles: ['admin', 'tecnico', 'supervisor', 'superintendente'] })
-  @ApiOperation({ summary: 'Obtener trabajadores completos (nomina, CI, puesto)' })
-  @ApiResponse({ 
-    status: 200, 
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @ApiOperation({
+    summary: 'Obtener trabajadores completos (nomina, CI, puesto)',
+  })
+  @ApiResponse({
+    status: 200,
     description: 'Lista de trabajadores con nomina, CI y puesto',
     schema: {
       example: [
-        { nomina: "Juan Pérez", ci: "12345678", puesto: "Ingeniero" },
-        { nomina: "María López", ci: "87654321", puesto: "Supervisor" }
-      ]
-    }
+        { nomina: 'Juan Pérez', ci: '12345678', puesto: 'Ingeniero' },
+        { nomina: 'María López', ci: '87654321', puesto: 'Supervisor' },
+      ],
+    },
   })
   async findAllCompletos() {
     return this.trabajadoresService.findAllCompletos();
@@ -104,7 +133,7 @@ export class TrabajadoresController {
 
   // ⚠️ Este endpoint DEBE ir al FINAL porque captura cualquier string como :id
   @Get(':id')
-  @Roles({ roles: ['admin', 'tecnico', 'supervior', 'superintendente'] })
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
   @ApiOperation({ summary: 'Obtener trabajador por ID' })
   @ApiResponse({ status: 200, description: 'Trabajador encontrado' })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
@@ -113,25 +142,31 @@ export class TrabajadoresController {
   }
 
   @Patch(':id')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Actualizar trabajador' })
-  @ApiResponse({ status: 200, description: 'Trabajador actualizado exitosamente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trabajador actualizado exitosamente',
+  })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
   update(@Param('id') id: string, @Body() updateTrabajadorDto: any) {
     return this.trabajadoresService.update(id, updateTrabajadorDto);
   }
 
   @Delete(':id')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Eliminar trabajador' })
-  @ApiResponse({ status: 200, description: 'Trabajador eliminado exitosamente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Trabajador eliminado exitosamente',
+  })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
   remove(@Param('id') id: string) {
     return this.trabajadoresService.remove(id);
   }
 
   @Post(':id/create-user')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({
     summary: 'Crear usuario del sistema para trabajador existente',
   })
@@ -151,7 +186,7 @@ export class TrabajadoresController {
   async createUserForExistingWorker(
     @Param('id') id: string,
     @Body() createUserDto: CreateUserForWorkerDto,
-    @AuthenticatedUser() user: any,
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.createUserForExistingWorker(
       id,
@@ -161,61 +196,69 @@ export class TrabajadoresController {
   }
 
   @Patch(':id/user/password')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Actualizar contraseña de usuario del trabajador' })
   async updateWorkerUserPassword(
     @Param('id') id: string,
     @Body() updatePasswordDto: UpdateUserPasswordDto,
-    @AuthenticatedUser() user: any
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
-    return this.trabajadoresService.updateWorkerUserPassword(id, updatePasswordDto, user);
+    return this.trabajadoresService.updateWorkerUserPassword(
+      id,
+      updatePasswordDto,
+      user,
+    );
   }
 
   @Patch(':id/user/roles')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Actualizar roles del usuario del trabajador' })
   async updateWorkerUserRoles(
     @Param('id') id: string,
     @Body() updateRolesDto: UpdateUserRolesDto,
-    @AuthenticatedUser() user: any
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
-    return this.trabajadoresService.updateWorkerUserRoles(id, updateRolesDto, user);
+    return this.trabajadoresService.updateWorkerUserRoles(
+      id,
+      updateRolesDto,
+      user,
+    );
   }
 
   @Patch(':id/user/disable')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Desactivar usuario del trabajador' })
   async disableWorkerUser(
     @Param('id') id: string,
     @Body() disableDto: DisableUserDto,
-    @AuthenticatedUser() user: any
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.disableWorkerUser(id, disableDto, user);
   }
 
   @Patch(':id/user/enable')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Activar usuario del trabajador' })
   async enableWorkerUser(
     @Param('id') id: string,
-    @AuthenticatedUser() user: any
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.enableWorkerUser(id, user);
   }
 
   @Delete(':id/user')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Desvincular usuario del trabajador' })
   async unlinkWorkerUser(
     @Param('id') id: string,
     @Body() reason: { reason: string },
-    @AuthenticatedUser() user: any
+    @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.unlinkWorkerUser(id, reason.reason, user);
   }
 
   @Get(':id/user/info')
-  @Roles({ roles: ['admin'] })
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Obtener información del usuario del trabajador' })
   async getWorkerUserInfo(@Param('id') id: string) {
     return this.trabajadoresService.getWorkerUserInfo(id);

@@ -6,7 +6,8 @@ import {
   Patch, 
   Param, 
   Delete, 
-  Query 
+  Query, 
+  UseGuards
 } from '@nestjs/common';
 import { PlanesAccionService } from './planes-accion.service';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam } from '@nestjs/swagger';
@@ -15,8 +16,9 @@ import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
 import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@Resource ('planes-accion')
+@UseGuards(JwtAuthGuard)
 @ApiTags('planes-accion')
 @Controller('planes-accion')
 export class PlanesAccionController {

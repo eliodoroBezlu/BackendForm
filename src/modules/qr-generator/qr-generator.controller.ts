@@ -9,6 +9,7 @@ import {
   HttpStatus,
   ValidationPipe,
   UsePipes,
+  UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { QrGeneratorService, QROptions } from './qr-generator.service';
@@ -22,6 +23,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 class ColorOptions {
   @IsOptional()
@@ -60,7 +62,7 @@ class GenerateQRDto {
   errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
 }
 
-@Resource('qr-generator') 
+@UseGuards(JwtAuthGuard)
 @Controller('qr')
 export class QrGeneratorController {
   constructor(private readonly qrService: QrGeneratorService) {}

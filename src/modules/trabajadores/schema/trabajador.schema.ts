@@ -1,31 +1,5 @@
-// import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
-// import { Document } from 'mongoose';
-
-// @Schema({ timestamps: true }) // Agrega createdAt y updatedAt automáticamente
-// export class Trabajador extends Document {
-//   @Prop({ required: true, unique: true })
-//   ci: string;
-
-//   @Prop({ required: true })
-//   nomina: string;
-
-//   @Prop({ required: true })
-//   puesto: string;
-
-//   @Prop({ required: true })
-//   fecha_ingreso: Date;
-
-//   @Prop({ required: true })
-//   superintendencia: string;
-  
-//   @Prop({ default: true })
-//   activo: boolean;
-// }
-
-// export const TrabajadorSchema = SchemaFactory.createForClass(Trabajador);
-
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 @Schema({ timestamps: true })
 export class Trabajador extends Document {
@@ -44,12 +18,12 @@ export class Trabajador extends Document {
   @Prop({ required: true })
   superintendencia: string;
 
-  // Campos para asociación con Keycloak
-  @Prop({ required: false })
-  keycloak_user_id?: string;
+  // ✅ RELACIÓN CON EL SISTEMA DE AUTH PROPIO
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false })
+  userId?: Types.ObjectId; // Relación con tu User de auth
 
   @Prop({ required: false })
-  username?: string;
+  username?: string; // Para búsqueda rápida
 
   @Prop({ default: false })
   tiene_acceso_sistema: boolean;
@@ -57,6 +31,7 @@ export class Trabajador extends Document {
   @Prop({ default: true })
   activo: boolean;
 
+  // Auditoría
   @Prop({ required: false })
   creado_por_usuario?: string;
 
@@ -73,12 +48,6 @@ export class Trabajador extends Document {
   user_disabled_at?: Date;
 
   @Prop({ required: false })
-  user_enabled_by?: string;
-
-  @Prop({ required: false })
-  user_enabled_at?: Date;
-
-  @Prop({ required: false })
   user_unlinked?: boolean;
 
   @Prop({ required: false })
@@ -89,9 +58,11 @@ export class Trabajador extends Document {
 
   @Prop({ required: false })
   user_unlinked_at?: Date;
-
-  @Prop({ required: false })
-  updatedBy?: string;
 }
 
 export const TrabajadorSchema = SchemaFactory.createForClass(Trabajador);
+
+// Índices
+TrabajadorSchema.index({ ci: 1 });
+TrabajadorSchema.index({ username: 1 });
+TrabajadorSchema.index({ userId: 1 });

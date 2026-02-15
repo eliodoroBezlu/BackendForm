@@ -367,27 +367,64 @@ export class ExtintorService {
     return { creados, actualizados };
   }
 
-  @Cron('59 23 L * *')
+   @Cron('59 23 * * *', {
+    name: 'reseteo-extintores-fin-mes',
+    timeZone: 'America/La_Paz', // ← Ajusta tu zona horaria
+  })
   async resetearTodosLosExtintoresFinalMes() {
+    const ahora = new Date();
+    const manana = new Date(ahora);
+    manana.setDate(ahora.getDate() + 1);
+
+    // Verificar si mañana es día 1 (hoy es el último día del mes)
+    const esFinDeMes = manana.getDate() === 1;
+
+    if (!esFinDeMes) {
+      // No logear nada para evitar spam, o usar debug
+      this.logger.debug(
+        `⏭️ Hoy no es fin de mes (${ahora.getDate()}/${ahora.getMonth() + 1}). Saltando.`
+      );
+      return { executed: false, reason: 'No es fin de mes' };
+    }
+
     try {
       this.logger.log(
-        'Ejecutando reseteo automático de estado de inspección de extintores fin de mes',
+        `🔥 ÚLTIMO DÍA DEL MES (${ahora.getDate()}/${ahora.getMonth() + 1}/${ahora.getFullYear()}) - Reseteando extintores...`
       );
 
       const resultado = await this.extintorModel.updateMany(
-        {},
+        { inspeccionado: true }, // ← Optimización: solo actualizar los que están en true
         { $set: { inspeccionado: false } },
       );
 
       this.logger.log(
-        `Reseteo fin de mes completado. ${resultado.modifiedCount} extintores actualizados.`,
+        `✅ Reseteo fin de mes completado exitosamente. ${resultado.modifiedCount} extintores actualizados.`
       );
-      return { modified: resultado.modifiedCount };
+
+      // Opcional: Guardar log en BD para auditoría
+      // await this.logModel.create({
+      //   accion: 'RESETEO_FIN_MES',
+      //   fecha: ahora,
+      //   extintoresAfectados: resultado.modifiedCount,
+      // });
+
+      return {
+        executed: true,
+        modified: resultado.modifiedCount,
+        date: ahora.toISOString(),
+        mes: ahora.getMonth() + 1,
+        año: ahora.getFullYear(),
+      };
+
     } catch (error) {
       this.logger.error(
-        `Error en reseteo automático: ${error.message}`,
+        `❌ Error en reseteo automático fin de mes: ${error.message}`,
         error.stack,
       );
+
+      // Opcional: Enviar notificación de error
+      // await this.notificationService.sendAlert('Error en reseteo de extintores', error);
+
       throw new Error(
         `Error al resetear estado de extintores: ${error.message}`,
       );

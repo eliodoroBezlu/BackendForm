@@ -36,8 +36,9 @@ import { ExcelPreUsoTecleService } from './excel-generator/preuso-tecle.service'
 import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.service';
 import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@Resource('inspections-herra-equipos')
+@UseGuards(JwtAuthGuard)
 @Controller('inspections-herra-equipos')
 export class InspectionsHerraEquiposController {
   constructor(

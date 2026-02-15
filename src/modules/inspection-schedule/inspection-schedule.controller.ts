@@ -1,11 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Put, Query, UsePipes, ValidationPipe, UseGuards } from '@nestjs/common';
 import { InspectionScheduleService } from './inspection-schedule.service';
 import { CreateInspectionScheduleDto } from './dto/create-inspection-schedule.dto';
 import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@Resource('inspection-schedule')
+
+@UseGuards(JwtAuthGuard)
 @ApiTags('inspection-schedule')
 @Controller('inspection-schedule')
 export class InspectionScheduleController {

@@ -1,45 +1,49 @@
-// dto/create-user-for-worker.dto.ts
-import { IsString, IsEmail, IsOptional, IsArray, IsBoolean, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsArray, MinLength, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserForWorkerDto {
-  @ApiProperty({ 
+  @ApiProperty({
     description: 'Username único para el sistema',
-    example: 'juan.perez'
+    example: 'juan.perez',
   })
   @IsString()
-  @MinLength(3, { message: 'El username debe tener al menos 3 caracteres' })
+  @MinLength(3)
+  @Matches(/^[a-zA-Z0-9._-]+$/)
   username: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Email del usuario (opcional)',
-    example: 'juan.perez@empresa.com'
+  @ApiPropertyOptional({
+    description: 'Email del usuario',
+    example: 'juan.perez@empresa.com',
   })
   @IsOptional()
-  @IsEmail({}, { message: 'El email debe tener un formato válido' })
+  @IsEmail()
   email?: string;
 
-  // AGREGAR ESTOS CAMPOS QUE FALTAN
-  @ApiProperty({ 
-    description: 'Contraseña inicial para el usuario',
-    example: 'MiPassword123!',
-    minLength: 8
+  @ApiProperty({
+    description: 'Contraseña inicial',
+    example: 'Password123!',
   })
   @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+  @MinLength(8)
   password: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Si la contraseña es temporal (usuario debe cambiarla en el primer login)',
-    default: true
+  @ApiPropertyOptional({
+    description: 'Contraseña temporal',
+    default: true,
   })
   @IsOptional()
-  @IsBoolean()
   temporary_password?: boolean;
 
-  @ApiPropertyOptional({ 
-    description: 'Roles a asignar al usuario',
-    example: ['user', 'inspector']
+  @ApiPropertyOptional({
+    description: 'Nombre completo (opcional)',
+  })
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Roles a asignar',
+    default: ['user'],
   })
   @IsOptional()
   @IsArray()

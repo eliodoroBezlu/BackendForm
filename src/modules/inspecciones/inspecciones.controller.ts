@@ -19,8 +19,10 @@ import type { CreateInspeccionDto } from "./dto/create-inspeccion.dto"
 import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto'
 import { ExcelService } from '../excel/excel.service';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@Resource('inspecciones')
+@UseGuards(JwtAuthGuard, RolesGuard) // Aquí puedes agregar tus guards de autenticación/autorización
 @Controller('inspecciones')
 //@UseGuards(JwtAuthGuard)
 export class InspeccionesController {

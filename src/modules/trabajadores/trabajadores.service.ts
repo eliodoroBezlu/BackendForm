@@ -1,174 +1,140 @@
-import { Injectable, ForbiddenException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Trabajador } from './schema/trabajador.schema';
+import { User } from '../auth/schemas/user.schema'; // ← TU AUTH
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
-import { KeycloakAdminService } from './keycloack-admin-service.service';
-import { DisableUserDto, UpdateUserPasswordDto, UpdateUserRolesDto } from './dto/user-management.dto';
+import { CreateUserForWorkerDto } from './dto/create-user-for-worker.dto';
+import { UpdateUserPasswordDto, UpdateUserRolesDto, DisableUserDto } from './dto/user-management.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class TrabajadoresService {
   constructor(
     @InjectModel(Trabajador.name) private trabajadorModel: Model<Trabajador>,
-    private keycloakAdminService: KeycloakAdminService,
+    @InjectModel(User.name) private userModel: Model<User>, // ← TU AUTH
   ) {}
 
   // ==================== CRUD BÁSICO ====================
 
-  // Crear trabajador básico (sin usuario)
-  async create(createTrabajadorDto: CreateTrabajadorDto): Promise<Trabajador> {
-    const createdTrabajador = new this.trabajadorModel(createTrabajadorDto);
-    return createdTrabajador.save();
+  async create(createDto: CreateTrabajadorDto): Promise<Trabajador> {
+    const trabajador = new this.trabajadorModel(createDto);
+    return trabajador.save();
   }
 
-  // Obtener todos los trabajadores
   async findAll(): Promise<Trabajador[]> {
-    return this.trabajadorModel.find().exec();
+    return this.trabajadorModel.find().populate('userId', 'username email roles').exec();
   }
 
-  // Obtener un trabajador por ID
   async findOne(id: string): Promise<Trabajador> {
-    const trabajador = await this.trabajadorModel.findById(id).exec();
-    
-    if (!trabajador) {
-      throw new NotFoundException(`Trabajador con ID ${id} no encontrado`);
-    }
-    
-    return trabajador;
-  }
-
-  // Actualizar trabajador
-  async update(id: string, updateTrabajadorDto: any): Promise<Trabajador> {
     const trabajador = await this.trabajadorModel
-      .findByIdAndUpdate(id, updateTrabajadorDto, { 
-        new: true,
-        runValidators: true 
-      })
+      .findById(id)
+      .populate('userId', 'username email roles isTwoFactorEnabled')
       .exec();
     
     if (!trabajador) {
-      throw new NotFoundException(`Trabajador con ID ${id} no encontrado`);
+      throw new NotFoundException(`Trabajador ${id} no encontrado`);
     }
     
     return trabajador;
   }
 
-  // Eliminar trabajador
+  async update(id: string, updateDto: any): Promise<Trabajador> {
+    const trabajador = await this.trabajadorModel
+      .findByIdAndUpdate(id, updateDto, { new: true, runValidators: true })
+      .exec();
+    
+    if (!trabajador) {
+      throw new NotFoundException(`Trabajador ${id} no encontrado`);
+    }
+    
+    return trabajador;
+  }
+
   async remove(id: string): Promise<Trabajador> {
     const trabajador = await this.trabajadorModel.findByIdAndDelete(id).exec();
     
     if (!trabajador) {
-      throw new NotFoundException(`Trabajador con ID ${id} no encontrado`);
+      throw new NotFoundException(`Trabajador ${id} no encontrado`);
+    }
+    
+    // ⚠️ IMPORTANTE: Desactivar usuario asociado (no eliminarlo)
+    if (trabajador.userId) {
+      await this.userModel.findByIdAndUpdate(trabajador.userId, {
+        isActive: false,
+      });
     }
     
     return trabajador;
   }
 
-  // ==================== BÚSQUEDA Y AUTOCOMPLETE ====================
+  // ==================== BÚSQUEDA ====================
 
-  // Obtener solo los nombres/identificadores de trabajadores (para autocomplete)
   async findAllNames(): Promise<string[]> {
-    try {
-      const trabajadores = await this.trabajadorModel
-        .find()
-        .select('nomina')
-        .exec();
-      
-      console.log('Trabajadores encontrados:', trabajadores.length);
-      console.log('Datos:', trabajadores);
-      
-      return trabajadores.map(t => t.nomina);
-    } catch (error) {
-      console.error('Error en findAllNames:', error);
-      return [];
-    }
+    const trabajadores = await this.trabajadorModel.find().select('nomina').exec();
+    return trabajadores.map(t => t.nomina);
   }
 
-  // Buscar trabajadores por nómina o CI (devuelve objetos completos)
   async buscarTrabajadores(query: string): Promise<Trabajador[]> {
-    if (typeof query !== 'string' || query.trim() === '') {
+    if (!query?.trim()) {
       return this.trabajadorModel.find().limit(10).exec();
     }
     
     return this.trabajadorModel
-      .find({ 
+      .find({
         $or: [
           { nomina: { $regex: query, $options: 'i' } },
           { ci: { $regex: query, $options: 'i' } },
-        ]
+        ],
       })
       .limit(10)
       .exec();
   }
 
-  // Buscar trabajadores y devolver solo los nombres (para autocomplete)
   async buscarTrabajadoresNames(query: string): Promise<string[]> {
-    if (typeof query !== 'string' || query.trim() === '') {
-      const trabajadores = await this.trabajadorModel
-        .find()
-        .select('nomina')
-        .limit(20)
-        .exec();
-      return trabajadores.map(t => t.nomina);
-    }
-    
-    const trabajadores = await this.trabajadorModel
-      .find({ 
-        $or: [
-          { nomina: { $regex: query, $options: 'i' } },
-          { ci: { $regex: query, $options: 'i' } },
-        ]
-      })
-      .select('nomina')
-      .limit(20)
-      .exec();
-
+    const trabajadores = await this.buscarTrabajadores(query);
     return trabajadores.map(t => t.nomina);
   }
 
-  // Obtener trabajadores con datos completos (nomina, CI, puesto)
-  async findAllCompletos(): Promise<Array<{ nomina: string; ci: string; puesto: string }>> {
-    try {
-      const trabajadores = await this.trabajadorModel
-        .find()
-        .select('nomina ci puesto') // Solo estos 3 campos
-        .sort({ nomina: 1 }) // Ordenar alfabéticamente
-        .lean() // Mejor performance
-        .exec();
-      
-      console.log('Trabajadores completos encontrados:', trabajadores.length);
-      
-      return trabajadores.map(t => ({
-        nomina: t.nomina || '',
-        ci: t.ci || '',
-        puesto: t.puesto || ''
-      }));
-    } catch (error) {
-      console.error('Error en findAllCompletos:', error);
-      return [];
-    }
+  async findAllCompletos() {
+    const trabajadores = await this.trabajadorModel
+      .find()
+      .select('nomina ci puesto')
+      .sort({ nomina: 1 })
+      .lean()
+      .exec();
+    
+    return trabajadores.map(t => ({
+      nomina: t.nomina || '',
+      ci: t.ci || '',
+      puesto: t.puesto || '',
+    }));
   }
 
-  // ==================== GESTIÓN DE USUARIOS KEYCLOAK ====================
+  // ==================== CREAR TRABAJADOR CON USUARIO ====================
 
-  // Crear trabajador con usuario de Keycloak
   async createWithUser(
     createDto: CreateTrabajadorWithUserDto,
-    requestingUser: any
+    requestingUser: any,
   ) {
-    // Verificar permisos del usuario solicitante
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
-    
+    // Verificar permisos
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo los administradores pueden crear usuarios en el sistema');
+      throw new ForbiddenException('Solo administradores pueden crear usuarios');
     }
 
     let trabajador: Trabajador | null = null;
-    let keycloakUserId: string | null = null;
+    let user: User | null = null;
 
     try {
-      // 1. Crear trabajador primero
+      // 1. Verificar que username no exista
+      const existingUser = await this.userModel.findOne({ username: createDto.username });
+      if (existingUser) {
+        throw new ConflictException(`El username '${createDto.username}' ya está en uso`);
+      }
+
+      // 2. Crear trabajador primero
       const trabajadorData: CreateTrabajadorDto = {
         ci: createDto.ci,
         nomina: createDto.nomina,
@@ -179,452 +145,309 @@ export class TrabajadoresService {
 
       trabajador = await this.create(trabajadorData);
 
-      let username = createDto.username;
+      // 3. Crear usuario en tu sistema de auth
+      const hashedPassword = await bcrypt.hash(createDto.password, 10);
 
-      // 2. Crear usuario en Keycloak si se solicita
-      if (createDto.crear_usuario_keycloak) {
-        // Generar username si no se proporciona
-        if (!username) {
-          username = this.generateUsernameFromNomina(createDto.nomina);
-        }
+      user = await this.userModel.create({
+        username: createDto.username,
+        email: createDto.email || `${createDto.username}@temp.local`,
+        password: hashedPassword,
+        fullName: createDto.fullName || createDto.nomina,
+        roles: createDto.roles || ['user'],
+        isActive: true,
+        isTwoFactorEnabled: false,
+      });
 
-        // Separar nombre y apellido de la nómina
-        const [firstName, ...lastNameParts] = createDto.nomina.split(' ');
-        const lastName = lastNameParts.join(' ') || firstName;
-
-        keycloakUserId = await this.keycloakAdminService.createUser({
-          username: username,
-          email: createDto.email,
-          firstName: firstName,
-          lastName: lastName,
-          roles: createDto.roles || ['user'],
-        });
-      }
-
-      // 3. Actualizar trabajador con información de usuario
-      const trabajadorActualizado = await this.trabajadorModel.findByIdAndUpdate(
+      // 4. Vincular trabajador con usuario
+      trabajador = await this.trabajadorModel.findByIdAndUpdate(
         trabajador._id,
         {
-          keycloak_user_id: keycloakUserId,
-          username: username,
-          tiene_acceso_sistema: !!keycloakUserId,
-          creado_por_usuario: requestingUser.preferred_username,
+          userId: user._id,
+          username: user.username,
+          tiene_acceso_sistema: true,
+          creado_por_usuario: requestingUser.username,
         },
         { new: true }
       );
 
       return {
         success: true,
-        trabajador: trabajadorActualizado,
-        message: keycloakUserId 
-          ? 'Trabajador y usuario creados exitosamente' 
-          : 'Trabajador creado exitosamente (sin usuario del sistema)',
-        usuario_creado: !!keycloakUserId,
+        message: 'Trabajador y usuario creados exitosamente',
+        trabajador,
+        usuario: {
+          username: user.username,
+          email: user.email,
+          roles: user.roles,
+          temporary_password: createDto.temporary_password ?? true,
+        },
       };
 
     } catch (error) {
-      // Si algo falla y ya se creó el trabajador, eliminarlo
+      // Rollback si algo falla
       if (trabajador) {
         await this.trabajadorModel.findByIdAndDelete(trabajador._id);
       }
+      if (user) {
+        await this.userModel.findByIdAndDelete(user._id);
+      }
 
-      throw new Error(`Error en la creación: ${error.message}`);
+      throw error;
     }
   }
 
-  // Crear usuario para trabajador existente
+  // ==================== CREAR USUARIO PARA TRABAJADOR EXISTENTE ====================
+
   async createUserForExistingWorker(
     trabajadorId: string,
-    createUserDto: {
-      username: string;
-      email?: string;
-      password: string;
-      temporary_password?: boolean;
-      roles?: string[];
-    },
-    requestingUser: any
+    createUserDto: CreateUserForWorkerDto,
+    requestingUser: any,
   ) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo los administradores pueden crear usuarios en el sistema');
+      throw new ForbiddenException('Solo administradores pueden crear usuarios');
     }
 
     try {
-      const trabajador = await this.trabajadorModel.findById(trabajadorId).exec();
+      const trabajador = await this.trabajadorModel.findById(trabajadorId);
       if (!trabajador) {
-        throw new NotFoundException(`Trabajador con ID ${trabajadorId} no encontrado`);
+        throw new NotFoundException(`Trabajador ${trabajadorId} no encontrado`);
       }
 
-      if (trabajador.keycloak_user_id && trabajador.tiene_acceso_sistema && !trabajador.user_unlinked) {
-        throw new ConflictException('Este trabajador ya tiene un usuario activo del sistema');
+      if (trabajador.userId && trabajador.tiene_acceso_sistema) {
+        throw new ConflictException('Este trabajador ya tiene usuario activo');
       }
 
-      const existingWorkerWithUsername = await this.trabajadorModel.findOne({
-        username: createUserDto.username
-      });
-      if (existingWorkerWithUsername) {
-        throw new ConflictException(`El username '${createUserDto.username}' ya está en uso`);
+      // Verificar username único
+      const existingUser = await this.userModel.findOne({ username: createUserDto.username });
+      if (existingUser) {
+        throw new ConflictException(`Username '${createUserDto.username}' ya está en uso`);
       }
 
-      if (trabajador.user_unlinked) {
-        await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-          $unset: {
-            keycloak_user_id: 1,
-            user_unlinked: 1,
-            user_unlinked_reason: 1,
-            user_unlinked_by: 1,
-            user_unlinked_at: 1,
-          }
-        });
-      }
+      // Crear usuario
+      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-      const [firstName, ...lastNameParts] = trabajador.nomina.split(' ');
-      const lastName = lastNameParts.join(' ') || firstName;
-
-      const email = createUserDto.email || `${createUserDto.username}@temp.local`;
-
-      const keycloakUserId = await this.keycloakAdminService.createUserWithPassword({
+      const user = await this.userModel.create({
         username: createUserDto.username,
-        email: email,
-        firstName: firstName,
-        lastName: lastName,
-        password: createUserDto.password,
-        temporary: createUserDto.temporary_password ?? true,
-        enabled: true,
+        email: createUserDto.email || `${createUserDto.username}@temp.local`,
+        password: hashedPassword,
+        fullName: createUserDto.fullName || trabajador.nomina,
         roles: createUserDto.roles || ['user'],
+        isActive: true,
       });
 
+      // Vincular
       const trabajadorActualizado = await this.trabajadorModel.findByIdAndUpdate(
         trabajadorId,
         {
-          keycloak_user_id: keycloakUserId,
-          username: createUserDto.username,
+          userId: user._id,
+          username: user.username,
           tiene_acceso_sistema: true,
-          updatedBy: requestingUser.preferred_username,
         },
-        { new: true, runValidators: true }
-      );
-
-      await this.logUserAction(
-        trabajadorId,
-        'user_created',
-        { 
-          username: createUserDto.username,
-          temporary_password: createUserDto.temporary_password,
-          roles: createUserDto.roles 
-        },
-        requestingUser.preferred_username
+        { new: true }
       );
 
       return {
         success: true,
-        message: 'Usuario creado y asociado exitosamente',
+        message: 'Usuario creado y vinculado exitosamente',
         trabajador: trabajadorActualizado,
-        usuario_info: {
-          username: createUserDto.username,
-          email: createUserDto.email || 'Email temporal generado',
-          keycloak_user_id: keycloakUserId,
-          roles: createUserDto.roles || ['user'],
-          temporary_password: createUserDto.temporary_password ?? true
-        }
+        usuario: {
+          username: user.username,
+          email: user.email,
+          roles: user.roles,
+        },
       };
 
     } catch (error) {
-      if (error instanceof NotFoundException || 
-          error instanceof ConflictException || 
-          error instanceof ForbiddenException) {
-        throw error;
-      }
-      throw new Error(`Error creando usuario: ${error.message}`);
+      throw error;
     }
   }
 
   // ==================== GESTIÓN DE USUARIOS ====================
 
-  // Actualizar contraseña de usuario
   async updateWorkerUserPassword(
     trabajadorId: string,
     updateDto: UpdateUserPasswordDto,
-    requestingUser: any
+    requestingUser: any,
   ) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden actualizar contraseñas');
+      throw new ForbiddenException('Solo administradores');
     }
 
     const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      await this.keycloakAdminService.updateUserPassword(
-        trabajador.keycloak_user_id,
-        updateDto.new_password,
-        updateDto.temporary
-      );
+    const hashedPassword = await bcrypt.hash(updateDto.new_password, 10);
 
-      await this.logUserAction(
-        trabajadorId,
-        'password_updated',
-        { temporary: updateDto.temporary },
-        requestingUser.preferred_username
-      );
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      password: hashedPassword,
+    });
 
-      return {
-        success: true,
-        message: 'Contraseña actualizada correctamente',
-        temporary_password: updateDto.temporary,
-      };
-    } catch (error) {
-      throw new Error(`Error actualizando contraseña: ${error.message}`);
-    }
+    return {
+      success: true,
+      message: 'Contraseña actualizada',
+    };
   }
 
-  // Actualizar roles de usuario
   async updateWorkerUserRoles(
     trabajadorId: string,
     updateDto: UpdateUserRolesDto,
-    requestingUser: any
+    requestingUser: any,
   ) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden actualizar roles');
+      throw new ForbiddenException('Solo administradores');
     }
 
     const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      await this.keycloakAdminService.updateUserRoles(
-        trabajador.keycloak_user_id,
-        updateDto.roles
-      );
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      roles: updateDto.roles,
+    });
 
-      await this.logUserAction(
-        trabajadorId,
-        'roles_updated',
-        { new_roles: updateDto.roles },
-        requestingUser.preferred_username
-      );
-
-      return {
-        success: true,
-        message: 'Roles actualizados correctamente',
-        roles: updateDto.roles,
-      };
-    } catch (error) {
-      throw new Error(`Error actualizando roles: ${error.message}`);
-    }
+    return {
+      success: true,
+      message: 'Roles actualizados',
+      roles: updateDto.roles,
+    };
   }
 
-  // Desactivar usuario
   async disableWorkerUser(
     trabajadorId: string,
     disableDto: DisableUserDto,
-    requestingUser: any
+    requestingUser: any,
   ) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden desactivar usuarios');
+      throw new ForbiddenException('Solo administradores');
     }
 
     const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      await this.keycloakAdminService.disableUser(trabajador.keycloak_user_id);
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      isActive: false,
+    });
 
-      await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-        user_disabled: true,
-        user_disabled_reason: disableDto.reason,
-        user_disabled_by: requestingUser.preferred_username,
-        user_disabled_at: new Date(),
-      });
+    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
+      user_disabled: true,
+      user_disabled_reason: disableDto.reason,
+      user_disabled_by: requestingUser.username,
+      user_disabled_at: new Date(),
+    });
 
-      await this.logUserAction(
-        trabajadorId,
-        'user_disabled',
-        { reason: disableDto.reason },
-        requestingUser.preferred_username
-      );
-
-      return {
-        success: true,
-        message: 'Usuario desactivado correctamente',
-        reason: disableDto.reason,
-      };
-    } catch (error) {
-      throw new Error(`Error desactivando usuario: ${error.message}`);
-    }
+    return {
+      success: true,
+      message: 'Usuario desactivado',
+    };
   }
 
-  // Activar usuario
   async enableWorkerUser(trabajadorId: string, requestingUser: any) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden activar usuarios');
+      throw new ForbiddenException('Solo administradores');
     }
 
     const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      await this.keycloakAdminService.enableUser(trabajador.keycloak_user_id);
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      isActive: true,
+    });
 
-      await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-        user_disabled: false,
-        $unset: {
-          user_disabled_reason: 1,
-          user_disabled_by: 1,
-          user_disabled_at: 1,
-        },
-        user_enabled_by: requestingUser.preferred_username,
-        user_enabled_at: new Date(),
-      });
+    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
+      user_disabled: false,
+      $unset: {
+        user_disabled_reason: 1,
+        user_disabled_by: 1,
+        user_disabled_at: 1,
+      },
+    });
 
-      await this.logUserAction(
-        trabajadorId,
-        'user_enabled',
-        {},
-        requestingUser.preferred_username
-      );
-
-      return {
-        success: true,
-        message: 'Usuario activado correctamente',
-      };
-    } catch (error) {
-      throw new Error(`Error activando usuario: ${error.message}`);
-    }
+    return {
+      success: true,
+      message: 'Usuario activado',
+    };
   }
 
-  // Desvincular usuario (dar de baja)
   async unlinkWorkerUser(
     trabajadorId: string,
     reason: string,
-    requestingUser: any
+    requestingUser: any,
   ) {
-    const isAdmin = requestingUser.resource_access?.['next-app-client']?.roles?.includes('admin');
+    const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden desvincular usuarios');
+      throw new ForbiddenException('Solo administradores');
     }
 
     const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      await this.keycloakAdminService.disableUser(trabajador.keycloak_user_id);
+    // Desactivar usuario (no eliminar)
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      isActive: false,
+    });
 
-      await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-        tiene_acceso_sistema: false,
-        user_unlinked: true,
-        user_unlinked_reason: reason,
-        user_unlinked_by: requestingUser.preferred_username,
-        user_unlinked_at: new Date(),
-      });
+    // Desvincular
+    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
+      userId: null,
+      username: null,
+      tiene_acceso_sistema: false,
+      user_unlinked: true,
+      user_unlinked_reason: reason,
+      user_unlinked_by: requestingUser.username,
+      user_unlinked_at: new Date(),
+    });
 
-      await this.logUserAction(
-        trabajadorId,
-        'user_unlinked',
-        { reason },
-        requestingUser.preferred_username
-      );
-
-      return {
-        success: true,
-        message: 'Usuario desvinculado correctamente',
-        reason,
-        note: 'El usuario se mantiene en Keycloak pero desactivado',
-      };
-    } catch (error) {
-      throw new Error(`Error desvinculando usuario: ${error.message}`);
-    }
+    return {
+      success: true,
+      message: 'Usuario desvinculado',
+    };
   }
 
-  // Obtener información completa del usuario
   async getWorkerUserInfo(trabajadorId: string) {
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador || !trabajador.keycloak_user_id) {
-      throw new NotFoundException('Trabajador no encontrado o sin usuario asociado');
+    const trabajador = await this.trabajadorModel
+      .findById(trabajadorId)
+      .populate('userId', 'username email roles isTwoFactorEnabled isActive createdAt')
+      .exec();
+
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
     }
 
-    try {
-      const keycloakUserInfo = await this.keycloakAdminService.getUserById(
-        trabajador.keycloak_user_id
-      );
+    const user = trabajador.userId as unknown as User;
 
-      return {
-        trabajador_info: {
-          id: trabajador._id,
-          ci: trabajador.ci,
-          nomina: trabajador.nomina,
-          tiene_acceso_sistema: trabajador.tiene_acceso_sistema,
-        },
-        keycloak_info: {
-          id: keycloakUserInfo.id,
-          username: keycloakUserInfo.username,
-          email: keycloakUserInfo.email,
-          enabled: keycloakUserInfo.enabled,
-          emailVerified: keycloakUserInfo.emailVerified,
-          createdTimestamp: keycloakUserInfo.createdTimestamp,
-        },
-        status: {
-          user_disabled: trabajador.user_disabled || false,
-          user_unlinked: trabajador.user_unlinked || false,
-        }
-      };
-    } catch (error) {
-      throw new Error(`Error obteniendo información del usuario: ${error.message}`);
-    }
-  }
-
-  // ==================== MÉTODOS AUXILIARES ====================
-
-  // Asociar trabajador existente con usuario existente de Keycloak
-  async linkExistingUser(trabajadorId: string, keycloakUserId: string, username: string) {
-    return this.trabajadorModel.findByIdAndUpdate(
-      trabajadorId,
-      {
-        keycloak_user_id: keycloakUserId,
-        username: username,
-        tiene_acceso_sistema: true,
+    return {
+      trabajador_info: {
+        id: trabajador._id,
+        ci: trabajador.ci,
+        nomina: trabajador.nomina,
+        tiene_acceso_sistema: trabajador.tiene_acceso_sistema,
       },
-      { new: true }
-    );
-  }
-
-  // Buscar trabajador por ID de Keycloak
-  async findByKeycloakId(keycloakUserId: string): Promise<Trabajador | null> {
-    return this.trabajadorModel.findOne({ keycloak_user_id: keycloakUserId });
-  }
-
-  // Generar username a partir de la nómina
-  private generateUsernameFromNomina(nomina: string): string {
-    return nomina
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
-      .replace(/\s+/g, '.') // Espacios por puntos
-      .replace(/[^a-z0-9.]/g, ''); // Solo letras, números y puntos
-  }
-
-  // Log de acciones de usuario
-  async logUserAction(
-    trabajadorId: string,
-    action: string,
-    details: any,
-    performedBy: string
-  ) {
-    // Aquí puedes implementar logging en una colección separada
-    console.log(`User action logged: ${action} for worker ${trabajadorId} by ${performedBy}`, details);
+      user_info: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        roles: user.roles,
+        enabled: user.isActive,
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
+        createdAt: user.createdAt,
+      },
+      status: {
+        user_disabled: trabajador.user_disabled || false,
+        user_unlinked: trabajador.user_unlinked || false,
+      },
+    };
   }
 }

@@ -10,13 +10,16 @@ import {
   BadRequestException,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schema/tag.schema';
 import { Resource } from 'nest-keycloak-connect';
-@Resource('tag')
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+@UseGuards(JwtAuthGuard)
 @Controller('tag')
 export class TagController {
   constructor(private readonly tagService: TagService) {}

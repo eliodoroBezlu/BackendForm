@@ -6,33 +6,26 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as express from 'express';
+import * as cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
-
-  const requiredKeycloakVars = [
-    'KEYCLOAK_AUTH_SERVER_URL',
-    'KEYCLOAK_REALM',
-    'KEYCLOAK_CLIENT_ID',
-    'KEYCLOAK_SECRET'
-  ];
-
-  const missingVars = requiredKeycloakVars.filter(
-    varName => !configService.get<string>(varName)
-  );
-
-  if (missingVars.length > 0) {
-    logger.error(`❌ Variables de Keycloak faltantes: ${missingVars.join(', ')}`);
-    process.exit(1);
-  }
-  
-  // 🔥 Crear la aplicación con NestExpressApplication para habilitar métodos de archivos estáticos
-  
-
+  app.use(cookieParser());
+app.use(helmet());
+  // ✅ PRIMERO: Parsers de JSON y URL (ANTES de cualquier middleware)
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+  // ✅ DESPUÉS: Middleware de logging (ahora sí podrá leer el body)
+  app.use((req, res, next) => {
+    console.log('📨 Request to:', req.method, req.url);
+    console.log('📦 Body:', req.body); // Ahora mostrará el contenido completo
+    console.log('🍪 Cookies:', req.cookies);
+    next();
+  });
 
   // 🔥 Servir archivos estáticos (uploads)
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
@@ -76,7 +69,7 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
-      validateCustomDecorators: true,
+      validateCustomDecorators: false,
     }),
   );
 
@@ -115,6 +108,7 @@ async function bootstrap() {
     ],
     exposedHeaders: [
       'X-Total-Count',
+      'Set-Cookie',
       'X-Page-Count',
       'Link'
     ],

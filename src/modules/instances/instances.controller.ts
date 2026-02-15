@@ -10,6 +10,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 
 import e, { Response } from 'express';
@@ -29,8 +30,9 @@ import { ExcelAlturav4Service } from './excel-generator/excel-generator-alturav4
 import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.service';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@Resource('instances')
+@UseGuards(JwtAuthGuard)
 @ApiTags('instances')
 @Controller('instances')
 export class InstancesController {
