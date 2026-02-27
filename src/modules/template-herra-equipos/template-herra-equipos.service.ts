@@ -13,13 +13,14 @@ export class TemplateHerraEquiposService {
 
 
   async create(createTemplateDto: CreateTemplateHerraEquipoDto): Promise<TemplateHerraEquipos> {
-    // Verificar si ya existe un template con ese código
+    // 1. Verificar si ya existe la combinación Código + Revisión
     const existingTemplate = await this.templateHerraEquiposModel.findOne({ 
-      code: createTemplateDto.code 
+       code: createTemplateDto.code,
+       revision: createTemplateDto.revision // <--- Agregamos esto
     });
     
     if (existingTemplate) {
-      throw new ConflictException(`Template with code ${createTemplateDto.code} already exists`);
+      throw new ConflictException(`Template with code ${createTemplateDto.code} and revision ${createTemplateDto.revision} already exists`);
     }
 
     const createdTemplate = new this.templateHerraEquiposModel(createTemplateDto);
@@ -52,18 +53,31 @@ export class TemplateHerraEquiposService {
   }
 
   async update(id: string, updateTemplateDto: UpdateTemplateHerraEquipoDto): Promise<TemplateHerraEquipos> {
-    // Si se está actualizando el código, verificar que no exista
-    if (updateTemplateDto.code) {
+    // 1. Obtener el documento actual para saber qué valores tiene ahora
+    const currentTemplate = await this.templateHerraEquiposModel.findById(id);
+    
+    if (!currentTemplate) {
+      throw new NotFoundException(`Template with ID ${id} not found`);
+    }
+
+    // 2. Determinar cuáles serán los nuevos valores (si vienen en el DTO o se mantienen los actuales)
+    const codeToCheck = updateTemplateDto.code ?? currentTemplate.code;
+    const revisionToCheck = updateTemplateDto.revision ?? currentTemplate.revision;
+
+    // 3. Solo verificamos si ha cambiado el código o la revisión
+    if (updateTemplateDto.code || updateTemplateDto.revision) {
       const existingTemplate = await this.templateHerraEquiposModel.findOne({
-        code: updateTemplateDto.code,
-        _id: { $ne: id }
+        code: codeToCheck,
+        revision: revisionToCheck,
+        _id: { $ne: id } // Excluir el documento actual
       });
       
       if (existingTemplate) {
-        throw new ConflictException(`Template with code ${updateTemplateDto.code} already exists`);
+        throw new ConflictException(`Template with code ${codeToCheck} and revision ${revisionToCheck} already exists`);
       }
     }
 
+    // 4. Proceder con la actualización
     const updatedTemplate = await this.templateHerraEquiposModel
       .findByIdAndUpdate(id, updateTemplateDto, { new: true })
       .exec();

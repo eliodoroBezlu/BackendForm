@@ -37,8 +37,10 @@ import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.se
 import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { ExcelArnestService } from './excel-generator/arnes.service';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspections-herra-equipos')
 export class InspectionsHerraEquiposController {
   constructor(
@@ -58,6 +60,7 @@ export class InspectionsHerraEquiposController {
     private readonly excelPreUsoTecleService: ExcelPreUsoTecleService,
     private readonly excelElementosIzajeService: ExcelElementosIzajeService,
     private readonly excelToPdfService: ExcelToPdfService,
+    private readonly excelArnestService: ExcelArnestService, 
   ) {}
 
   // ============================================
@@ -323,7 +326,12 @@ export class InspectionsHerraEquiposController {
       } else if (templateCode.includes('3.04.P37.F19')) {
         buffer = await this.excelElementosIzajeService.generateExcel(inspection);
         serviceUsed = 'ElementosIzajeService';
-      } else {
+      } else if (templateCode.includes('1.02.P06.F19')) {
+        buffer = await this.excelArnestService.generateExcel(inspection);
+        serviceUsed = 'ArnestService';
+      } 
+      
+      else {
         return res.status(400).json({
           success: false,
           message: `No se puede generar Excel para el template: ${templateCode}`,

@@ -18,8 +18,9 @@ import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schema/tag.schema';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tag')
 export class TagController {
   constructor(private readonly tagService: TagService) {}

@@ -24,6 +24,7 @@ import {
 import { Type } from 'class-transformer';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 class ColorOptions {
   @IsOptional()
@@ -62,7 +63,7 @@ class GenerateQRDto {
   errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
 }
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('qr')
 export class QrGeneratorController {
   constructor(private readonly qrService: QrGeneratorService) {}

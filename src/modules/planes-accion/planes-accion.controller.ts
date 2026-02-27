@@ -17,8 +17,9 @@ import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('planes-accion')
 @Controller('planes-accion')
 export class PlanesAccionController {
