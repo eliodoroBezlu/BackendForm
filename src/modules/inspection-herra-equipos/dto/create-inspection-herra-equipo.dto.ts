@@ -8,7 +8,8 @@ import {
   IsEnum, 
   IsDateString,
   IsArray,
-  IsBoolean
+  IsBoolean,
+  IsMongoId
 } from 'class-validator';
 import { InspectionStatus } from '../types/IProps';
 

@@ -31,8 +31,9 @@ import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.servi
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('instances')
 @Controller('instances')
 export class InstancesController {

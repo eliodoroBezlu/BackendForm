@@ -17,7 +17,8 @@ import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-@UseGuards(JwtAuthGuard)
+import { RolesGuard } from '../auth/guards/roles.guard';
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('extintor')
 export class ExtintorController {
   constructor(private readonly extintorService: ExtintorService) {}

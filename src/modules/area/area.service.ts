@@ -62,7 +62,6 @@ export class AreaService {
     if (typeof query !== 'string' || query.trim() === '') {
       const areas = await this.areaModel
         .find({ activo: true })
-        .limit(20)
         .exec();
       return areas.map((area) => area.nombre);
     }

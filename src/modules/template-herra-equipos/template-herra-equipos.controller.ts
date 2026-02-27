@@ -4,8 +4,9 @@ import { CreateTemplateHerraEquipoDto } from './dto/create-template-herra-equipo
 import { UpdateTemplateHerraEquipoDto } from './dto/update-template-herra-equipo.dto';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('template-herra-equipos')
 
 export class TemplateHerraEquiposController {

@@ -22,8 +22,9 @@ import { ExtintorService } from '../extintor/extintor.service';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(
@@ -166,7 +167,6 @@ async actualizarExtintores(
 
   @Get(':id') 
   async findOne(@Param('id') id: string) {
-    // Ya tienes el método findOne en tu servicio, solo faltaba exponerlo aquí
     return await this.inspeccionesEmergenciaService.findOne(id);
   }
 

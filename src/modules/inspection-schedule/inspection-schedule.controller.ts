@@ -5,9 +5,10 @@ import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dt
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('inspection-schedule')
 @Controller('inspection-schedule')
 export class InspectionScheduleController {

@@ -377,8 +377,7 @@ export class ExcelTaladroService {
         }
 
         if (insp.inspectionDate)
-          worksheet.getCell(posiciones.inspector.fecha).value =
-            insp.inspectionDate;
+          worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
         // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
       }
 
