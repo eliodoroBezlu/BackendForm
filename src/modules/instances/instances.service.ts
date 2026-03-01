@@ -90,49 +90,55 @@ export class InstancesService {
    * Actualiza una instancia recalculando métricas si es necesario
    */
   async update(
-    id: string,
-    updateInstanceDto: UpdateInstanceDto,
-  ): Promise<Instance> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('ID de instancia inválido');
-    }
-
-    // Si se actualizan las secciones, recalcular métricas
-    if (updateInstanceDto.sections) {
-      const instance = await this.findOne(id);
-      const template = await this.templatesService.findOne(
-        instance.templateId.toString(),
-      );
-
-      const flatSections = this.flattenSections(template.sections);
-
-      // ✅ RECALCULAR MÉTRICAS
-      const calculatedSections = this.calculateAllSectionMetrics(
-        updateInstanceDto.sections,
-        flatSections,
-      );
-      const instanceTotals = this.calculateInstanceTotals(calculatedSections);
-
-      updateInstanceDto.sections = calculatedSections;
-      Object.assign(updateInstanceDto, instanceTotals);
-    }
-
-    updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
-
-    const updatedInstance = await this.instanceModel
-      .findByIdAndUpdate(id, updateInstanceDto, {
-        new: true,
-        runValidators: true,
-      })
-      .populate('templateId')
-      .exec();
-
-    if (!updatedInstance) {
-      throw new NotFoundException('Instancia no encontrada');
-    }
-
-    return updatedInstance;
+  id: string,
+  updateInstanceDto: UpdateInstanceDto,
+): Promise<Instance> {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new BadRequestException('ID de instancia inválido');
   }
+
+  // ✅ CORRECCIÓN: Resolver templateId si viene como objeto populado
+  if (updateInstanceDto.templateId) {
+    const templateId = updateInstanceDto.templateId as any;
+    if (typeof templateId === 'object' && templateId !== null && '_id' in templateId) {
+      updateInstanceDto.templateId = templateId._id.toString();
+    }
+  }
+
+  if (updateInstanceDto.sections) {
+    const instance = await this.findOne(id);
+    
+    // Usar el templateId ya resuelto o el de la instancia existente
+    const templateIdToUse = updateInstanceDto.templateId || instance.templateId.toString();
+    const template = await this.templatesService.findOne(templateIdToUse);
+
+    const flatSections = this.flattenSections(template.sections);
+    const calculatedSections = this.calculateAllSectionMetrics(
+      updateInstanceDto.sections,
+      flatSections,
+    );
+    const instanceTotals = this.calculateInstanceTotals(calculatedSections);
+
+    updateInstanceDto.sections = calculatedSections;
+    Object.assign(updateInstanceDto, instanceTotals);
+  }
+
+  updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
+
+  const updatedInstance = await this.instanceModel
+    .findByIdAndUpdate(id, updateInstanceDto, {
+      new: true,
+      runValidators: true,
+    })
+    .populate('templateId')
+    .exec();
+
+  if (!updatedInstance) {
+    throw new NotFoundException('Instancia no encontrada');
+  }
+
+  return updatedInstance;
+}
 
   async findAll(filters?: {
     templateId?: string;

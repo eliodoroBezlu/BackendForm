@@ -133,19 +133,19 @@ export class InstancesController {
     return await this.instancesService.getComplianceReport(templateId);
   }
 
-  // @Patch(':id')
-  // @ApiOperation({ summary: 'Actualizar una instancia' })
-  // @ApiResponse({
-  //   status: 200,
-  //   description: 'Instancia actualizada exitosamente',
-  // })
-  // @ApiResponse({ status: 404, description: 'Instancia no encontrada' })
-  // async update(
-  //   @Param('id') id: string,
-  //   @Body() updateInstanceDto: UpdateInstanceDto,
-  // ) {
-  //   return await this.instancesService.update(id, updateInstanceDto);
-  // }
+  @Patch(':id')
+  @ApiOperation({ summary: 'Actualizar una instancia' })
+  @ApiResponse({
+    status: 200,
+    description: 'Instancia actualizada exitosamente',
+  })
+  @ApiResponse({ status: 404, description: 'Instancia no encontrada' })
+  async update(
+    @Param('id') id: string,
+    @Body() updateInstanceDto: UpdateInstanceDto,
+  ) {
+    return await this.instancesService.update(id, updateInstanceDto);
+  }
 
   @Patch(':id/status')
   @ApiOperation({ summary: 'Actualizar estado de una instancia' })

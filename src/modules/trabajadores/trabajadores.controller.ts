@@ -70,7 +70,7 @@ export class TrabajadoresController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({ summary: 'Obtener todos los trabajadores' })
   @ApiResponse({ status: 200, description: 'Lista de trabajadores' })
   findAll() {
@@ -78,7 +78,7 @@ export class TrabajadoresController {
   }
 
   @Get('nombres/all')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({
     summary:
       'Obtener solo nombres de todos los trabajadores (para autocomplete)',
@@ -89,7 +89,7 @@ export class TrabajadoresController {
   }
 
   @Get('buscar/autocomplete')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({
     summary: 'Buscar trabajadores y devolver solo nombres (para autocomplete)',
   })
@@ -104,7 +104,7 @@ export class TrabajadoresController {
   }
 
   @Get('buscar')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({ summary: 'Buscar trabajadores por nómina o CI' })
   @ApiResponse({ status: 200, description: 'Trabajadores encontrados' })
   async buscarTrabajadores(@Query('query') query: string) {
@@ -113,7 +113,7 @@ export class TrabajadoresController {
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('completos')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({
     summary: 'Obtener trabajadores completos (nomina, CI, puesto)',
   })
@@ -133,7 +133,7 @@ export class TrabajadoresController {
 
   // ⚠️ Este endpoint DEBE ir al FINAL porque captura cualquier string como :id
   @Get(':id')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE)
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
   @ApiOperation({ summary: 'Obtener trabajador por ID' })
   @ApiResponse({ status: 200, description: 'Trabajador encontrado' })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
