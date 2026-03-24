@@ -127,12 +127,12 @@ export class ExcelArnestService {
    * IMPORTANTE: Ajustar las posiciones de celdas según el template real
    */
   private async llenarCamposVerificacion(
-    worksheet: ExcelJS.Worksheet,
+    sheets: ExcelJS.Worksheet[],
     inspection: InspectionHerraEquipos,
   ) {
     try {
       this.logger.log(
-        'Iniciando llenado de campos de verificación del vehículo',
+        'Iniciando llenado de campos de verificación del vehículo en todas las hojas',
       );
 
       if (!inspection.verification) {
@@ -142,9 +142,11 @@ export class ExcelArnestService {
 
       const valores = Array.from(Object.values(inspection.verification));
 
-      worksheet.getCell('B4').value = valores[0] || ''; // EMPRESA
-      worksheet.getCell('N4').value = valores[1] || ''; // FECHA
-      worksheet.getCell('Z4').value = valores[2] || ''; // OPERADOR
+      for (const currentSheet of sheets) {
+        currentSheet.getCell('B4').value = valores[0] || ''; // EMPRESA
+        currentSheet.getCell('N4').value = valores[1] || ''; // FECHA
+        currentSheet.getCell('Z4').value = valores[2] || ''; // OPERADOR
+      }
 
       this.logger.log('Campos de verificación completados exitosamente');
     } catch (error) {
@@ -191,11 +193,11 @@ export class ExcelArnestService {
   ) {
     try {
       if (!inspection.outOfService) {
-        this.logger.warn('No se encontraron datos específicos del vehículo');
+        this.logger.warn('No se encontraron datos específicos del arnes');
         return;
       }
 
-      this.logger.log('Iniciando llenado de datos específicos del vehículo');
+      this.logger.log('Iniciando llenado de datos específicos del arnes');
 
       // Tipo de inspección
       if (inspection.outOfService?.status) {
@@ -324,8 +326,8 @@ export class ExcelArnestService {
         },
         section_1_sub0: {
           sheet: 'ANVERSO',
-          startRow: 9,
-          endRow: 15,
+          startRow: 8,
+          endRow: 11,
           name: 'Caracteristicas Retráctil',
           type: 'inline_response',
           columns: { target: 'K' },
@@ -333,8 +335,8 @@ export class ExcelArnestService {
         },
         section_1_sub1: {
           sheet: 'ANVERSO',
-          startRow: 17,
-          endRow: 20,
+          startRow: 9,
+          endRow: 15,
           name: 'BLOQUE RETRÁCTIL',
           shortName: 'Retráctil',
           type: 'boolean',
@@ -382,7 +384,7 @@ export class ExcelArnestService {
           sheet: 'REVERSO',
           startRow: 8, 
           endRow: 10,
-          name: 'CARACTERISITICAS',
+          name: 'CARACTERISTICAS',
           type: 'inline_response',
           columns: { target: 'A' }, // Ajusta columna
           options: { mode: 'append', separator: ' : ' },
@@ -397,7 +399,7 @@ export class ExcelArnestService {
           columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' }, 
         },
         section_2_sub2: {
-          sheet: 'RE1VERSO',
+          sheet: 'REVERSO',
           startRow: 14,
           endRow: 20,
           name: 'GANCHO DE SEGURIDAD',
@@ -436,9 +438,9 @@ export class ExcelArnestService {
           sheet: 'REVERSO',
           startRow: 8, 
           endRow: 10,
-          name: 'CARACTERISITICAS',
+          name: 'CARACTERISTICAS',
           type: 'inline_response',
-          columns: { target: 'A' }, // Ajusta columna
+          columns: { target: 'K' }, // Ajusta columna
           options: { mode: 'append', separator: ' : ' },
         },
         section_3_sub1: {
@@ -1157,7 +1159,7 @@ const sheets = [sheetAnverso, sheetReverso];
       // 3. Llenar datos (Pasamos las hojas específicas según corresponda)
 
       // Datos generales suelen ir en el Anverso
-      await this.llenarCamposVerificacion(sheetAnverso, inspection);
+      await this.llenarCamposVerificacion(sheets, inspection);
       await this.llenarDatosArnes(sheetAnverso, inspection);
 
       // Respuestas pueden ir en AMBAS hojas (pasamos el workbook o ambas hojas)

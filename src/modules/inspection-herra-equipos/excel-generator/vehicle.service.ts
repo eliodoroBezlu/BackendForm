@@ -182,7 +182,7 @@ export class ExcelVehicleService {
 
     // Fecha próxima inspección
     if (inspection.vehicle.fechaProximaInspeccion) {
-      worksheet.getCell('D84').value = inspection.vehicle.fechaProximaInspeccion;
+      worksheet.getCell('D81').value = inspection.vehicle.fechaProximaInspeccion;
     }
 
     // Responsable próxima inspección
@@ -434,7 +434,7 @@ private async llenarFirmas(
     if (inspection.supervisorSignature) {
       const sup = inspection.supervisorSignature;
       
-      //if (sup.supervisorName) worksheet.getCell(posiciones.supervisor.nombre).value = sup.supervisorName;
+      if (sup.supervisorName) worksheet.getCell(posiciones.supervisor.nombre).value = sup.supervisorName;
       
       if (sup.supervisorSignature && typeof sup.supervisorSignature === 'string' && sup.supervisorSignature.startsWith('data:image/')) {
         await this.insertarImagen(worksheet, sup.supervisorSignature, posiciones.supervisor.firma);

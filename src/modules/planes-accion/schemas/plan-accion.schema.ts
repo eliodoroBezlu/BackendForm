@@ -114,6 +114,9 @@ export class PlanDeAccion {
   vicepresidencia: string;
 
   @Prop()
+  instanceId?: string;
+
+  @Prop()
   superintendenciaSenior?: string;
 
   @Prop()

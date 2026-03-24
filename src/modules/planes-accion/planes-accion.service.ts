@@ -186,6 +186,7 @@ export class PlanesAccionService {
       superintendenciaSenior,
       superintendencia,
       areaFisica,
+      instanceId: instanceId,
       tareas: tareasGeneradas,
       ...metadatos,
       fechaCreacion: new Date(),
