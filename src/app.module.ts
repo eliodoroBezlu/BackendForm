@@ -23,6 +23,7 @@ import { HttpModule } from '@nestjs/axios';
 import { InspectionScheduleModule } from './modules/inspection-schedule/inspection-schedule.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { PgrModule } from './modules/pgr/pgr.module';
 
 @Module({
   imports: [
@@ -65,7 +66,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     PlanesAccionModule,
     UploadModule,
     InspectionScheduleModule,
-    AuthModule
+    AuthModule,
+    PgrModule
   ],
   providers: [],
 })

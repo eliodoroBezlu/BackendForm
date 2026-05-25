@@ -15,15 +15,19 @@ import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.d
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { CreateUserForWorkerDto } from './dto/create-user-for-worker.dto';
 import {
-  DisableUserDto,
   UpdateUserPasswordDto,
   UpdateUserRolesDto,
+  UpdateUserPermissionsDto,
+  DisableUserDto,
 } from './dto/user-management.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+import { Permission } from '../auth/enums/permission.enum';
 
 interface AuthenticatedUserData {
   id: string;
@@ -33,7 +37,7 @@ interface AuthenticatedUserData {
   roles: Role[];
   fullName?: string;
 }
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiTags('trabajadores')
 @Controller('trabajadores')
 export class TrabajadoresController {
@@ -41,6 +45,7 @@ export class TrabajadoresController {
 
   @Post()
   @Roles(Role.ADMIN)
+  @Permissions(Permission.CREATE_WORKER)
   @ApiOperation({ summary: 'Crear trabajador básico' })
   @ApiResponse({ status: 201, description: 'Trabajador creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
@@ -131,6 +136,16 @@ export class TrabajadoresController {
     return this.trabajadoresService.findAllCompletos();
   }
 
+  // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
+  @Get('by-username/:username')
+  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @ApiOperation({ summary: 'Obtener trabajador por username (para resolver área del usuario autenticado)' })
+  @ApiResponse({ status: 200, description: 'Trabajador encontrado' })
+  @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
+  async findByUsername(@Param('username') username: string) {
+    return this.trabajadoresService.findByUsername(username);
+  }
+
   // ⚠️ Este endpoint DEBE ir al FINAL porque captura cualquier string como :id
   @Get(':id')
   @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
@@ -140,6 +155,7 @@ export class TrabajadoresController {
   findOne(@Param('id') id: string) {
     return this.trabajadoresService.findOne(id);
   }
+
 
   @Patch(':id')
   @Roles(Role.ADMIN)
@@ -221,6 +237,21 @@ export class TrabajadoresController {
     return this.trabajadoresService.updateWorkerUserRoles(
       id,
       updateRolesDto,
+      user,
+    );
+  }
+
+  @Patch(':id/user/permissions')
+  @Roles(Role.ADMIN)
+  @ApiOperation({ summary: 'Actualizar permisos extra del usuario del trabajador' })
+  async updateWorkerUserPermissions(
+    @Param('id') id: string,
+    @Body() updatePermissionsDto: UpdateUserPermissionsDto,
+    @CurrentUser() user: AuthenticatedUserData,
+  ) {
+    return this.trabajadoresService.updateWorkerUserPermissions(
+      id,
+      updatePermissionsDto,
       user,
     );
   }

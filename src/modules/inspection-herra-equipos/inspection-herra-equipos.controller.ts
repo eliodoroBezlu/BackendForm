@@ -11,6 +11,7 @@ import {
   HttpStatus,
   UseGuards,
   Res,
+  Logger,
 } from '@nestjs/common';
 import { CreateInspectionHerraEquipoDto } from './dto/create-inspection-herra-equipo.dto';
 import { 
@@ -43,6 +44,8 @@ import { ExcelArnestService } from './excel-generator/arnes.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspections-herra-equipos')
 export class InspectionsHerraEquiposController {
+  private readonly logger = new Logger(InspectionsHerraEquiposController.name);
+
   constructor(
     private readonly inspectionsService: InspectionsHerraEquiposService,
     private readonly excelVehicleService: ExcelVehicleService,
@@ -123,10 +126,25 @@ export class InspectionsHerraEquiposController {
   }
 
   @Get('pending-approvals')
-  async findPendingApprovals(@Query('excludeSubmittedBy') excludeSubmittedBy?: string) {
-    console.log('📋 Obteniendo inspecciones pendientes de aprobación');
+  async findPendingApprovals(
+    @Query('excludeSubmittedBy') excludeSubmittedBy?: string,
+    @Query('areas') areasParam?: string,   // CSV: "Chancado,Flotacion"
+    @Query('isAdmin') isAdmin?: string,
+  ) {
+    // Parsear áreas desde CSV ("Chancado,Flotacion" → ["Chancado","Flotacion"])
+    const areas = areasParam
+      ? areasParam.split(',').map((a) => a.trim()).filter(Boolean)
+      : [];
 
-    const inspections = await this.inspectionsService.findPendingApprovals(excludeSubmittedBy);
+    this.logger.log(
+      `📌 [CTRL] pending-approvals — áreas=[${areas.join(', ')}] | isAdmin=${isAdmin}`
+    );
+
+    const inspections = await this.inspectionsService.findPendingApprovals({
+      excludeSubmittedBy,
+      areas,
+      isAdmin: isAdmin === 'true',
+    });
 
     return {
       success: true,
@@ -134,6 +152,7 @@ export class InspectionsHerraEquiposController {
       data: inspections,
     };
   }
+
 
   // ============================================
   // ENDPOINTS EXISTENTES

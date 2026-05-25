@@ -19,6 +19,7 @@ import { Role } from './enums/role.enum';
 import { RegisterDto } from './dto/register.dto';
 import { randomBytes } from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { getPermissionsForRoles } from './enums/role-permissions';
 
 // Tipos de respuesta
 interface LoginSuccess {
@@ -29,6 +30,7 @@ interface LoginSuccess {
     username: string;
     email: string | undefined;
     roles: Role[];
+    permissions: string[];
     fullName: string | undefined;
   };
 }
@@ -171,10 +173,15 @@ export class AuthService {
   console.log('🔑 [TOKENS] Generando tokens para:', user.username);
    console.log('💾 [TOKENS] Creando sesión para:', user.username);
   
+  const rolePermissions = getPermissionsForRoles(user.roles || []);
+  const directPermissions = user.permissions || [];
+  const allPermissions = Array.from(new Set([...rolePermissions, ...directPermissions]));
+
   const payload = {
     sub: user._id.toString(),
     username: user.username,
     roles: user.roles,
+    permissions: allPermissions,
   };
 
   const accessToken = this.jwtService.sign(payload, {
@@ -233,6 +240,7 @@ export class AuthService {
       username: user.username,
       email: user.email,
       roles: user.roles,
+      permissions: allPermissions,
       fullName: user.fullName,
     },
   };
@@ -295,11 +303,17 @@ export class AuthService {
     throw new UnauthorizedException('Usuario no autorizado');
   }
 
+  // ✅ CALCULAR PERMISOS UNIDOS
+  const rolePermissions = getPermissionsForRoles(user.roles || []);
+  const directPermissions = user.permissions || [];
+  const allPermissions = Array.from(new Set([...rolePermissions, ...directPermissions]));
+
   // ✅ GENERAR NUEVOS TOKENS
   const newPayload = {
     sub: user._id.toString(),
     username: user.username,
     roles: user.roles,
+    permissions: allPermissions,
   };
 
   const accessToken = this.jwtService.sign(newPayload, {
@@ -336,6 +350,7 @@ export class AuthService {
       username: user.username,
       email: user.email,
       roles: user.roles,
+      permissions: allPermissions,
       fullName: user.fullName,
     },
   };

@@ -242,6 +242,10 @@ export class InspectionHerraEquipos {
 
   @Prop({ type: ApprovalData })
   approval?: ApprovalData;
+
+  // Campo denormalizado: área extraída de verification al momento de crear
+  @Prop({ required: false, index: true })
+  area?: string;
 }
 
 export type InspectionHerraEquiposDocument = InspectionHerraEquipos & Document;
@@ -257,3 +261,4 @@ InspectionHerraEquiposSchema.index({ submittedBy: 1 });
 // ✅ NUEVO: Índice para búsquedas de aprobación
 InspectionHerraEquiposSchema.index({ status: 1, requiresApproval: 1 });
 InspectionHerraEquiposSchema.index({ 'approval.status': 1 });
+InspectionHerraEquiposSchema.index({ area: 1, status: 1 });

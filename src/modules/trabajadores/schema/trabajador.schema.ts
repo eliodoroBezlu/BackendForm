@@ -18,6 +18,24 @@ export class Trabajador extends Document {
   @Prop({ required: true })
   superintendencia: string;
 
+  @Prop({ required: true })
+  area: string;
+
+  @Prop({ required: false })
+  jde?: string;
+
+  @Prop({ required: false })
+  no_bloque?: string;
+
+  @Prop({ required: false })
+  no_habitacion?: string;
+
+  @Prop({ required: false })
+  residencia?: string;
+
+  @Prop({ required: false })
+  celular?: string;
+
   // ✅ RELACIÓN CON EL SISTEMA DE AUTH PROPIO
   @Prop({ type: Types.ObjectId, ref: 'User', required: false })
   userId?: Types.ObjectId; // Relación con tu User de auth

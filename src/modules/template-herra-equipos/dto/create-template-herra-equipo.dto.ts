@@ -126,6 +126,10 @@ export class CreateVerificationFieldDto {
   @IsOptional()
   @IsString()
   dataSource?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  obligatorio?: boolean;
 }
 
 export class CreateTemplateHerraEquipoDto {

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Trabajador } from './schema/trabajador.schema';
@@ -6,7 +11,11 @@ import { User } from '../auth/schemas/user.schema'; // ← TU AUTH
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
 import { CreateUserForWorkerDto } from './dto/create-user-for-worker.dto';
-import { UpdateUserPasswordDto, UpdateUserRolesDto, DisableUserDto } from './dto/user-management.dto';
+import {
+  UpdateUserPasswordDto,
+  UpdateUserRolesDto,
+  DisableUserDto,
+} from './dto/user-management.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -24,7 +33,10 @@ export class TrabajadoresService {
   }
 
   async findAll(): Promise<Trabajador[]> {
-    return this.trabajadorModel.find().populate('userId', 'username email roles').exec();
+    return this.trabajadorModel
+      .find()
+      .populate('userId', 'username email roles')
+      .exec();
   }
 
   async findOne(id: string): Promise<Trabajador> {
@@ -32,11 +44,11 @@ export class TrabajadoresService {
       .findById(id)
       .populate('userId', 'username email roles isTwoFactorEnabled')
       .exec();
-    
+
     if (!trabajador) {
       throw new NotFoundException(`Trabajador ${id} no encontrado`);
     }
-    
+
     return trabajador;
   }
 
@@ -44,43 +56,46 @@ export class TrabajadoresService {
     const trabajador = await this.trabajadorModel
       .findByIdAndUpdate(id, updateDto, { new: true, runValidators: true })
       .exec();
-    
+
     if (!trabajador) {
       throw new NotFoundException(`Trabajador ${id} no encontrado`);
     }
-    
+
     return trabajador;
   }
 
   async remove(id: string): Promise<Trabajador> {
     const trabajador = await this.trabajadorModel.findByIdAndDelete(id).exec();
-    
+
     if (!trabajador) {
       throw new NotFoundException(`Trabajador ${id} no encontrado`);
     }
-    
+
     // ⚠️ IMPORTANTE: Desactivar usuario asociado (no eliminarlo)
     if (trabajador.userId) {
       await this.userModel.findByIdAndUpdate(trabajador.userId, {
         isActive: false,
       });
     }
-    
+
     return trabajador;
   }
 
   // ==================== BÚSQUEDA ====================
 
   async findAllNames(): Promise<string[]> {
-    const trabajadores = await this.trabajadorModel.find().select('nomina').exec();
-    return trabajadores.map(t => t.nomina);
+    const trabajadores = await this.trabajadorModel
+      .find()
+      .select('nomina')
+      .exec();
+    return trabajadores.map((t) => t.nomina);
   }
 
   async buscarTrabajadores(query: string): Promise<Trabajador[]> {
     if (!query?.trim()) {
       return this.trabajadorModel.find().limit(10).exec();
     }
-    
+
     return this.trabajadorModel
       .find({
         $or: [
@@ -94,7 +109,7 @@ export class TrabajadoresService {
 
   async buscarTrabajadoresNames(query: string): Promise<string[]> {
     const trabajadores = await this.buscarTrabajadores(query);
-    return trabajadores.map(t => t.nomina);
+    return trabajadores.map((t) => t.nomina);
   }
 
   async findAllCompletos() {
@@ -104,12 +119,26 @@ export class TrabajadoresService {
       .sort({ nomina: 1 })
       .lean()
       .exec();
-    
-    return trabajadores.map(t => ({
+
+    return trabajadores.map((t) => ({
       nomina: t.nomina || '',
       ci: t.ci || '',
       puesto: t.puesto || '',
     }));
+  }
+
+  async findByUsername(username: string): Promise<Trabajador> {
+    const trabajador = await this.trabajadorModel
+      .findOne({ username })
+      .exec();
+
+    if (!trabajador) {
+      throw new NotFoundException(
+        `Trabajador con username "${username}" no encontrado`,
+      );
+    }
+
+    return trabajador;
   }
 
   // ==================== CREAR TRABAJADOR CON USUARIO ====================
@@ -121,7 +150,9 @@ export class TrabajadoresService {
     // Verificar permisos
     const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden crear usuarios');
+      throw new ForbiddenException(
+        'Solo administradores pueden crear usuarios',
+      );
     }
 
     let trabajador: Trabajador | null = null;
@@ -129,9 +160,13 @@ export class TrabajadoresService {
 
     try {
       // 1. Verificar que username no exista
-      const existingUser = await this.userModel.findOne({ username: createDto.username });
+      const existingUser = await this.userModel.findOne({
+        username: createDto.username,
+      });
       if (existingUser) {
-        throw new ConflictException(`El username '${createDto.username}' ya está en uso`);
+        throw new ConflictException(
+          `El username '${createDto.username}' ya está en uso`,
+        );
       }
 
       // 2. Crear trabajador primero
@@ -141,6 +176,7 @@ export class TrabajadoresService {
         puesto: createDto.puesto,
         fecha_ingreso: createDto.fecha_ingreso,
         superintendencia: createDto.superintendencia,
+        area: createDto.area,
       };
 
       trabajador = await this.create(trabajadorData);
@@ -167,7 +203,7 @@ export class TrabajadoresService {
           tiene_acceso_sistema: true,
           creado_por_usuario: requestingUser.username,
         },
-        { new: true }
+        { new: true },
       );
 
       return {
@@ -181,7 +217,6 @@ export class TrabajadoresService {
           temporary_password: createDto.temporary_password ?? true,
         },
       };
-
     } catch (error) {
       // Rollback si algo falla
       if (trabajador) {
@@ -204,7 +239,9 @@ export class TrabajadoresService {
   ) {
     const isAdmin = requestingUser?.roles?.includes('admin');
     if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores pueden crear usuarios');
+      throw new ForbiddenException(
+        'Solo administradores pueden crear usuarios',
+      );
     }
 
     try {
@@ -218,9 +255,13 @@ export class TrabajadoresService {
       }
 
       // Verificar username único
-      const existingUser = await this.userModel.findOne({ username: createUserDto.username });
+      const existingUser = await this.userModel.findOne({
+        username: createUserDto.username,
+      });
       if (existingUser) {
-        throw new ConflictException(`Username '${createUserDto.username}' ya está en uso`);
+        throw new ConflictException(
+          `Username '${createUserDto.username}' ya está en uso`,
+        );
       }
 
       // Crear usuario
@@ -236,15 +277,16 @@ export class TrabajadoresService {
       });
 
       // Vincular
-      const trabajadorActualizado = await this.trabajadorModel.findByIdAndUpdate(
-        trabajadorId,
-        {
-          userId: user._id,
-          username: user.username,
-          tiene_acceso_sistema: true,
-        },
-        { new: true }
-      );
+      const trabajadorActualizado =
+        await this.trabajadorModel.findByIdAndUpdate(
+          trabajadorId,
+          {
+            userId: user._id,
+            username: user.username,
+            tiene_acceso_sistema: true,
+          },
+          { new: true },
+        );
 
       return {
         success: true,
@@ -256,7 +298,6 @@ export class TrabajadoresService {
           roles: user.roles,
         },
       };
-
     } catch (error) {
       throw error;
     }
@@ -314,6 +355,32 @@ export class TrabajadoresService {
       success: true,
       message: 'Roles actualizados',
       roles: updateDto.roles,
+    };
+  }
+
+  async updateWorkerUserPermissions(
+    trabajadorId: string,
+    updateDto: { permissions: string[] },
+    requestingUser: any,
+  ) {
+    const isAdmin = requestingUser?.roles?.includes('admin');
+    if (!isAdmin) {
+      throw new ForbiddenException('Solo administradores');
+    }
+
+    const trabajador = await this.trabajadorModel.findById(trabajadorId);
+    if (!trabajador?.userId) {
+      throw new NotFoundException('Trabajador sin usuario asociado');
+    }
+
+    await this.userModel.findByIdAndUpdate(trabajador.userId, {
+      permissions: updateDto.permissions,
+    });
+
+    return {
+      success: true,
+      message: 'Permisos extra actualizados',
+      permissions: updateDto.permissions,
     };
   }
 
@@ -419,7 +486,10 @@ export class TrabajadoresService {
   async getWorkerUserInfo(trabajadorId: string) {
     const trabajador = await this.trabajadorModel
       .findById(trabajadorId)
-      .populate('userId', 'username email roles isTwoFactorEnabled isActive createdAt')
+      .populate(
+        'userId',
+        'username email roles isTwoFactorEnabled isActive createdAt permissions',
+      )
       .exec();
 
     if (!trabajador?.userId) {
@@ -440,6 +510,7 @@ export class TrabajadoresService {
         username: user.username,
         email: user.email,
         roles: user.roles,
+        permissions: user.permissions || [],
         enabled: user.isActive,
         isTwoFactorEnabled: user.isTwoFactorEnabled,
         createdAt: user.createdAt,

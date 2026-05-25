@@ -17,9 +17,10 @@ import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
-@ApiTags("templates")
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@ApiTags('templates')
 @Controller('templates')
 export class TemplatesController {
   constructor(private readonly templatesService: TemplatesService) {}
@@ -50,8 +51,8 @@ export class TemplatesController {
   }
 
   @Get('stats')
-  @ApiOperation({ summary: "Obtener estadísticas de templates" })
-  @ApiResponse({ status: 200, description: "Estadísticas de templates" })
+  @ApiOperation({ summary: 'Obtener estadísticas de templates' })
+  @ApiResponse({ status: 200, description: 'Estadísticas de templates' })
   getStats() {
     return this.templatesService.getStats();
   }
@@ -74,16 +75,25 @@ export class TemplatesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: "Actualizar un template" })
-  @ApiResponse({ status: 200, description: "Template actualizado exitosamente" })
-  @ApiResponse({ status: 404, description: "Template no encontrado" })
-  update(@Param('id') id: string, @Body() updateTemplateDto: UpdateTemplateDto) {
+  @ApiOperation({ summary: 'Actualizar un template' })
+  @ApiResponse({
+    status: 200,
+    description: 'Template actualizado exitosamente',
+  })
+  @ApiResponse({ status: 404, description: 'Template no encontrado' })
+  update(
+    @Param('id') id: string,
+    @Body() updateTemplateDto: UpdateTemplateDto,
+  ) {
     return this.templatesService.update(id, updateTemplateDto);
   }
 
   @Patch(':id/deactivate')
   @ApiOperation({ summary: 'Desactivar un template' })
-  @ApiResponse({ status: 200, description: 'Template desactivado exitosamente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Template desactivado exitosamente',
+  })
   @ApiResponse({ status: 404, description: 'Template no encontrado' })
   desactivate(@Param('id') id: string) {
     return this.templatesService.desactivate(id);

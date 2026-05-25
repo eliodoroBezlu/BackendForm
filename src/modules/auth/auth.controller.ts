@@ -24,6 +24,7 @@ import { Verify2FADto } from './dto/verify-2fa.dto';
 import { Setup2FADto } from './dto/setup-2fa.dto';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { InspectorLoginDto } from './dto/inspector-login.dto';
+import { getPermissionsForRoles } from './enums/role-permissions';
 
 @Controller('auth')
 export class AuthController {
@@ -136,12 +137,17 @@ async refresh(
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getProfile(@CurrentUser() user: User) {
+    const rolePermissions = getPermissionsForRoles(user.roles || []);
+    const directPermissions = user.permissions || [];
+    const allPermissions = Array.from(new Set([...rolePermissions, ...directPermissions]));
+
     return {
       id: user._id.toString(),
       username: user.username,
       email: user.email,
       fullName: user.fullName,
       roles: user.roles,
+      permissions: allPermissions,
       isTwoFactorEnabled: user.isTwoFactorEnabled,
     };
   }

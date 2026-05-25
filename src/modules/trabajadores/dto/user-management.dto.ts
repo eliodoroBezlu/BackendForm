@@ -48,6 +48,14 @@ export class UpdateUserRolesDto {
   roles: string[];
 }
 
+export class UpdateUserPermissionsDto {
+  @ApiProperty({ description: 'Nuevos permisos extra para el usuario' })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  permissions: string[];
+}
+
 export class DisableUserDto {
   @ApiProperty({ description: 'Motivo de la desactivación' })
   @IsString()

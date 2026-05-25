@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -6,7 +11,11 @@ import {
   InspectionHerraEquiposDocument,
 } from './schemas/inspection-herra-equipos.schema';
 import { CreateInspectionHerraEquipoDto } from './dto/create-inspection-herra-equipo.dto';
-import { UpdateInspectionHerraEquipoDto, ApproveInspectionDto, RejectInspectionDto } from './dto/update-inspection-herra-equipo.dto';
+import {
+  UpdateInspectionHerraEquipoDto,
+  ApproveInspectionDto,
+  RejectInspectionDto,
+} from './dto/update-inspection-herra-equipo.dto';
 import { EquipmentTrackingService } from '../equipment-tracking/equipment-tracking.service';
 import { TemplateConfigService } from '../equipment-tracking/template-config.service';
 import { InspectionStatus } from './types/IProps';
@@ -14,7 +23,7 @@ import { InspectionStatus } from './types/IProps';
 @Injectable()
 export class InspectionsHerraEquiposService {
   private readonly logger = new Logger(InspectionsHerraEquiposService.name);
-  
+
   constructor(
     @InjectModel(InspectionHerraEquipos.name)
     private inspectionModel: Model<InspectionHerraEquiposDocument>,
@@ -37,14 +46,21 @@ export class InspectionsHerraEquiposService {
       const inspection = new this.inspectionModel({
         ...createDto,
         submittedAt: new Date(createDto.submittedAt),
+        // Extraer área desde verification (clave puede variar)
+        area: this.extractAreaFromVerification(createDto.verification),
       });
 
       const saved = await inspection.save();
       this.logger.log(`✅ Inspección guardada con ID: ${saved._id}`);
 
       // Si requiere aprobación, no hacer tracking todavía
-      if (saved.requiresApproval && saved.status === InspectionStatus.PENDING_APPROVAL) {
-        this.logger.log('⏳ Inspección pendiente de aprobación - tracking suspendido');
+      if (
+        saved.requiresApproval &&
+        saved.status === InspectionStatus.PENDING_APPROVAL
+      ) {
+        this.logger.log(
+          '⏳ Inspección pendiente de aprobación - tracking suspendido',
+        );
         return { inspection: saved };
       }
 
@@ -98,7 +114,7 @@ export class InspectionsHerraEquiposService {
 
   async approveInspection(
     id: string,
-    approveDto: ApproveInspectionDto
+    approveDto: ApproveInspectionDto,
   ): Promise<InspectionHerraEquiposDocument> {
     const inspection = await this.inspectionModel.findById(id).exec();
 
@@ -108,7 +124,7 @@ export class InspectionsHerraEquiposService {
 
     if (inspection.status !== InspectionStatus.PENDING_APPROVAL) {
       throw new BadRequestException(
-        'Solo se pueden aprobar inspecciones pendientes de aprobación'
+        'Solo se pueden aprobar inspecciones pendientes de aprobación',
       );
     }
 
@@ -122,12 +138,16 @@ export class InspectionsHerraEquiposService {
     };
 
     const approved = await inspection.save();
-    
-    this.logger.log(`✅ Inspección ${id} aprobada por ${approveDto.approvedBy}`);
+
+    this.logger.log(
+      `✅ Inspección ${id} aprobada por ${approveDto.approvedBy}`,
+    );
 
     // ✅ Ahora sí ejecutar tracking
-    const config = this.templateConfigService.getConfig(inspection.templateCode);
-    
+    const config = this.templateConfigService.getConfig(
+      inspection.templateCode,
+    );
+
     if (config.type !== 'pre-uso' && config.type !== 'diaria') {
       try {
         await this.equipmentTrackingService.registerInspectionWithAutoTracking({
@@ -136,7 +156,7 @@ export class InspectionsHerraEquiposService {
           verificationData: inspection.verification,
           inspectorName: inspection.submittedBy,
         });
-        
+
         this.logger.log(`✅ Tracking registrado después de aprobación`);
       } catch (error) {
         this.logger.error('⚠️ Error en tracking post-aprobación:', error);
@@ -148,7 +168,7 @@ export class InspectionsHerraEquiposService {
 
   async rejectInspection(
     id: string,
-    rejectDto: RejectInspectionDto
+    rejectDto: RejectInspectionDto,
   ): Promise<InspectionHerraEquiposDocument> {
     const inspection = await this.inspectionModel.findById(id).exec();
 
@@ -158,7 +178,7 @@ export class InspectionsHerraEquiposService {
 
     if (inspection.status !== InspectionStatus.PENDING_APPROVAL) {
       throw new BadRequestException(
-        'Solo se pueden rechazar inspecciones pendientes de aprobación'
+        'Solo se pueden rechazar inspecciones pendientes de aprobación',
       );
     }
 
@@ -171,22 +191,50 @@ export class InspectionsHerraEquiposService {
     };
 
     const rejected = await inspection.save();
-    
-    this.logger.log(`❌ Inspección ${id} rechazada por ${rejectDto.rejectedBy}`);
+
+    this.logger.log(
+      `❌ Inspección ${id} rechazada por ${rejectDto.rejectedBy}`,
+    );
 
     return rejected;
   }
 
-  async findPendingApprovals(excludeSubmittedBy?: string): Promise<InspectionHerraEquiposDocument[]> {
-    const query: any = { 
+  async findPendingApprovals(
+    options: {
+      excludeSubmittedBy?: string;
+      areas?: string[]; // array de áreas (soporte multi-área)
+      isAdmin?: boolean;
+    } = {},
+  ): Promise<InspectionHerraEquiposDocument[]> {
+    const { excludeSubmittedBy, areas, isAdmin } = options;
+
+    const query: Record<string, unknown> = {
       status: InspectionStatus.PENDING_APPROVAL,
       requiresApproval: true,
     };
 
-    // Excluir inspecciones del propio usuario (no puede aprobar las suyas)
+    // Excluir propias del supervisor (no puede aprobar las suyas)
     if (excludeSubmittedBy) {
       query.submittedBy = { $ne: excludeSubmittedBy };
     }
+
+    // Si no es admin, filtrar estrictamente por áreas seleccionadas
+    if (!isAdmin) {
+      if (!areas || areas.length === 0) {
+        this.logger.warn(
+          '⚠️ Supervisor sin áreas definidas: devolviendo lista vacía',
+        );
+        return [];
+      }
+      // $in con regex case-insensitive por cada área seleccionada
+      query.area = {
+        $in: areas.map((a) => new RegExp(`^${this.escapeRegex(a)}$`, 'i')),
+      };
+    }
+
+    this.logger.log(
+      `📋 findPendingApprovals — áreas: [${areas?.join(', ') ?? 'TODAS'}] | isAdmin: ${isAdmin ?? false}`,
+    );
 
     return this.inspectionModel
       .find(query)
@@ -198,6 +246,40 @@ export class InspectionsHerraEquiposService {
   // ============================================
   // MÉTODOS EXISTENTES
   // ============================================
+
+  // ============================================
+  // HELPERS PRIVADOS
+  // ============================================
+
+  /**
+   * Extrae el valor del campo "área" desde el objeto verification.
+   * La clave puede variar: "ÁREA", "AREA", "Área", "area", etc.
+   * Se normaliza quitando tildes y convirtiendo a minúsculas para comparar.
+   */
+  private extractAreaFromVerification(
+    verification: Record<string, string | number>,
+  ): string | undefined {
+    const normalize = (s: string) =>
+      s
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+    for (const key of Object.keys(verification)) {
+      const normalizedKey = normalize(key);
+      if (normalizedKey === 'area' || normalizedKey === 'area/seccion') {
+        const val = verification[key];
+        return typeof val === 'string' ? val.trim() : String(val);
+      }
+    }
+    return undefined;
+  }
+
+  /** Escapa caracteres especiales para usar en RegExp de MongoDB */
+  private escapeRegex(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
   private extractEquipmentId(
     verificationData: Record<string, any>,
@@ -217,7 +299,7 @@ export class InspectionsHerraEquiposService {
 
   async updateInProgress(
     id: string,
-    updateDto: Partial<CreateInspectionHerraEquipoDto>
+    updateDto: Partial<CreateInspectionHerraEquipoDto>,
   ): Promise<InspectionHerraEquiposDocument> {
     const inspection = await this.inspectionModel.findById(id).exec();
 
@@ -227,7 +309,7 @@ export class InspectionsHerraEquiposService {
 
     if (inspection.status !== InspectionStatus.IN_PROGRESS) {
       throw new BadRequestException(
-        'Solo se pueden actualizar inspecciones en progreso'
+        'Solo se pueden actualizar inspecciones en progreso',
       );
     }
 
@@ -243,13 +325,15 @@ export class InspectionsHerraEquiposService {
     }
 
     const updated = await inspection.save();
-    
+
     this.logger.log('🔄 Inspección en progreso actualizada:', updated._id);
 
     return updated;
   }
 
-  async findInProgress(filters?: any): Promise<InspectionHerraEquiposDocument[]> {
+  async findInProgress(
+    filters?: any,
+  ): Promise<InspectionHerraEquiposDocument[]> {
     const query: any = { status: InspectionStatus.IN_PROGRESS };
 
     if (filters?.templateCode) {
@@ -260,10 +344,7 @@ export class InspectionsHerraEquiposService {
       query.submittedBy = filters.submittedBy;
     }
 
-    return this.inspectionModel
-      .find(query)
-      .sort({ updatedAt: -1 })
-      .exec();
+    return this.inspectionModel.find(query).sort({ updatedAt: -1 }).exec();
   }
 
   async findAll(filters?: any): Promise<InspectionHerraEquiposDocument[]> {

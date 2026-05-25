@@ -16,7 +16,6 @@ import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schema/tag.schema';
-import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
@@ -58,7 +57,7 @@ export class TagController {
 
     try {
       const tags = await this.tagService.findByArea(area);
-      
+
       return tags;
     } catch (error) {
       console.error('❌ Error al buscar tags por área:', error);

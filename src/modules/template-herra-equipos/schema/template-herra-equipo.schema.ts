@@ -142,6 +142,9 @@ export class VerificationField {
 
   @Prop()
   dataSource?: string;
+
+  @Prop({ default: true }) // Set to true by default to match frontend behavior
+  obligatorio?: boolean;
 }
 
 // ============================================

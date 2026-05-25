@@ -36,6 +36,12 @@ export class User extends Document {
   })
   roles: Role[];
 
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  permissions?: string[];
+
   @Prop({ default: false })
   isTwoFactorEnabled: boolean;
 
