@@ -28,7 +28,7 @@ export class AreaController {
     @Body() createAreaDto: CreateAreaDto,
     @Request() req: any
   ) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.areaService.create(createAreaDto, usuario);
   }
 
@@ -49,23 +49,23 @@ export class AreaController {
 
   @Patch(':id')
   async update(
-    @Param('id') id: string, 
+    @Param('id') id: string,
     @Body() updateAreaDto: UpdateAreaDto,
     @Request() req: any
   ) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.areaService.update(id, updateAreaDto, usuario);
   }
 
   @Put('desactivar/:id')
   async desactivar(@Param('id') id: string, @Request() req: any) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.areaService.desactivar(id, usuario);
   }
 
   @Put('activar/:id')
   async activar(@Param('id') id: string, @Request() req: any) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.areaService.activar(id, usuario);
   }
 

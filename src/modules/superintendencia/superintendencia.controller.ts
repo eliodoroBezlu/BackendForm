@@ -28,7 +28,7 @@ export class SuperintendenciaController {
     @Body() createSuperintendenciaDto: CreateSuperintendenciaDto,
     @Request() req: any
   ) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.superintendenciaService.create(createSuperintendenciaDto, usuario);
   }
 
@@ -49,23 +49,23 @@ export class SuperintendenciaController {
 
   @Patch(':id')
   async update(
-    @Param('id') id: string, 
+    @Param('id') id: string,
     @Body() updateSuperintendenciaDto: UpdateSuperintendenciaDto,
     @Request() req: any
   ) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.superintendenciaService.update(id, updateSuperintendenciaDto, usuario);
   }
 
   @Put('desactivar/:id')
   async desactivar(@Param('id') id: string, @Request() req: any) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.superintendenciaService.desactivar(id, usuario);
   }
 
   @Put('activar/:id')
   async activar(@Param('id') id: string, @Request() req: any) {
-    const usuario = req.user?.preferred_username || 'Sistema';
+    const usuario = req.user?.username || 'Sistema';
     return this.superintendenciaService.activar(id, usuario);
   }
 

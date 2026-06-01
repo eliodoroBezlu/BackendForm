@@ -3,11 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Trabajador } from './schema/trabajador.schema';
-import { User } from '../auth/schemas/user.schema'; // ← TU AUTH
+import { User } from '../auth/schemas/user.schema';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
 import { CreateUserForWorkerDto } from './dto/create-user-for-worker.dto';
@@ -16,13 +17,12 @@ import {
   UpdateUserRolesDto,
   DisableUserDto,
 } from './dto/user-management.dto';
-import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class TrabajadoresService {
   constructor(
     @InjectModel(Trabajador.name) private trabajadorModel: Model<Trabajador>,
-    @InjectModel(User.name) private userModel: Model<User>, // ← TU AUTH
+    @InjectModel(User.name) private userModel: Model<User>,
   ) {}
 
   // ==================== CRUD BÁSICO ====================
@@ -71,11 +71,11 @@ export class TrabajadoresService {
       throw new NotFoundException(`Trabajador ${id} no encontrado`);
     }
 
-    // ⚠️ IMPORTANTE: Desactivar usuario asociado (no eliminarlo)
+    // ⚠️ Si el trabajador tenía un usuario MongoDB legacy, desactivarlo
     if (trabajador.userId) {
       await this.userModel.findByIdAndUpdate(trabajador.userId, {
         isActive: false,
-      });
+      }).catch(() => {/* ignorar si userId ya no existe en MongoDB */});
     }
 
     return trabajador;
@@ -142,345 +142,89 @@ export class TrabajadoresService {
   }
 
   // ==================== CREAR TRABAJADOR CON USUARIO ====================
+  // ── Gestión de usuarios delegada a IAM Core ──────────────────────────
+  // Los usuarios se crean y administran desde el IAM Portal.
+  // Accede a: http://localhost:3005 → Admin → Trabajadores
 
   async createWithUser(
-    createDto: CreateTrabajadorWithUserDto,
-    requestingUser: any,
+    _createDto: CreateTrabajadorWithUserDto,
+    _requestingUser: any,
   ) {
-    // Verificar permisos
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException(
-        'Solo administradores pueden crear usuarios',
-      );
-    }
-
-    let trabajador: Trabajador | null = null;
-    let user: User | null = null;
-
-    try {
-      // 1. Verificar que username no exista
-      const existingUser = await this.userModel.findOne({
-        username: createDto.username,
-      });
-      if (existingUser) {
-        throw new ConflictException(
-          `El username '${createDto.username}' ya está en uso`,
-        );
-      }
-
-      // 2. Crear trabajador primero
-      const trabajadorData: CreateTrabajadorDto = {
-        ci: createDto.ci,
-        nomina: createDto.nomina,
-        puesto: createDto.puesto,
-        fecha_ingreso: createDto.fecha_ingreso,
-        superintendencia: createDto.superintendencia,
-        area: createDto.area,
-      };
-
-      trabajador = await this.create(trabajadorData);
-
-      // 3. Crear usuario en tu sistema de auth
-      const hashedPassword = await bcrypt.hash(createDto.password, 10);
-
-      user = await this.userModel.create({
-        username: createDto.username,
-        email: createDto.email || `${createDto.username}@temp.local`,
-        password: hashedPassword,
-        fullName: createDto.fullName || createDto.nomina,
-        roles: createDto.roles || ['user'],
-        isActive: true,
-        isTwoFactorEnabled: false,
-      });
-
-      // 4. Vincular trabajador con usuario
-      trabajador = await this.trabajadorModel.findByIdAndUpdate(
-        trabajador._id,
-        {
-          userId: user._id,
-          username: user.username,
-          tiene_acceso_sistema: true,
-          creado_por_usuario: requestingUser.username,
-        },
-        { new: true },
-      );
-
-      return {
-        success: true,
-        message: 'Trabajador y usuario creados exitosamente',
-        trabajador,
-        usuario: {
-          username: user.username,
-          email: user.email,
-          roles: user.roles,
-          temporary_password: createDto.temporary_password ?? true,
-        },
-      };
-    } catch (error) {
-      // Rollback si algo falla
-      if (trabajador) {
-        await this.trabajadorModel.findByIdAndDelete(trabajador._id);
-      }
-      if (user) {
-        await this.userModel.findByIdAndDelete(user._id);
-      }
-
-      throw error;
-    }
+    throw new BadRequestException(
+      'La creación de usuarios está centralizada en IAM Core. ' +
+      'Accede al IAM Portal (Admin → Trabajadores) para crear y vincular usuarios.',
+    );
   }
 
   // ==================== CREAR USUARIO PARA TRABAJADOR EXISTENTE ====================
 
   async createUserForExistingWorker(
-    trabajadorId: string,
-    createUserDto: CreateUserForWorkerDto,
-    requestingUser: any,
+    _trabajadorId: string,
+    _createUserDto: CreateUserForWorkerDto,
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException(
-        'Solo administradores pueden crear usuarios',
-      );
-    }
-
-    try {
-      const trabajador = await this.trabajadorModel.findById(trabajadorId);
-      if (!trabajador) {
-        throw new NotFoundException(`Trabajador ${trabajadorId} no encontrado`);
-      }
-
-      if (trabajador.userId && trabajador.tiene_acceso_sistema) {
-        throw new ConflictException('Este trabajador ya tiene usuario activo');
-      }
-
-      // Verificar username único
-      const existingUser = await this.userModel.findOne({
-        username: createUserDto.username,
-      });
-      if (existingUser) {
-        throw new ConflictException(
-          `Username '${createUserDto.username}' ya está en uso`,
-        );
-      }
-
-      // Crear usuario
-      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-
-      const user = await this.userModel.create({
-        username: createUserDto.username,
-        email: createUserDto.email || `${createUserDto.username}@temp.local`,
-        password: hashedPassword,
-        fullName: createUserDto.fullName || trabajador.nomina,
-        roles: createUserDto.roles || ['user'],
-        isActive: true,
-      });
-
-      // Vincular
-      const trabajadorActualizado =
-        await this.trabajadorModel.findByIdAndUpdate(
-          trabajadorId,
-          {
-            userId: user._id,
-            username: user.username,
-            tiene_acceso_sistema: true,
-          },
-          { new: true },
-        );
-
-      return {
-        success: true,
-        message: 'Usuario creado y vinculado exitosamente',
-        trabajador: trabajadorActualizado,
-        usuario: {
-          username: user.username,
-          email: user.email,
-          roles: user.roles,
-        },
-      };
-    } catch (error) {
-      throw error;
-    }
+    throw new BadRequestException(
+      'La creación de usuarios está centralizada en IAM Core. ' +
+      'Accede al IAM Portal (Admin → Trabajadores) para vincular usuarios a trabajadores.',
+    );
   }
 
   // ==================== GESTIÓN DE USUARIOS ====================
 
   async updateWorkerUserPassword(
-    trabajadorId: string,
-    updateDto: UpdateUserPasswordDto,
-    requestingUser: any,
+    _trabajadorId: string,
+    _updateDto: UpdateUserPasswordDto,
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    const hashedPassword = await bcrypt.hash(updateDto.new_password, 10);
-
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      password: hashedPassword,
-    });
-
-    return {
-      success: true,
-      message: 'Contraseña actualizada',
-    };
+    throw new BadRequestException(
+      'Gestión de contraseñas centralizada en IAM Portal (Admin → Usuarios → Reset password).',
+    );
   }
 
   async updateWorkerUserRoles(
-    trabajadorId: string,
-    updateDto: UpdateUserRolesDto,
-    requestingUser: any,
+    _trabajadorId: string,
+    _updateDto: UpdateUserRolesDto,
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      roles: updateDto.roles,
-    });
-
-    return {
-      success: true,
-      message: 'Roles actualizados',
-      roles: updateDto.roles,
-    };
+    throw new BadRequestException(
+      'Gestión de roles centralizada en IAM Portal (Admin → Usuarios).',
+    );
   }
 
   async updateWorkerUserPermissions(
-    trabajadorId: string,
-    updateDto: { permissions: string[] },
-    requestingUser: any,
+    _trabajadorId: string,
+    _updateDto: { permissions: string[] },
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      permissions: updateDto.permissions,
-    });
-
-    return {
-      success: true,
-      message: 'Permisos extra actualizados',
-      permissions: updateDto.permissions,
-    };
+    throw new BadRequestException(
+      'Gestión de permisos centralizada en IAM Portal (Admin → Usuarios).',
+    );
   }
 
   async disableWorkerUser(
-    trabajadorId: string,
-    disableDto: DisableUserDto,
-    requestingUser: any,
+    _trabajadorId: string,
+    _disableDto: DisableUserDto,
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      isActive: false,
-    });
-
-    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-      user_disabled: true,
-      user_disabled_reason: disableDto.reason,
-      user_disabled_by: requestingUser.username,
-      user_disabled_at: new Date(),
-    });
-
-    return {
-      success: true,
-      message: 'Usuario desactivado',
-    };
+    throw new BadRequestException(
+      'Desactivación de usuarios centralizada en IAM Portal (Admin → Usuarios → Desactivar).',
+    );
   }
 
-  async enableWorkerUser(trabajadorId: string, requestingUser: any) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      isActive: true,
-    });
-
-    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-      user_disabled: false,
-      $unset: {
-        user_disabled_reason: 1,
-        user_disabled_by: 1,
-        user_disabled_at: 1,
-      },
-    });
-
-    return {
-      success: true,
-      message: 'Usuario activado',
-    };
+  async enableWorkerUser(_trabajadorId: string, _requestingUser: any) {
+    throw new BadRequestException(
+      'Activación de usuarios centralizada en IAM Portal (Admin → Usuarios → Activar).',
+    );
   }
 
   async unlinkWorkerUser(
-    trabajadorId: string,
-    reason: string,
-    requestingUser: any,
+    _trabajadorId: string,
+    _reason: string,
+    _requestingUser: any,
   ) {
-    const isAdmin = requestingUser?.roles?.includes('admin');
-    if (!isAdmin) {
-      throw new ForbiddenException('Solo administradores');
-    }
-
-    const trabajador = await this.trabajadorModel.findById(trabajadorId);
-    if (!trabajador?.userId) {
-      throw new NotFoundException('Trabajador sin usuario asociado');
-    }
-
-    // Desactivar usuario (no eliminar)
-    await this.userModel.findByIdAndUpdate(trabajador.userId, {
-      isActive: false,
-    });
-
-    // Desvincular
-    await this.trabajadorModel.findByIdAndUpdate(trabajadorId, {
-      userId: null,
-      username: null,
-      tiene_acceso_sistema: false,
-      user_unlinked: true,
-      user_unlinked_reason: reason,
-      user_unlinked_by: requestingUser.username,
-      user_unlinked_at: new Date(),
-    });
-
-    return {
-      success: true,
-      message: 'Usuario desvinculado',
-    };
+    throw new BadRequestException(
+      'Desvinculación de usuarios centralizada en IAM Portal (Admin → Trabajadores → Desvincular).',
+    );
   }
 
   async getWorkerUserInfo(trabajadorId: string) {
