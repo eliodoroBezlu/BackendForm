@@ -9,6 +9,7 @@ import {
   Controller, Post, Get, Body, Req, Res,
   HttpCode, HttpStatus, UseGuards, UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService }   from '@nestjs/config';
 import { Response } from 'express';
 import { JwtAuthGuard }    from './guards/jwt-auth.guard';
 import { CurrentUser }     from 'src/common/decorators/current-user.decorator';
@@ -16,7 +17,10 @@ import { IamProxyService } from './iam-proxy.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly iam: IamProxyService) {}
+  constructor(
+    private readonly iam:    IamProxyService,
+    private readonly config: ConfigService,
+  ) {}
 
   // ── Login ─────────────────────────────────────────────────────
   // FormNext llama a POST /auth/login con { username, password }
@@ -183,18 +187,45 @@ export class AuthController {
     return data;
   }
 
-  // ── Inspector login (legacy) ──────────────────────────────────
-  // Stub para no romper código existente.
-  // Los inspectores ahora se autentican con credenciales normales en IAM Core.
+  // ── Inspector login (legacy — acceso temporal de técnico) ─────────
+  // Acceso directo de inspector mientras se migran todos los trabajadores
+  // a usuarios IAM Core con passkey. Se eliminará gradualmente.
+  //
+  // Flujo:
+  //  1. FormNext envía { inspectorKey } (gate de acceso legacy)
+  //  2. Se valida contra INSPECTOR_API_KEY
+  //  3. Login server-to-server contra IAM Core con el usuario inspector dedicado
+  //  4. Se reenvían las cookies (access_token, refresh_token) al browser
 
   @Post('inspector')
   @HttpCode(HttpStatus.OK)
   async inspectorLogin(
-    @Res({ passthrough: true }) _res: Response,
+    @Body() body: { inspectorKey?: string },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return {
-      message: 'El login de inspector ya no está disponible. Usa las credenciales de usuario en /auth/login.',
-      code:    'INSPECTOR_LOGIN_DEPRECATED',
-    };
+    // 1. Validar la API Key del inspector
+    const validKey = this.config.get<string>('INSPECTOR_API_KEY');
+    if (!validKey || body.inspectorKey !== validKey) {
+      throw new UnauthorizedException('API Key de inspector inválida');
+    }
+
+    // 2. Credenciales del usuario inspector dedicado en IAM Core
+    const username = this.config.get<string>('INSPECTOR_USERNAME', 'inspector_tecnico');
+    const password = this.config.get<string>('INSPECTOR_PASSWORD');
+    if (!password) {
+      throw new UnauthorizedException(
+        'Acceso de inspector no configurado (falta INSPECTOR_PASSWORD)',
+      );
+    }
+
+    // 3. Login server-to-server contra IAM Core (IamProxyService añade X-Api-Key)
+    const { data, rawHeaders } = await this.iam.post('/auth/login', {
+      username,
+      password,
+    });
+
+    // 4. Reenviar cookies al browser
+    this.iam.forwardCookies(rawHeaders, res);
+    return data;
   }
 }
