@@ -209,19 +209,14 @@ export class AuthController {
       throw new UnauthorizedException('API Key de inspector inválida');
     }
 
-    // 2. Credenciales del usuario inspector dedicado en IAM Core
+    // 2. Usuario inspector dedicado en IAM Core
     const username = this.config.get<string>('INSPECTOR_USERNAME', 'inspector_tecnico');
-    const password = this.config.get<string>('INSPECTOR_PASSWORD');
-    if (!password) {
-      throw new UnauthorizedException(
-        'Acceso de inspector no configurado (falta INSPECTOR_PASSWORD)',
-      );
-    }
 
-    // 3. Login server-to-server contra IAM Core (IamProxyService añade X-Api-Key)
-    const { data, rawHeaders } = await this.iam.post('/auth/login', {
+    // 3. Service-login contra IAM Core: sin contraseña, la confianza está
+    //    en la X-Api-Key que añade IamProxyService. Evita el problema de
+    //    sincronizar contraseñas entre servicios.
+    const { data, rawHeaders } = await this.iam.post('/auth/service-login', {
       username,
-      password,
     });
 
     // 4. Reenviar cookies al browser
