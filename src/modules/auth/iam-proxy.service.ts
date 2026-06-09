@@ -107,9 +107,12 @@ export class IamProxyService {
   }
 
   // ── Limpiar cookies en el browser ─────────────────────────────
+  // El domain debe coincidir con el usado al setear (COOKIE_DOMAIN) para
+  // que el borrado aplique en escenarios de SSO cross-subdominio.
 
   clearCookies(res: Response): void {
-    res.clearCookie('access_token',  { path: '/' });
-    res.clearCookie('refresh_token', { path: '/' });
+    const domain = this.config.get<string>('COOKIE_DOMAIN') || undefined;
+    res.clearCookie('access_token',  { path: '/', domain });
+    res.clearCookie('refresh_token', { path: '/', domain });
   }
 }
