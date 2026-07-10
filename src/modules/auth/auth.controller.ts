@@ -117,24 +117,24 @@ export class AuthController {
     if (!accessToken) throw new UnauthorizedException('Sin token');
 
     // Llamar a IAM Core para datos frescos (fullName, lastLoginAt, servicios, etc.)
-    const iamUser = await this.iam.get('/auth/me', {
+    const iamUser: any = await this.iam.get('/auth/me', {
       access_token: accessToken,
     }).catch(() => null);
 
-    // Si IAM Core falla, retornar lo que tenemos del JWT payload
-    if (!iamUser) {
-      return {
-        id:                 user.id,
-        username:           user.username,
-        email:              user.email,
-        fullName:           user.fullName,
-        roles:              user.roles,
-        permissions:        user.permissions,
-        isTwoFactorEnabled: user.isTwoFactorEnabled,
-      };
-    }
-
-    return iamUser;
+    // roles/permissions SIEMPRE deben venir de `user` (calculados por JwtStrategy
+    // vía RbacCacheService, específicos del servicio "forms") — el JWT de IAM Core
+    // no trae un claim de permisos, y el perfil crudo de IAM tampoco lo calcula
+    // para este servicio, así que nunca deben sobreescribirse con lo que venga de IAM.
+    return {
+      ...(iamUser ?? {}),
+      id:                 user.id,
+      username:           user.username,
+      email:              iamUser?.email ?? user.email,
+      fullName:           iamUser?.fullName ?? user.fullName,
+      roles:              user.roles,
+      permissions:        user.permissions,
+      isTwoFactorEnabled: iamUser?.isTwoFactorEnabled ?? user.isTwoFactorEnabled,
+    };
   }
 
   // ── TOTP / 2FA setup ─────────────────────────────────────────

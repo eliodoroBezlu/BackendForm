@@ -121,7 +121,12 @@ class InspeccionMensual {
 
 const InspeccionMensualSchema = SchemaFactory.createForClass(InspeccionMensual);
 
-@Schema()
+@Schema({
+  timestamps: {
+    createdAt: 'fechaCreacion',
+    updatedAt: 'fechaUltimaModificacion',
+  },
+})
 export class FormularioInspeccionEmergencia extends Document {
   @Prop({ default: '3.02.P01.F17' })
   documentCode: string;
@@ -192,10 +197,10 @@ export class FormularioInspeccionEmergencia extends Document {
   })
   meses: Map<string, InspeccionMensual>;
 
-  @Prop({ type: Date, default: Date.now })
+  @Prop({ type: Date })
   fechaCreacion: Date;
 
-  @Prop({ type: Date, default: Date.now })
+  @Prop({ type: Date })
   fechaUltimaModificacion: Date;
 
   @Prop({
@@ -216,3 +221,6 @@ FormularioInspeccionSchema.index({
   año: 1,
   mesActual: 1,
 });
+
+FormularioInspeccionSchema.index({ tag: 1, estado: 1 });
+FormularioInspeccionSchema.index({ tag: 1, periodo: 1, año: 1 });

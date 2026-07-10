@@ -13,23 +13,27 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import * as jwksRsa from 'jwks-rsa';
-import { getPermissionsForRoles } from '../enums/role-permissions';
+import { RbacCacheService } from '../rbac-cache.service';
 
 interface IamJwtPayload {
-  sub:      string;    // IAM Core UUID
-  username: string;
-  email?:   string;
-  roles:    string[];
-  services: string[];
-  iss:      string;
-  aud:      string | string[];
-  exp:      number;
-  iat:      number;
+  sub:            string;    // IAM Core UUID
+  username:       string;
+  email?:         string;
+  roles:          string[];
+  services:       string[];
+  service_roles?: Record<string, string[]>; // roles genéricos por servicio (RBAC)
+  iss:            string;
+  aud:            string | string[];
+  exp:            number;
+  iat:            number;
 }
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    private readonly rbac: RbacCacheService,
+  ) {
     const iamCoreUrl = configService.get<string>('IAM_CORE_URL', 'http://localhost:4000');
     const jwksUri    = `${iamCoreUrl}/api/auth/.well-known/jwks.json`;
 
@@ -68,8 +72,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token inválido');
     }
 
-    const roles       = payload.roles ?? ['user'];
-    const permissions = getPermissionsForRoles(roles as any);
+    // Roles del usuario EN forms (RBAC por servicio); fallback a roles globales
+    // para compatibilidad con tokens/usuarios previos a la centralización.
+    const formsRoles = payload.service_roles?.forms ?? payload.roles ?? ['user'];
+    // Permisos computados desde el mapa RBAC centralizado del IAM (cacheado).
+    const permissions = await this.rbac.computePermissions(formsRoles);
 
     // Compatible con el User de Mongoose que usan los decoradores existentes.
     // _id y id apuntan al IAM Core UUID (string, no ObjectId).
@@ -79,7 +86,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       username:           payload.username,
       email:              payload.email  ?? null,
       fullName:           null,
-      roles,
+      roles:              formsRoles,
       permissions,
       services:           payload.services ?? [],
       isActive:           true,

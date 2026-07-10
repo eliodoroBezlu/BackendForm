@@ -32,6 +32,12 @@ import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import {
+  buildInspectionFilename,
+  buildContentDispositionHeader,
+  dedupeFilename,
+} from '../../common/utils/download-filename.util';
+import archiver = require('archiver');
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('instances')
@@ -163,6 +169,147 @@ export class InstancesController {
     return this.instancesService.remove(id);
   }
 
+  /**
+   * Resuelve el buffer de Excel correspondiente al templateCode de la
+   * instancia, probando cada generador especializado. Reutilizado por
+   * downloadExcel, downloadPdf y el endpoint de descarga masiva (ZIP).
+   */
+  private async generarExcelBuffer(
+    inspeccion: any,
+    templateCode: string,
+    templateRevision: string,
+  ): Promise<Buffer | null> {
+    if (templateCode.includes('1.02.P06.F47')) {
+      return this.calienteExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F45')) {
+      return this.aislamientoExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F50')) {
+      return this.izajeExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F51')) {
+      return this.sustanciaExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F52')) {
+      return this.electricActosExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F46')) {
+      return templateRevision === '4'
+        ? this.alturaV4ExcelService.generateExcel(inspeccion)
+        : this.alturaExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F48')) {
+      return this.confinadosExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F53')) {
+      return this.electricCondicionesExcelService.generateExcel(inspeccion);
+    } else if (templateCode.includes('1.02.P06.F12')) {
+      return this.isopV7ExcelService.generateExcel(inspeccion);
+    }
+    return null;
+  }
+
+  /** Genera el documento final (Excel o PDF) para una instancia ya cargada. */
+  private async generarDocumento(
+    inspeccion: any,
+    formato: 'excel' | 'pdf',
+  ): Promise<Buffer | null> {
+    const template = inspeccion.templateId;
+    const templateCode = template?.code?.toUpperCase() || '';
+    const templateRevision = template?.revision || '';
+    const excelBuffer = await this.generarExcelBuffer(
+      inspeccion,
+      templateCode,
+      templateRevision,
+    );
+    if (!excelBuffer) return null;
+    if (formato === 'excel') return excelBuffer;
+    return this.excelToPdfService.convertExcelToPdf(excelBuffer, {
+      quality: 'high',
+    });
+  }
+
+  /** Extrae nombre/área/inspector/fecha de la instancia para el nombre de archivo. */
+  private resolverDatosArchivo(inspeccion: any): {
+    nombre: string;
+    area: string;
+    inspector: string;
+    fecha: Date | string | undefined;
+  } {
+    const template = inspeccion.templateId;
+    const vl = inspeccion.verificationList;
+    const getVl = (key: string): string | undefined =>
+      vl instanceof Map ? vl.get(key) : vl?.[key];
+    const area =
+      getVl('Área') || getVl('área') || getVl('area') || getVl('Area Física');
+    const inspector = inspeccion.inspectionTeam?.[0]?.nombre;
+    return {
+      nombre: template?.name || template?.code || '',
+      area: String(area || ''),
+      inspector: String(inspector || ''),
+      fecha: inspeccion.createdAt,
+    };
+  }
+
+  @Post('bulk-download')
+  async bulkDownload(
+    @Body() body: { ids: string[]; format: 'pdf' | 'excel' },
+    @Res() res: Response,
+  ) {
+    const { ids, format } = body || ({} as typeof body);
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Debe indicar al menos un id' });
+    }
+    if (format !== 'pdf' && format !== 'excel') {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato inválido: use "pdf" o "excel"',
+      });
+    }
+
+    const zipFilename = `Inspecciones_${new Date().toISOString().slice(0, 10)}.zip`;
+    res.set({
+      'Content-Type': 'application/zip',
+      'Content-Disposition': buildContentDispositionHeader(zipFilename),
+    });
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => {
+      console.error('❌ Error generando ZIP (instances):', err);
+      if (!res.headersSent) {
+        res
+          .status(500)
+          .json({ success: false, message: 'Error al generar el ZIP' });
+      }
+    });
+    archive.pipe(res);
+
+    const usados = new Map<string, number>();
+    const extension = format === 'excel' ? 'xlsx' : 'pdf';
+
+    for (const id of ids) {
+      try {
+        const inspeccion = await this.instancesService.findOne(id);
+        if (!inspeccion) continue;
+
+        const buffer = await this.generarDocumento(inspeccion, format);
+        if (!buffer) continue;
+
+        const { nombre, area, inspector, fecha } =
+          this.resolverDatosArchivo(inspeccion);
+        const filename = buildInspectionFilename(
+          nombre,
+          area,
+          inspector,
+          fecha,
+          extension,
+        );
+        archive.append(buffer, { name: dedupeFilename(filename, usados) });
+      } catch (err) {
+        console.error(`Error procesando instancia ${id} para el ZIP:`, err);
+      }
+    }
+
+    await archive.finalize();
+  }
+
   @Get(':id/excel')
   async downloadExcel(@Param('id') id: string, @Res() res: Response) {
     try {
@@ -173,79 +320,36 @@ export class InstancesController {
         return res.status(404).json({ message: 'Inspección no encontrada' });
       }
 
-      // 2. Extraer información del template
       const template = inspeccion.templateId as any;
       const templateCode = template.code?.toUpperCase() || '';
-      const templateRevision = template.revision || '';
-      const templateName = template.name?.toUpperCase() || '';
 
-      console.log(
-        `Generando Excel para template: ${templateCode} - ${template.name}`,
-      );
+      const buffer = await this.generarDocumento(inspeccion, 'excel');
 
-      // 3. Determinar qué servicio usar basado en el código/nombre del template
-      let buffer: Buffer;
-      let serviceUsed = '';
-
-      if (templateCode.includes('1.02.P06.F47')) {
-        buffer = await this.calienteExcelService.generateExcel(inspeccion);
-        serviceUsed = 'CalienteExcelService';
-      } else if (templateCode.includes('1.02.P06.F45')) {
-        buffer = await this.aislamientoExcelService.generateExcel(inspeccion);
-        serviceUsed = 'AislamientoExcelService';
-      } else if (templateCode.includes('1.02.P06.F50')) {
-        buffer = await this.izajeExcelService.generateExcel(inspeccion);
-        serviceUsed = 'AislamientoExcelService';
-      } else if (templateCode.includes('1.02.P06.F51')) {
-        buffer = await this.sustanciaExcelService.generateExcel(inspeccion);
-        serviceUsed = 'SustanciasExcelService';
-      } else if (templateCode.includes('1.02.P06.F52')) {
-        buffer = await this.electricActosExcelService.generateExcel(inspeccion);
-        serviceUsed = 'ElectricExcelService';
-      } else if (templateCode.includes('1.02.P06.F46')) {
-        console.log(`Template Revision: ${templateRevision}`);
-        if (templateRevision === '4') {
-          buffer = await this.alturaV4ExcelService.generateExcel(inspeccion);
-          serviceUsed = 'alturaV4ExcelService';
-        } else {
-          buffer = await this.alturaExcelService.generateExcel(inspeccion);
-          serviceUsed = 'AlturaExcelService';
-        }
-      } else if (templateCode.includes('1.02.P06.F48')) {
-        buffer = await this.confinadosExcelService.generateExcel(inspeccion);
-        serviceUsed = 'ConfinadoExcelService';
-      } else if (templateCode.includes('1.02.P06.F53')) {
-        buffer =
-          await this.electricCondicionesExcelService.generateExcel(inspeccion);
-        serviceUsed = 'ElectricCondicionesExcelService';
-      } else if (templateCode.includes('1.02.P06.F12')) {
-        buffer = await this.isopV7ExcelService.generateExcel(inspeccion);
-        serviceUsed = 'IsopV7ExcelService';
-      } else {
+      if (!buffer) {
         // Si no encuentra ningún servicio compatible
         return res.status(400).json({
           message: `No se encontró un generador de Excel para el template: ${templateCode} - ${template.name}`,
           templateCode: templateCode,
           templateName: template.name,
-          availableServices: [
-            'IRO, ISOLATION, AISLAMIENTO (IsolationExcelService)',
-            // 'SAFETY, SEGURIDAD (SafetyExcelService)',
-            // 'MAINT, MANTENIMIENTO (MaintenanceExcelService)',
-          ],
         });
       }
 
-      // 4. Generar nombre de archivo descriptivo
-      const timestamp = new Date().toISOString().slice(0, 10);
-      const filename = `inspeccion-${templateCode || 'UNKNOWN'}-${id}-${timestamp}.xlsx`;
+      const { nombre, area, inspector, fecha } =
+        this.resolverDatosArchivo(inspeccion);
+      const filename = buildInspectionFilename(
+        nombre,
+        area,
+        inspector,
+        fecha,
+        'xlsx',
+      );
 
-      console.log(`Excel generado exitosamente usando: ${serviceUsed}`);
+      console.log(`Excel generado exitosamente: ${filename}`);
 
-      // 5. Configurar respuesta
       res.set({
         'Content-Type':
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename=${filename}`,
+        'Content-Disposition': buildContentDispositionHeader(filename),
         'Content-Length': buffer.length.toString(),
       });
 
@@ -262,82 +366,55 @@ export class InstancesController {
   }
 
   @Get(':id/pdf')
-async downloadPdf(@Param('id') id: string, @Res() res: Response) {
-  try {
-    console.log(`📄 Generando PDF para instancia ID: ${id}`);
+  async downloadPdf(@Param('id') id: string, @Res() res: Response) {
+    try {
+      console.log(`📄 Generando PDF para instancia ID: ${id}`);
 
-    const inspeccion = await this.instancesService.findOne(id);
-    if (!inspeccion) {
-      return res.status(404).json({
+      const inspeccion = await this.instancesService.findOne(id);
+      if (!inspeccion) {
+        return res.status(404).json({
+          success: false,
+          message: 'Instancia no encontrada',
+        });
+      }
+
+      const template = inspeccion.templateId as any;
+      const templateCode = template?.code?.toUpperCase() || '';
+
+      const pdfBuffer = await this.generarDocumento(inspeccion, 'pdf');
+
+      if (!pdfBuffer) {
+        return res.status(400).json({
+          success: false,
+          message: `No se puede generar PDF para el template: ${templateCode}`,
+        });
+      }
+
+      const { nombre, area, inspector, fecha } =
+        this.resolverDatosArchivo(inspeccion);
+      const filename = buildInspectionFilename(
+        nombre,
+        area,
+        inspector,
+        fecha,
+        'pdf',
+      );
+
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': buildContentDispositionHeader(filename),
+        'Content-Length': pdfBuffer.length.toString(),
+        'Cache-Control': 'no-cache',
+      });
+
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('❌ Error al generar PDF (instancia):', error);
+      res.status(500).json({
         success: false,
-        message: 'Instancia no encontrada',
+        message: 'Error al generar el archivo PDF',
+        error: error.message,
       });
     }
-
-    // Extraer datos del template
-    const template = inspeccion.templateId as any;
-    const templateCode = template?.code?.toUpperCase() || '';
-
-    // Generar Excel (misma lógica que en /:id/excel)
-    let excelBuffer: Buffer;
-    if (templateCode.includes('1.02.P06.F47')) {
-      excelBuffer = await this.calienteExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F45')) {
-      excelBuffer = await this.aislamientoExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F50')) {
-      excelBuffer = await this.izajeExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F51')) {
-      excelBuffer = await this.sustanciaExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F52')) {
-      excelBuffer = await this.electricActosExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F46')) {
-      const revision = template?.revision || '';
-      excelBuffer = revision === '4'
-        ? await this.alturaV4ExcelService.generateExcel(inspeccion)
-        : await this.alturaExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F48')) {
-      excelBuffer = await this.confinadosExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F53')) {
-      excelBuffer = await this.electricCondicionesExcelService.generateExcel(inspeccion);
-    } else if (templateCode.includes('1.02.P06.F12')) {
-      excelBuffer = await this.isopV7ExcelService.generateExcel(inspeccion);
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede generar PDF para el template: ${templateCode}`,
-      });
-    }
-
-    if (!excelBuffer) {
-      return res.status(400).json({
-        success: false,
-        message: 'No se pudo generar el archivo Excel base',
-      });
-    }
-
-    // Convertir a PDF
-    const pdfBuffer = await this.excelToPdfService.convertExcelToPdf(excelBuffer, { quality: 'high' });
-
-    // Nombre del archivo
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `instancia-${templateCode || 'UNKNOWN'}-${id}-${timestamp}.pdf`;
-
-    // Respuesta
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Content-Length': pdfBuffer.length.toString(),
-      'Cache-Control': 'no-cache',
-    });
-
-    res.send(pdfBuffer);
-  } catch (error) {
-    console.error('❌ Error al generar PDF (instancia):', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error al generar el archivo PDF',
-      error: error.message,
-    });
   }
-}
 }

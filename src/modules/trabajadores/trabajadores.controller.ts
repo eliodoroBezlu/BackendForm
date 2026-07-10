@@ -75,7 +75,13 @@ export class TrabajadoresController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
   @ApiOperation({ summary: 'Obtener todos los trabajadores' })
   @ApiResponse({ status: 200, description: 'Lista de trabajadores' })
   findAll() {
@@ -83,7 +89,13 @@ export class TrabajadoresController {
   }
 
   @Get('nombres/all')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
   @ApiOperation({
     summary:
       'Obtener solo nombres de todos los trabajadores (para autocomplete)',
@@ -94,7 +106,13 @@ export class TrabajadoresController {
   }
 
   @Get('buscar/autocomplete')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
   @ApiOperation({
     summary: 'Buscar trabajadores y devolver solo nombres (para autocomplete)',
   })
@@ -109,7 +127,13 @@ export class TrabajadoresController {
   }
 
   @Get('buscar')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
   @ApiOperation({ summary: 'Buscar trabajadores por nómina o CI' })
   @ApiResponse({ status: 200, description: 'Trabajadores encontrados' })
   async buscarTrabajadores(@Query('query') query: string) {
@@ -118,7 +142,15 @@ export class TrabajadoresController {
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('completos')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+    Role.SUPER_ADMIN,
+    Role.USER,
+  )
   @ApiOperation({
     summary: 'Obtener trabajadores completos (nomina, CI, puesto)',
   })
@@ -138,8 +170,17 @@ export class TrabajadoresController {
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('by-username/:username')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
-  @ApiOperation({ summary: 'Obtener trabajador por username (para resolver área del usuario autenticado)' })
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
+  @ApiOperation({
+    summary:
+      'Obtener trabajador por username (para resolver área del usuario autenticado)',
+  })
   @ApiResponse({ status: 200, description: 'Trabajador encontrado' })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
   async findByUsername(@Param('username') username: string) {
@@ -148,14 +189,19 @@ export class TrabajadoresController {
 
   // ⚠️ Este endpoint DEBE ir al FINAL porque captura cualquier string como :id
   @Get(':id')
-  @Roles(Role.ADMIN, Role.TECNICO, Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.INSPECTOR)
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
   @ApiOperation({ summary: 'Obtener trabajador por ID' })
   @ApiResponse({ status: 200, description: 'Trabajador encontrado' })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
   findOne(@Param('id') id: string) {
     return this.trabajadoresService.findOne(id);
   }
-
 
   @Patch(':id')
   @Roles(Role.ADMIN)
@@ -243,7 +289,9 @@ export class TrabajadoresController {
 
   @Patch(':id/user/permissions')
   @Roles(Role.ADMIN)
-  @ApiOperation({ summary: 'Actualizar permisos extra del usuario del trabajador' })
+  @ApiOperation({
+    summary: 'Actualizar permisos extra del usuario del trabajador',
+  })
   async updateWorkerUserPermissions(
     @Param('id') id: string,
     @Body() updatePermissionsDto: UpdateUserPermissionsDto,

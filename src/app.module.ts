@@ -24,6 +24,10 @@ import { InspectionScheduleModule } from './modules/inspection-schedule/inspecti
 import { AuthModule } from './modules/auth/auth.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PgrModule } from './modules/pgr/pgr.module';
+import { UbicacionModule } from './modules/ubicacion/ubicacion.module';
+import { ClasificacionModule } from './modules/clasificacion/clasificacion.module';
+import { ConfigFormularioModule } from './modules/config-formulario/config-formulario.module';
+import { EquiposModule } from './modules/equipos/equipos.module';
 
 @Module({
   imports: [
@@ -67,7 +71,11 @@ import { PgrModule } from './modules/pgr/pgr.module';
     UploadModule,
     InspectionScheduleModule,
     AuthModule,
-    PgrModule
+    PgrModule,
+    UbicacionModule,
+    ClasificacionModule,
+    ConfigFormularioModule,
+    EquiposModule
   ],
   providers: [],
 })
