@@ -32,9 +32,8 @@ export class MLMetadata {
 export const MLMetadataSchema = SchemaFactory.createForClass(MLMetadata);
 
 // 🆕 Subdocumento para las tareas/observaciones
-@Schema({  })
+@Schema({})
 export class TareaObservacion {
-
   _id?: Types.ObjectId;
   @Prop({ required: true })
   numeroItem: number;
@@ -67,6 +66,9 @@ export class TareaObservacion {
   responsableAreaCierre: string;
 
   @Prop()
+  responsableAreaCierreUsername?: string;
+
+  @Prop()
   fechaCumplimientoAcordada?: Date;
 
   @Prop()
@@ -75,15 +77,14 @@ export class TareaObservacion {
   @Prop({ default: 0 })
   diasRetraso: number;
 
-  @Prop({ 
+  @Prop({
     enum: ['abierto', 'en-progreso', 'cerrado'],
-    default: 'abierto'
+    default: 'abierto',
   })
   estado: string;
 
   @Prop({ default: false })
   aprobado: boolean;
-
 
   @Prop({ type: [EvidenciaSchema], default: [] })
   evidencias?: Evidencia[];
@@ -102,9 +103,35 @@ export class TareaObservacion {
 
   @Prop()
   questionText?: string;
+
+  @Prop({ default: true })
+  activo: boolean;
 }
 
-export const TareaObservacionSchema = SchemaFactory.createForClass(TareaObservacion);
+export const TareaObservacionSchema =
+  SchemaFactory.createForClass(TareaObservacion);
+
+// 🆕 Trazabilidad de la aprobación global del Superintendente
+@Schema({ _id: false })
+export class HistorialAprobacion {
+  @Prop({ required: true })
+  usuario: string;
+
+  @Prop({ required: true })
+  fecha: Date;
+
+  @Prop({ required: true })
+  estadoAnterior: string;
+
+  @Prop({ required: true })
+  estadoNuevo: string;
+
+  @Prop()
+  observaciones?: string;
+}
+
+export const HistorialAprobacionSchema =
+  SchemaFactory.createForClass(HistorialAprobacion);
 
 // 🔥 Plan de Acción como CONTENEDOR
 @Schema({ timestamps: true })
@@ -146,9 +173,9 @@ export class PlanDeAccion {
   porcentajeCierre: number;
 
   // Estado general del plan
-  @Prop({ 
+  @Prop({
     enum: ['abierto', 'en-progreso', 'cerrado'],
-    default: 'abierto'
+    default: 'abierto',
   })
   estado: string;
 
@@ -158,6 +185,29 @@ export class PlanDeAccion {
 
   @Prop({ required: true })
   fechaUltimaActualizacion: Date;
+
+  // Baja lógica: los planes nunca se eliminan físicamente
+  @Prop({ default: true })
+  activo: boolean;
+
+  // 🆕 Aprobación global del Superintendente (independiente del aprobado por tarea)
+  @Prop({
+    enum: ['pendiente', 'aprobado'],
+    default: 'pendiente',
+  })
+  estadoAprobacion: string;
+
+  @Prop()
+  aprobadoPor?: string;
+
+  @Prop()
+  fechaAprobacion?: Date;
+
+  @Prop()
+  observacionesAprobacion?: string;
+
+  @Prop({ type: [HistorialAprobacionSchema], default: [] })
+  historialAprobacion: HistorialAprobacion[];
 }
 
 export const PlanDeAccionSchema = SchemaFactory.createForClass(PlanDeAccion);
@@ -170,3 +220,5 @@ PlanDeAccionSchema.index({ areaFisica: 1 });
 PlanDeAccionSchema.index({ fechaCreacion: -1 });
 PlanDeAccionSchema.index({ 'tareas.estado': 1 });
 PlanDeAccionSchema.index({ 'tareas.aprobado': 1 });
+PlanDeAccionSchema.index({ activo: 1 });
+PlanDeAccionSchema.index({ estadoAprobacion: 1 });

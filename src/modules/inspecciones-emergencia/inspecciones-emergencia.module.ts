@@ -7,10 +7,12 @@ import {
   FormularioInspeccionSchema,
 } from './schemas/inspeccion-emergencia.schema';
 import { InspeccionesEmergenciaExcelModule } from './inspecciones-emergencia-excel/inspecciones-emergencia-excel.module';
+import { InspeccionesEmergenciaDocumentService } from './inspecciones-emergencia-document.service';
 import { ExtintorModule } from '../extintor/extintor.module';
 import { AreaModule } from '../area/area.module';
 import { Area, AreaSchema } from '../area/schema/area.schema';
 import { PdfHerraEquipoModule } from '../inspection-herra-equipos/pdf/excel-to-pdf.module';
+import { CommonModule } from '../../common/common.module';
 
 @Module({
   imports: [
@@ -24,9 +26,13 @@ import { PdfHerraEquipoModule } from '../inspection-herra-equipos/pdf/excel-to-p
     InspeccionesEmergenciaExcelModule,
     ExtintorModule,
     AreaModule,
-    PdfHerraEquipoModule
+    PdfHerraEquipoModule,
+    CommonModule,
   ],
   controllers: [InspeccionesEmergenciaController],
-  providers: [InspeccionesEmergenciaService],
+  providers: [
+    InspeccionesEmergenciaService,
+    InspeccionesEmergenciaDocumentService,
+  ],
 })
 export class InspeccionesEmergenciaModule {}

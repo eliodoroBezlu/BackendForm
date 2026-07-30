@@ -4,35 +4,34 @@ import { Role } from '../enums/role.enum';
 
 @Schema({ timestamps: true })
 export class User extends Document {
-
   _id: Types.ObjectId;
-  @Prop({ 
-    required: true, 
-    unique: true, 
-    lowercase: true, 
+  @Prop({
+    required: true,
+    unique: true,
+    lowercase: true,
     trim: true,
     minlength: 3,
     maxlength: 30,
-    match: /^[a-zA-Z0-9_-]+$/
+    match: /^[a-zA-Z0-9_-]+$/,
   })
   username: string;
 
-  @Prop({ 
-    required: false, 
-    unique: true, 
+  @Prop({
+    required: false,
+    unique: true,
     sparse: true, // Permite nulls únicos
-    lowercase: true, 
-    trim: true 
+    lowercase: true,
+    trim: true,
   })
   email?: string;
 
   @Prop({ required: true })
   password: string;
 
-  @Prop({ 
-    type: [String], 
+  @Prop({
+    type: [String],
     enum: Role,
-    default: [Role.USER] 
+    default: [Role.USER],
   })
   roles: Role[];
 
@@ -45,9 +44,8 @@ export class User extends Document {
   @Prop({ default: false })
   isTwoFactorEnabled: boolean;
 
-@Prop({ type: mongoose.Schema.Types.Mixed })
-twoFactorSecret: string | null;
-
+  @Prop({ type: mongoose.Schema.Types.Mixed })
+  twoFactorSecret: string | null;
 
   @Prop({ type: [String], default: [] })
   backupCodes: string[];

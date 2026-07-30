@@ -16,16 +16,16 @@ import * as jwksRsa from 'jwks-rsa';
 import { RbacCacheService } from '../rbac-cache.service';
 
 interface IamJwtPayload {
-  sub:            string;    // IAM Core UUID
-  username:       string;
-  email?:         string;
-  roles:          string[];
-  services:       string[];
+  sub: string; // IAM Core UUID
+  username: string;
+  email?: string;
+  roles: string[];
+  services: string[];
   service_roles?: Record<string, string[]>; // roles genéricos por servicio (RBAC)
-  iss:            string;
-  aud:            string | string[];
-  exp:            number;
-  iat:            number;
+  iss: string;
+  aud: string | string[];
+  exp: number;
+  iat: number;
 }
 
 @Injectable()
@@ -34,8 +34,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     configService: ConfigService,
     private readonly rbac: RbacCacheService,
   ) {
-    const iamCoreUrl = configService.get<string>('IAM_CORE_URL', 'http://localhost:4000');
-    const jwksUri    = `${iamCoreUrl}/api/auth/.well-known/jwks.json`;
+    const iamCoreUrl = configService.get<string>(
+      'IAM_CORE_URL',
+      'http://localhost:4000',
+    );
+    const jwksUri = `${iamCoreUrl}/api/auth/.well-known/jwks.json`;
 
     super({
       // ── Extraer JWT desde cookie o Bearer header ────────────────
@@ -49,16 +52,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // ── Validación RSA-256 vía JWKS de IAM Core ─────────────────
       // jwksRsa cachea la clave pública 10 min por defecto.
       secretOrKeyProvider: jwksRsa.passportJwtSecret({
-        cache:                  true,
-        cacheMaxEntries:        5,
-        cacheMaxAge:            600_000,
-        rateLimit:              true,
-        jwksRequestsPerMinute:  5,
+        cache: true,
+        cacheMaxEntries: 5,
+        cacheMaxAge: 600_000,
+        rateLimit: true,
+        jwksRequestsPerMinute: 5,
         jwksUri,
       }) as any,
 
       algorithms: ['RS256'],
-      issuer:     configService.get<string>('IAM_CORE_JWT_ISSUER', 'iam-core'),
+      issuer: configService.get<string>('IAM_CORE_JWT_ISSUER', 'iam-core'),
     });
   }
 
@@ -74,22 +77,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     // Roles del usuario EN forms (RBAC por servicio); fallback a roles globales
     // para compatibilidad con tokens/usuarios previos a la centralización.
-    const formsRoles = payload.service_roles?.forms ?? payload.roles ?? ['user'];
+    const formsRoles = payload.service_roles?.forms ??
+      payload.roles ?? ['user'];
     // Permisos computados desde el mapa RBAC centralizado del IAM (cacheado).
     const permissions = await this.rbac.computePermissions(formsRoles);
 
     // Compatible con el User de Mongoose que usan los decoradores existentes.
     // _id y id apuntan al IAM Core UUID (string, no ObjectId).
     return {
-      _id:                payload.sub,
-      id:                 payload.sub,
-      username:           payload.username,
-      email:              payload.email  ?? null,
-      fullName:           null,
-      roles:              formsRoles,
+      _id: payload.sub,
+      id: payload.sub,
+      username: payload.username,
+      email: payload.email ?? null,
+      fullName: null,
+      roles: formsRoles,
       permissions,
-      services:           payload.services ?? [],
-      isActive:           true,
+      services: payload.services ?? [],
+      isActive: true,
       isTwoFactorEnabled: false,
     };
   }

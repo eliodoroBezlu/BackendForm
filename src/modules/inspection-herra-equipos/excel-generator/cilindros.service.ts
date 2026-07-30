@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelCilindrosService {
@@ -48,14 +49,14 @@ export class ExcelCilindrosService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -111,7 +112,7 @@ export class ExcelCilindrosService {
       worksheet.getCell('AE6').value = valores[1] || ''; // supervisor
       worksheet.getCell('M8').value = valores[2] || ''; // descripcion
       worksheet.getCell('AE8').value = valores[3] || ''; // ot
-      worksheet.getCell('AC10').value = valores[4] || ''; // fecha 
+      worksheet.getCell('AC10').value = valores[4] || ''; // fecha
 
       this.logger.log('Campos de verificación completados exitosamente');
     } catch (error) {
@@ -122,12 +123,9 @@ export class ExcelCilindrosService {
     }
   }
 
-  
-
   /**
    * Llena los datos específicos del vehículo (tipo inspección, certificación, etc.)
    */
-  
 
   /**
    * Llena las respuestas de las preguntas de inspección
@@ -185,57 +183,55 @@ export class ExcelCilindrosService {
           let currentRow = sectionConfig.startRow;
 
           // Procesar preguntas
-          Object.entries(sectionResponses as Record<string, any>).forEach(
-            ([questionId, response]) => {
-              if (currentRow > sectionConfig.endRow) {
-                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-                return;
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
+            if (currentRow > sectionConfig.endRow) {
+              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+              return;
+            }
+
+            try {
+              // Limpiar celdas
+              worksheet.getCell(`${siCol}${currentRow}`).value = '';
+              worksheet.getCell(`${noCol}${currentRow}`).value = '';
+              worksheet.getCell(`${naCol}${currentRow}`).value = '';
+
+              // Procesar respuesta
+              if (response.value !== undefined && response.value !== null) {
+                const valor = String(response.value).toLowerCase().trim();
+
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
+                  worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
+                  worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                } else if (valor === 'na' || valor === 'n/a') {
+                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                }
               }
 
-              try {
-                // Limpiar celdas
-                worksheet.getCell(`${siCol}${currentRow}`).value = '';
-                worksheet.getCell(`${noCol}${currentRow}`).value = '';
-                worksheet.getCell(`${naCol}${currentRow}`).value = '';
-
-                // Procesar respuesta
-                if (response.value !== undefined && response.value !== null) {
-                  const valor = String(response.value).toLowerCase().trim();
-
-                  if (
-                    valor === 'bueno' ||
-                    valor === 'si' ||
-                    valor === 'true' ||
-                    valor === '1'
-                  ) {
-                    worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-                  } else if (
-                    valor === 'malo' ||
-                    valor === 'no' ||
-                    valor === 'false' ||
-                    valor === '0'
-                  ) {
-                    worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
-                  } else if (valor === 'na' || valor === 'n/a') {
-                    worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
-                  }
-                }
-
-                // Observaciones
-                if (response.observacion?.trim()) {
-                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                    response.observacion;
-                }
-
-                currentRow++;
-              } catch (error) {
-                this.logger.error(
-                  `Error en fila ${currentRow}: ${error.message}`,
-                );
-                currentRow++;
+              // Observaciones
+              if (response.observacion?.trim()) {
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
               }
-            },
-          );
+
+              currentRow++;
+            } catch (error) {
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
+              currentRow++;
+            }
+          });
         },
       );
 
@@ -309,11 +305,11 @@ export class ExcelCilindrosService {
       if (inspection.supervisorSignature) {
         const sup = inspection.supervisorSignature;
 
-         if (sup.supervisorName)
-           worksheet.getCell(posiciones.supervisor.nombre).value =
-             sup.supervisorName;
+        if (sup.supervisorName)
+          worksheet.getCell(posiciones.supervisor.nombre).value =
+            sup.supervisorName;
 
-         if (
+        if (
           sup.supervisorSignature &&
           typeof sup.supervisorSignature === 'string' &&
           sup.supervisorSignature.startsWith('data:image/')

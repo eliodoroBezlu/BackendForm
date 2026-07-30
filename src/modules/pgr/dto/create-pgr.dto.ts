@@ -1,6 +1,43 @@
-import { IsString, IsArray, ValidateNested, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsArray,
+  ValidateNested,
+  IsOptional,
+  IsEnum,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { PgrEstado } from '../schemas/pgr.schema';
+
+export class ProgramacionMesDto {
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  mes: number;
+
+  @IsInt()
+  @Min(0)
+  programado: number;
+
+  /** Ejecutado con retraso — no cuenta para eficiencia. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  realMesPasado?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  realDelMes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  realMesAdelantado?: number;
+}
 
 export class CreateActividadDto {
   @IsString()
@@ -18,12 +55,32 @@ export class CreateActividadDto {
   @IsString()
   entregable: string;
 
-  @IsString()
-  frecuencia: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProgramacionMesDto)
+  programacion?: ProgramacionMesDto[];
 
+  @IsOptional()
+  @IsString()
+  historialTrazabilidad?: string;
+
+  /** Evidencias; al importar se rellena con los hipervínculos de las celdas. */
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  mesesProgramados: string[];
+  evidencias?: string[];
+
+  /** @deprecated Se deriva de `programacion[]`. */
+  @IsOptional()
+  @IsString()
+  frecuencia?: string;
+
+  /** @deprecated Se deriva de `programacion[]`. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  mesesProgramados?: string[];
 }
 
 export class CreatePgrDto {
@@ -41,6 +98,32 @@ export class CreatePgrDto {
 
   @IsString()
   gestion: string;
+
+  @IsOptional()
+  @IsString()
+  supervisor?: string;
+
+  @IsOptional()
+  @IsString()
+  responsable?: string;
+
+  @IsOptional()
+  @IsString()
+  codigoExterno?: string;
+
+  /** Mes de corte del periodo (`$J$4` en el Excel). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  mesCorte?: number;
+
+  /** Ventana de la gestión completa en meses (`$W$4`). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  ventanaGestion?: number;
 
   @IsOptional()
   @IsEnum(PgrEstado)

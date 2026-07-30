@@ -1,4 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Put, Query, UsePipes, ValidationPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Put,
+  Query,
+  UsePipes,
+  ValidationPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { InspectionScheduleService } from './inspection-schedule.service';
 import { CreateInspectionScheduleDto } from './dto/create-inspection-schedule.dto';
 import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dto';
@@ -7,18 +20,21 @@ import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
-
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('inspection-schedule')
 @Controller('inspection-schedule')
 export class InspectionScheduleController {
-  constructor(private readonly inspectionScheduleService: InspectionScheduleService) {}
+  constructor(
+    private readonly inspectionScheduleService: InspectionScheduleService,
+  ) {}
 
   @Post()
-  @UsePipes(new ValidationPipe({ 
-    transform: true,
-    transformOptions: { enableImplicitConversion: true } 
-  }))
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  )
   @ApiOperation({ summary: 'Create new inspection schedule' })
   create(@Body() createDto: CreateInspectionScheduleDto) {
     return this.inspectionScheduleService.create(createDto);
@@ -37,12 +53,17 @@ export class InspectionScheduleController {
   }
 
   @Patch(':id')
-  @UsePipes(new ValidationPipe({ 
-    transform: true,
-    transformOptions: { enableImplicitConversion: true } 
-  }))
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  )
   @ApiOperation({ summary: 'Update inspection schedule' })
-  update(@Param('id') id: string, @Body() updateDto: UpdateInspectionScheduleDto) {
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateInspectionScheduleDto,
+  ) {
     return this.inspectionScheduleService.update(id, updateDto);
   }
 
@@ -52,21 +73,30 @@ export class InspectionScheduleController {
     return this.inspectionScheduleService.remove(id);
   }
 
-
   @Put(':id/complete/:semester')
   @ApiOperation({ summary: 'Register inspection completion' })
   completeInspection(
     @Param('id') id: string,
     @Param('semester') semester: 'first' | 'second',
-    @Body() body: { instanceId: string }
+    @Body() body: { instanceId: string },
   ) {
-    return this.inspectionScheduleService.registerCompletion(id, semester, body.instanceId);
+    return this.inspectionScheduleService.registerCompletion(
+      id,
+      semester,
+      body.instanceId,
+    );
   }
 
   @Get('template/:templateId')
   @ApiOperation({ summary: 'Get inspections by template and year' })
-  findByTemplate(@Param('templateId') templateId: string, @Query('year') year: number) {
-    return this.inspectionScheduleService.findByTemplateAndYear(templateId, +year);
+  findByTemplate(
+    @Param('templateId') templateId: string,
+    @Query('year') year: number,
+  ) {
+    return this.inspectionScheduleService.findByTemplateAndYear(
+      templateId,
+      +year,
+    );
   }
 
   @Get('area/:area')

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelFrecuenteTecleService {
@@ -48,14 +49,14 @@ export class ExcelFrecuenteTecleService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -111,10 +112,10 @@ export class ExcelFrecuenteTecleService {
       worksheet.getCell('D6').value = valores[1] || ''; // supervisor
       worksheet.getCell('D7').value = valores[2] || ''; // gerencia
       worksheet.getCell('N5').value = valores[3] || ''; // fecha
-      worksheet.getCell('N7').value = valores[4] || ''; // area 
+      worksheet.getCell('N7').value = valores[4] || ''; // area
       worksheet.getCell('B9').value = valores[5] || ''; // tag
       worksheet.getCell('F9').value = valores[6] || ''; // tipo
-       worksheet.getCell('K9').value = valores[7] || ''; // capacidad nominal
+      worksheet.getCell('K9').value = valores[7] || ''; // capacidad nominal
 
       this.logger.log('Campos de verificación completados exitosamente');
     } catch (error) {
@@ -155,119 +156,127 @@ export class ExcelFrecuenteTecleService {
   /**
    * Llena los datos específicos del vehículo (tipo inspección, certificación, etc.)
    */
- private async llenarDatosTecle(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    if (!inspection.outOfService) {
-      this.logger.warn('No se encontraron datos de verificación');
-      return;
-    }
-
-    this.logger.log('Iniciando llenado de datos específicos del taladro');
-
-    // Definir todas las celdas posibles
-    const celdas = {
-      apto: 'F38',
-      mantenimiento: 'H38',
-      rechazado: 'M38'
-    };
-
-    if (inspection.outOfService?.status) {
-      const status = inspection.outOfService.status.toLowerCase();
-      this.logger.log(`Procesando outOfService status: "${status}"`);
-
-      // Determinar qué celda marcar
-      let celdaSeleccionada: string | null = null;
-
-      if (status.includes('apto') || status === 'ap' || status === 'si') {
-        celdaSeleccionada = celdas.apto;
-      } else if (status.includes('mantenimiento') || status === 'man') {
-        celdaSeleccionada = celdas.mantenimiento;
-      } else if (status.includes('rechazado') || status === 'rech' || status === 'no') {
-        celdaSeleccionada = celdas.rechazado;
-      } else {
-        this.logger.warn(`Estado no reconocido: "${status}"`);
+  private async llenarDatosTecle(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (!inspection.outOfService) {
+        this.logger.warn('No se encontraron datos de verificación');
         return;
       }
 
-      // Marcar TODAS las casillas: la seleccionada con ☑ y las demás con ☐
-      for (const [tipo, celda] of Object.entries(celdas)) {
-        const estaSeleccionada = celda === celdaSeleccionada;
-        await this.marcarCasilla(worksheet, celda, estaSeleccionada, true);
-        
-        this.logger.log(
-          `${estaSeleccionada ? '☑' : '☐'} ${tipo}: ${celda}`
-        );
+      this.logger.log('Iniciando llenado de datos específicos del taladro');
+
+      // Definir todas las celdas posibles
+      const celdas = {
+        apto: 'F38',
+        mantenimiento: 'H38',
+        rechazado: 'M38',
+      };
+
+      if (inspection.outOfService?.status) {
+        const status = inspection.outOfService.status.toLowerCase();
+        this.logger.log(`Procesando outOfService status: "${status}"`);
+
+        // Determinar qué celda marcar
+        let celdaSeleccionada: string | null = null;
+
+        if (status.includes('apto') || status === 'ap' || status === 'si') {
+          celdaSeleccionada = celdas.apto;
+        } else if (status.includes('mantenimiento') || status === 'man') {
+          celdaSeleccionada = celdas.mantenimiento;
+        } else if (
+          status.includes('rechazado') ||
+          status === 'rech' ||
+          status === 'no'
+        ) {
+          celdaSeleccionada = celdas.rechazado;
+        } else {
+          this.logger.warn(`Estado no reconocido: "${status}"`);
+          return;
+        }
+
+        // Marcar TODAS las casillas: la seleccionada con ☑ y las demás con ☐
+        for (const [tipo, celda] of Object.entries(celdas)) {
+          const estaSeleccionada = celda === celdaSeleccionada;
+          await this.marcarCasilla(worksheet, celda, estaSeleccionada, true);
+
+          this.logger.log(`${estaSeleccionada ? '☑' : '☐'} ${tipo}: ${celda}`);
+        }
+
+        this.logger.log(`✅ Estado "${status}" procesado correctamente`);
       }
 
-      this.logger.log(`✅ Estado "${status}" procesado correctamente`);
+      this.logger.log('✅ Datos específicos del taladro completados');
+    } catch (error) {
+      this.logger.error(
+        `❌ Error al llenar datos del taladro: ${error.message}`,
+      );
+      throw error;
     }
-
-    this.logger.log('✅ Datos específicos del taladro completados');
-  } catch (error) {
-    this.logger.error(
-      `❌ Error al llenar datos del taladro: ${error.message}`,
-    );
-    throw error;
   }
-}
   /**
    * Llena las respuestas de las preguntas de inspección
    */
   private async llenarRespuestas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de respuestas');
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de respuestas');
 
-    if (!inspection.responses || Object.keys(inspection.responses).length === 0) {
-      this.logger.warn('No se encontraron respuestas en la inspección');
-      return;
-    }
+      if (
+        !inspection.responses ||
+        Object.keys(inspection.responses).length === 0
+      ) {
+        this.logger.warn('No se encontraron respuestas en la inspección');
+        return;
+      }
 
-    // Configuración de todas las secciones posibles
-    const allSections = [
-      { 
-        id: 'section_0', 
-        startRow: 12, 
-        endRow: 25, 
-        name: 'CONDICIÓN ES ESTÁNDAR',
-        skipRows: [36] // ← Filas a saltar
-      },
-    ];
+      // Configuración de todas las secciones posibles
+      const allSections = [
+        {
+          id: 'section_0',
+          startRow: 12,
+          endRow: 25,
+          name: 'CONDICIÓN ES ESTÁNDAR',
+          skipRows: [36], // ← Filas a saltar
+        },
+      ];
 
-    // Columnas fijas
-    const opCol = 'F';
-    const manCol = 'G';
-    const descripcionCol = 'H';
-    const observacionesCol = 'Q';
+      // Columnas fijas
+      const opCol = 'F';
+      const manCol = 'G';
+      const descripcionCol = 'H';
+      const observacionesCol = 'Q';
 
-    // Procesar cada sección que exista en las respuestas
-    Object.entries(inspection.responses).forEach(
-      ([sectionId, sectionResponses], index) => {
-        let sectionConfig = allSections.find((s) => s.id === sectionId);
+      // Procesar cada sección que exista en las respuestas
+      Object.entries(inspection.responses).forEach(
+        ([sectionId, sectionResponses], index) => {
+          let sectionConfig = allSections.find((s) => s.id === sectionId);
 
-        if (!sectionConfig && index < allSections.length) {
-          sectionConfig = allSections[index];
-          this.logger.log(`Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`);
-        }
+          if (!sectionConfig && index < allSections.length) {
+            sectionConfig = allSections[index];
+            this.logger.log(
+              `Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`,
+            );
+          }
 
-        if (!sectionConfig) {
-          this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
-          return;
-        }
+          if (!sectionConfig) {
+            this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+            return;
+          }
 
-        this.logger.log(`Procesando: ${sectionConfig.name} (desde ${sectionId})`);
+          this.logger.log(
+            `Procesando: ${sectionConfig.name} (desde ${sectionId})`,
+          );
 
-        let currentRow = sectionConfig.startRow;
-        const skipRows = sectionConfig.skipRows || [];
+          let currentRow = sectionConfig.startRow;
+          const skipRows = sectionConfig.skipRows || [];
 
-        // Procesar preguntas
-        Object.entries(sectionResponses as Record<string, any>).forEach(
-          ([questionId, response]) => {
+          // Procesar preguntas
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
             if (currentRow > sectionConfig.endRow) {
               this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
               return;
@@ -277,7 +286,7 @@ export class ExcelFrecuenteTecleService {
             while (skipRows.includes(currentRow)) {
               this.logger.log(`⏭️ Saltando fila ${currentRow}`);
               currentRow++;
-              
+
               // Verificar si nos pasamos del límite después de saltar
               if (currentRow > sectionConfig.endRow) {
                 this.logger.warn(`Límite excedido después de saltar filas`);
@@ -287,7 +296,7 @@ export class ExcelFrecuenteTecleService {
 
             try {
               this.logger.log(`📝 Llenando fila ${currentRow}`);
-              
+
               // Limpiar celdas
               worksheet.getCell(`${opCol}${currentRow}`).value = '';
               worksheet.getCell(`${manCol}${currentRow}`).value = '';
@@ -296,88 +305,103 @@ export class ExcelFrecuenteTecleService {
               if (response.value !== undefined && response.value !== null) {
                 const valor = String(response.value).toLowerCase().trim();
 
-                if (valor === 'bueno' || valor === 'si' || valor === 'true' || valor === '1'|| valor === 'operativo') {
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1' ||
+                  valor === 'operativo'
+                ) {
                   worksheet.getCell(`${opCol}${currentRow}`).value = 'X';
-                } else if (valor === 'malo' || valor === 'no' || valor === 'false' || valor === '0'|| valor === 'mantenimiento') {
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0' ||
+                  valor === 'mantenimiento'
+                ) {
                   worksheet.getCell(`${manCol}${currentRow}`).value = 'X';
                 }
               }
 
               // Observaciones
               if (response.observacion?.trim()) {
-                worksheet.getCell(`${observacionesCol}${currentRow}`).value = response.observacion;
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
               }
 
               if (response.description?.trim()) {
-                worksheet.getCell(`${descripcionCol}${currentRow}`).value = response.description;
+                worksheet.getCell(`${descripcionCol}${currentRow}`).value =
+                  response.description;
               }
 
               currentRow++;
             } catch (error) {
-              this.logger.error(`Error en fila ${currentRow}: ${error.message}`);
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
               currentRow++;
             }
-          },
-        );
-      },
-    );
+          });
+        },
+      );
 
-    this.logger.log('Respuestas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar respuestas: ${error.message}`);
-    throw error;
-  }
-}
-
-private async llenarObservacionesGenerales(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    if (
-      inspection.generalObservations &&
-      inspection.generalObservations.trim() !== ''
-    ) {
-      const cell = worksheet.getCell('A39');
-      
-      // 1. RECUPERAR valor actual de la celda de forma segura
-      let valorActual = '';
-      
-      if (cell.value) {
-        // Si es un objeto de texto enriquecido (RichText)
-        if (typeof cell.value === 'object' && 'richText' in cell.value) {
-          valorActual = (cell.value as ExcelJS.CellRichTextValue).richText
-            .map(part => part.text)
-            .join('');
-        } 
-        // Si es una fórmula
-        else if (typeof cell.value === 'object' && 'result' in cell.value) {
-          valorActual = String((cell.value as ExcelJS.CellFormulaValue).result || '');
-        }
-        // Si es un valor simple
-        else {
-          valorActual = String(cell.value);
-        }
-      }
-      
-      // 2. CONCATENAR con las nuevas observaciones
-      const valorConcatenado = valorActual.trim()
-        ? `${valorActual}\n${inspection.generalObservations}`
-        : inspection.generalObservations;
-      
-      // 3. ASIGNAR el nuevo valor concatenado
-      cell.value = valorConcatenado;
-      
-      this.logger.log('Observaciones generales completadas y concatenadas');
+      this.logger.log('Respuestas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar respuestas: ${error.message}`);
+      throw error;
     }
-  } catch (error) {
-    this.logger.error(
-      `Error al llenar observaciones generales: ${error.message}`,
-    );
-    throw error;
   }
-}
-  
+
+  private async llenarObservacionesGenerales(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (
+        inspection.generalObservations &&
+        inspection.generalObservations.trim() !== ''
+      ) {
+        const cell = worksheet.getCell('A39');
+
+        // 1. RECUPERAR valor actual de la celda de forma segura
+        let valorActual = '';
+
+        if (cell.value) {
+          // Si es un objeto de texto enriquecido (RichText)
+          if (typeof cell.value === 'object' && 'richText' in cell.value) {
+            valorActual = cell.value.richText.map((part) => part.text).join('');
+          }
+          // Si es una fórmula
+          else if (typeof cell.value === 'object' && 'result' in cell.value) {
+            valorActual = String(
+              (cell.value as ExcelJS.CellFormulaValue).result || '',
+            );
+          }
+          // Si es un valor simple
+          else {
+            valorActual = String(cell.value);
+          }
+        }
+
+        // 2. CONCATENAR con las nuevas observaciones
+        const valorConcatenado = valorActual.trim()
+          ? `${valorActual}\n${inspection.generalObservations}`
+          : inspection.generalObservations;
+
+        // 3. ASIGNAR el nuevo valor concatenado
+        cell.value = valorConcatenado;
+
+        this.logger.log('Observaciones generales completadas y concatenadas');
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error al llenar observaciones generales: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
   /**
    * Llena el diagrama de daños del vehículo
    */
@@ -389,7 +413,7 @@ private async llenarObservacionesGenerales(
   /**
    * Llena las firmas del inspector y supervisor
    */
-  
+
   /**
    * Genera el archivo Excel completo para inspección de vehículos
    */

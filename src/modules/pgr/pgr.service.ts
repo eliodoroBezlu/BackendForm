@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -11,8 +15,24 @@ import { CreatePgrDto } from './dto/create-pgr.dto';
 import { UpdatePgrDto } from './dto/update-pgr.dto';
 import { AprobarPgrDto } from './dto/aprobar-pgr.dto';
 import { SeguimientoPgrDto } from './dto/seguimiento-pgr.dto';
+import { SeguimientoBatchItemDto } from './dto/seguimiento-batch.dto';
 import { Area } from '../area/schema/area.schema';
 import { Superintendencia } from '../superintendencia/schema/superintendencia.schema';
+import {
+  calcularIndicadoresActividad,
+  calcularIndicadoresPgr,
+  IndicadoresPgr,
+} from './domain/pgr-kpi.util';
+
+const MAX_INTENTOS_CODIGO = 5;
+
+/** PGR con sus indicadores calculados al vuelo (no se persisten). */
+export type PgrConIndicadores = Pgr & {
+  indicadores: IndicadoresPgr;
+  actividades: Array<
+    Pgr['actividades'][number] & { indicadores: IndicadoresPgr }
+  >;
+};
 
 @Injectable()
 export class PgrService {
@@ -41,22 +61,70 @@ export class PgrService {
   }
 
   async create(createPgrDto: CreatePgrDto): Promise<Pgr> {
-    const codigoAutogenerado = await this.generateNextCode(
-      createPgrDto.gestion || new Date().getFullYear().toString(),
-    );
-
+    const gestion = createPgrDto.gestion || new Date().getFullYear().toString();
     const areasResueltas = await this.resolverAreas(
       createPgrDto.areas || [],
       createPgrDto.superintendencia,
     );
 
-    const nuevoPgr = new this.pgrModel({
-      ...createPgrDto,
-      areas: areasResueltas,
-      codigoAutogenerado,
-      estado: createPgrDto.estado || PgrEstado.BORRADOR,
-    });
-    return nuevoPgr.save();
+    // Reintenta ante colisión del índice único `codigoAutogenerado`: dos
+    // creaciones concurrentes pueden leer el mismo "último código" antes de
+    // que cualquiera de las dos haga save(); el retry con el siguiente
+    // número resuelve la condición de carrera sin necesitar una colección
+    // de contadores separada.
+    for (let intento = 0; intento < MAX_INTENTOS_CODIGO; intento++) {
+      const codigoAutogenerado = await this.generateNextCode(gestion);
+      try {
+        const nuevoPgr = new this.pgrModel({
+          ...createPgrDto,
+          areas: areasResueltas,
+          codigoAutogenerado,
+          estado: createPgrDto.estado || PgrEstado.BORRADOR,
+        });
+        return await nuevoPgr.save();
+      } catch (error) {
+        const esColisionDeCodigo = (error as { code?: number })?.code === 11000;
+        if (esColisionDeCodigo && intento < MAX_INTENTOS_CODIGO - 1) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error(
+      'No se pudo generar un código único para el PGR tras varios intentos',
+    );
+  }
+
+  /**
+   * Adjunta los indicadores calculados a un PGR y a cada una de sus
+   * actividades. Se calculan al vuelo a partir de `programacion[]`: no se
+   * persisten, así cambiar `mesCorte` no obliga a recalcular nada en base
+   * de datos y no hay riesgo de que queden desincronizados.
+   */
+  enriquecerConIndicadores(pgr: Pgr): PgrConIndicadores {
+    const plano: Pgr =
+      typeof (pgr as unknown as { toObject?: () => Pgr }).toObject ===
+      'function'
+        ? (pgr as unknown as { toObject: () => Pgr }).toObject()
+        : pgr;
+
+    const mesCorte = plano.mesCorte ?? 12;
+    const ventana = plano.ventanaGestion ?? 12;
+    const actividades = plano.actividades ?? [];
+
+    return {
+      ...plano,
+      indicadores: calcularIndicadoresPgr(actividades, mesCorte, ventana),
+      actividades: actividades.map((a) => ({
+        ...a,
+        indicadores: calcularIndicadoresActividad(
+          a.programacion ?? [],
+          mesCorte,
+          ventana,
+        ),
+      })),
+    } as PgrConIndicadores;
   }
 
   async findAll(): Promise<Pgr[]> {
@@ -69,6 +137,21 @@ export class PgrService {
       throw new NotFoundException(`PGR con ID "${id}" no encontrado`);
     }
     return pgr;
+  }
+
+  /** `findOne` con los indicadores de eficacia y eficiencia ya calculados. */
+  async findOneConIndicadores(id: string): Promise<PgrConIndicadores> {
+    return this.enriquecerConIndicadores(await this.findOne(id));
+  }
+
+  /**
+   * Busca por el código del documento origen (`V04-G02-...`).
+   * Se usa como clave natural para detectar reimportaciones del mismo Excel.
+   */
+  async findByCodigoExterno(
+    codigoExterno: string,
+  ): Promise<PgrDocument | null> {
+    return this.pgrModel.findOne({ codigoExterno }).exec();
   }
 
   async update(id: string, updatePgrDto: UpdatePgrDto): Promise<Pgr> {
@@ -114,8 +197,9 @@ export class PgrService {
       .exec();
 
     if (!sup) {
-      console.warn(`⚠️ [PGR] Superintendencia no encontrada: "${superintendenciaNombre}". Se guardará con áreas vacías.`);
-      return [];
+      throw new BadRequestException(
+        `Superintendencia "${superintendenciaNombre}" no encontrada. No se puede resolver el listado de áreas.`,
+      );
     }
 
     const areasEncontradas = await this.areaModel
@@ -125,44 +209,43 @@ export class PgrService {
     return areasEncontradas.map((a) => a.nombre);
   }
 
+  /**
+   * Aprueba/rechaza actividades individuales y recalcula el estado general.
+   * Usa `bulkWrite` + `arrayFilters` para tocar solo los elementos del array
+   * que corresponden a cada actividad, en vez de leer el documento completo
+   * y reescribir todo `actividades` (evita el problema de "lost update" ante
+   * escrituras concurrentes sobre el mismo plan).
+   */
   async aprobar(id: string, aprobarPgrDto: AprobarPgrDto): Promise<Pgr> {
-    const pgr = await this.findOne(id);
+    const isRechazado = aprobarPgrDto.actividadesAprobacion.some(
+      (a) => a.estadoAprobacion === ActividadEstado.RECHAZADO,
+    );
+    const estado = isRechazado ? PgrEstado.CORREGIR : PgrEstado.APROBADO;
 
-    let isRechazado = false;
-
-    // Actualizar estados de actividad individual
-    pgr.actividades = pgr.actividades.map((actividad: any) => {
-      const match = aprobarPgrDto.actividadesAprobacion.find(
-        (a) => a._id === actividad._id.toString(),
+    if (aprobarPgrDto.actividadesAprobacion.length > 0) {
+      await this.pgrModel.bulkWrite(
+        aprobarPgrDto.actividadesAprobacion.map((item) => ({
+          updateOne: {
+            filter: { _id: id },
+            update: {
+              $set: {
+                'actividades.$[elem].estadoAprobacion': item.estadoAprobacion,
+                'actividades.$[elem].motivoRechazo': item.motivoRechazo,
+              },
+            },
+            arrayFilters: [{ 'elem._id': item._id }],
+          },
+        })),
       );
-      if (match) {
-        actividad.estadoAprobacion = match.estadoAprobacion;
-        actividad.motivoRechazo = match.motivoRechazo;
-        if (match.estadoAprobacion === ActividadEstado.RECHAZADO) {
-          isRechazado = true;
-        }
-      }
-      return actividad;
-    });
-
-    // Actualizar estado general
-    if (isRechazado) {
-      pgr.estado = PgrEstado.CORREGIR;
-    } else {
-      pgr.estado = PgrEstado.APROBADO;
     }
-
-    pgr.aprobadoPor = aprobarPgrDto.aprobadoPor;
-    pgr.fechaAprobacion = new Date();
 
     const updatedPgr = await this.pgrModel
       .findByIdAndUpdate(
         id,
         {
-          actividades: pgr.actividades,
-          estado: pgr.estado,
-          aprobadoPor: pgr.aprobadoPor,
-          fechaAprobacion: pgr.fechaAprobacion,
+          estado,
+          aprobadoPor: aprobarPgrDto.aprobadoPor,
+          fechaAprobacion: new Date(),
         },
         { new: true },
       )
@@ -175,50 +258,79 @@ export class PgrService {
     return updatedPgr;
   }
 
+  /** Construye el `$set` de una actividad para bulkWrite a partir de un DTO de seguimiento. */
+  private buildSeguimientoSet(
+    seguimientoDto: SeguimientoPgrDto,
+  ): Record<string, unknown> {
+    const set: Record<string, unknown> = {};
+    if (seguimientoDto.fechaEjecucion !== undefined) {
+      set['actividades.$[elem].fechaEjecucion'] = new Date(
+        seguimientoDto.fechaEjecucion,
+      );
+    }
+    if (seguimientoDto.observaciones !== undefined) {
+      set['actividades.$[elem].observaciones'] = seguimientoDto.observaciones;
+    }
+    if (seguimientoDto.semaforoTiempo !== undefined) {
+      set['actividades.$[elem].semaforoTiempo'] = seguimientoDto.semaforoTiempo;
+    }
+    if (seguimientoDto.evidencias !== undefined) {
+      set['actividades.$[elem].evidencias'] = seguimientoDto.evidencias;
+    }
+    if (seguimientoDto.programacion !== undefined) {
+      // Las cantidades ejecutadas por categoría son la base del cálculo de
+      // eficacia y eficiencia; se reemplaza el array completo de la actividad.
+      set['actividades.$[elem].programacion'] = seguimientoDto.programacion;
+    }
+    return set;
+  }
+
   async addSeguimiento(
     pgrId: string,
     actividadId: string,
     seguimientoDto: SeguimientoPgrDto,
   ): Promise<Pgr> {
-    const pgr = await this.findOne(pgrId);
-
-    // Find and update activity
-    const activityIndex = pgr.actividades.findIndex(
-      (a: any) => a._id.toString() === actividadId,
-    );
-    if (activityIndex === -1) {
-      throw new NotFoundException(
-        `Actividad con ID "${actividadId}" no encontrada`,
-      );
-    }
-
-    pgr.actividades[activityIndex].fechaEjecucion =
-      seguimientoDto.fechaEjecucion
-        ? new Date(seguimientoDto.fechaEjecucion)
-        : pgr.actividades[activityIndex].fechaEjecucion;
-
-    if (seguimientoDto.observaciones !== undefined) {
-      pgr.actividades[activityIndex].observaciones =
-        seguimientoDto.observaciones;
-    }
-    if (seguimientoDto.semaforoTiempo !== undefined) {
-      pgr.actividades[activityIndex].semaforoTiempo =
-        seguimientoDto.semaforoTiempo;
-    }
-    if (seguimientoDto.evidencias) {
-      // Append or replace? Let's treat it as replace/set for simplicity
-      pgr.actividades[activityIndex].evidencias = seguimientoDto.evidencias;
-    }
+    const set = this.buildSeguimientoSet(seguimientoDto);
 
     const updatedPgr = await this.pgrModel
-      .findByIdAndUpdate(pgrId, { actividades: pgr.actividades }, { new: true })
+      .findOneAndUpdate(
+        { _id: pgrId, 'actividades._id': actividadId },
+        { $set: set },
+        { new: true, arrayFilters: [{ 'elem._id': actividadId }] },
+      )
       .exec();
 
     if (!updatedPgr) {
-      throw new NotFoundException(`PGR con ID "${pgrId}" no encontrado`);
+      throw new NotFoundException(
+        `PGR "${pgrId}" o actividad "${actividadId}" no encontrados`,
+      );
     }
 
     return updatedPgr;
+  }
+
+  /**
+   * Igual que `addSeguimiento` pero para varias actividades en un solo
+   * viaje a Mongo (`bulkWrite`) — reemplaza el loop secuencial de N
+   * llamadas HTTP que hacía el frontend por una sola operación batch.
+   */
+  async addSeguimientoBatch(
+    pgrId: string,
+    seguimientos: SeguimientoBatchItemDto[],
+  ): Promise<Pgr> {
+    if (seguimientos.length > 0) {
+      await this.pgrModel.bulkWrite(
+        seguimientos.map((item) => ({
+          updateOne: {
+            filter: { _id: pgrId },
+            update: { $set: this.buildSeguimientoSet(item) },
+            arrayFilters: [{ 'elem._id': item.actividadId }],
+          },
+        })),
+      );
+    }
+
+    return this.findOne(pgrId);
   }
 
   async remove(id: string): Promise<Pgr> {

@@ -45,8 +45,7 @@ type LoginResponse = LoginSuccess | Login2FARequired;
 
 @Injectable()
 export class AuthService {
-  
-    private readonly logger = new Logger(AuthService.name)
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectModel(User.name) private userModel: Model<User>,
     @InjectModel(Session.name) private sessionModel: Model<Session>,
@@ -89,7 +88,7 @@ export class AuthService {
 
   async validateUser(username: string, password: string): Promise<User | null> {
     const user = await this.userModel.findOne({ username });
-    
+
     if (!user || !user.isActive) {
       return null;
     }
@@ -102,7 +101,11 @@ export class AuthService {
     return user;
   }
 
-  async login(user: User, userAgent: string, ip: string): Promise<LoginResponse> {
+  async login(
+    user: User,
+    userAgent: string,
+    ip: string,
+  ): Promise<LoginResponse> {
     if (user.isTwoFactorEnabled) {
       const tempToken = this.generateTempToken(user);
       return {
@@ -122,7 +125,7 @@ export class AuthService {
     ip: string,
   ): Promise<LoginSuccess> {
     let payload: any;
-    
+
     try {
       payload = this.jwtService.verify(tempToken, {
         secret: this.configService.get<string>('JWT_TEMP_SECRET'),
@@ -166,85 +169,94 @@ export class AuthService {
   }
 
   private async generateTokens(
-  user: User,
-  userAgent: string,
-  ip: string,
-): Promise<LoginSuccess> {
-  console.log('🔑 [TOKENS] Generando tokens para:', user.username);
-   console.log('💾 [TOKENS] Creando sesión para:', user.username);
-  
-  const rolePermissions = getPermissionsForRoles(user.roles || []);
-  const directPermissions = user.permissions || [];
-  const allPermissions = Array.from(new Set([...rolePermissions, ...directPermissions]));
+    user: User,
+    userAgent: string,
+    ip: string,
+  ): Promise<LoginSuccess> {
+    console.log('🔑 [TOKENS] Generando tokens para:', user.username);
+    console.log('💾 [TOKENS] Creando sesión para:', user.username);
 
-  const payload = {
-    sub: user._id.toString(),
-    username: user.username,
-    roles: user.roles,
-    permissions: allPermissions,
-  };
+    const rolePermissions = getPermissionsForRoles(user.roles || []);
+    const directPermissions = user.permissions || [];
+    const allPermissions = Array.from(
+      new Set([...rolePermissions, ...directPermissions]),
+    );
 
-  const accessToken = this.jwtService.sign(payload, {
-    secret: this.configService.get<string>('JWT_SECRET'),
-    expiresIn: '15m',
-  });
+    const payload = {
+      sub: user._id.toString(),
+      username: user.username,
+      roles: user.roles,
+      permissions: allPermissions,
+    };
 
-  const refreshToken = this.jwtService.sign(payload, {
-    secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-    expiresIn: '7d',
-  });
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: '15m',
+    });
 
-  const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-  
-  // 🔍 Log ANTES de guardar
-  console.log('💾 [TOKENS] Guardando sesión en MongoDB:', {
-    userId: user._id.toString(),
-    userAgent: userAgent.slice(0, 30),
-    ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  });
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: '7d',
+    });
 
-  try {
-    const session = await this.sessionModel.create({
-      userId: user._id,
-      refreshTokenHash,
-      userAgent,
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+
+    // 🔍 Log ANTES de guardar
+    console.log('💾 [TOKENS] Guardando sesión en MongoDB:', {
+      userId: user._id.toString(),
+      userAgent: userAgent.slice(0, 30),
       ip,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
-    
-    console.log('✅ [TOKENS] Sesión guardada:', session._id.toString());
 
-    // 🔍 Contar todas las sesiones para este usuario
-    const total = await this.sessionModel.countDocuments({ userId: user._id });
-    console.log('📊 [TOKENS] Total sesiones en DB:', total);
+    try {
+      const session = await this.sessionModel.create({
+        userId: user._id,
+        refreshTokenHash,
+        userAgent,
+        ip,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
 
-  } catch (dbError: any) {
-    console.error('❌ [TOKENS] ERROR guardando sesión en MongoDB:', dbError.message);
-    console.error('❌ [TOKENS] Detalles:', dbError);
-    throw dbError; // Re-lanzar para que el login falle limpiamente
+      console.log('✅ [TOKENS] Sesión guardada:', session._id.toString());
+
+      // 🔍 Contar todas las sesiones para este usuario
+      const total = await this.sessionModel.countDocuments({
+        userId: user._id,
+      });
+      console.log('📊 [TOKENS] Total sesiones en DB:', total);
+    } catch (dbError: any) {
+      console.error(
+        '❌ [TOKENS] ERROR guardando sesión en MongoDB:',
+        dbError.message,
+      );
+      console.error('❌ [TOKENS] Detalles:', dbError);
+      throw dbError; // Re-lanzar para que el login falle limpiamente
+    }
+
+    // 🔍 Verificar que se guardó
+    const sessionCount = await this.sessionModel.countDocuments({
+      userId: user._id,
+      isRevoked: false,
+    });
+    console.log(
+      '📊 [TOKENS] Sesiones activas para este usuario:',
+      sessionCount,
+    );
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        roles: user.roles,
+        permissions: allPermissions,
+        fullName: user.fullName,
+      },
+    };
   }
-
-  // 🔍 Verificar que se guardó
-  const sessionCount = await this.sessionModel.countDocuments({ 
-    userId: user._id,
-    isRevoked: false 
-  });
-  console.log('📊 [TOKENS] Sesiones activas para este usuario:', sessionCount);
-
-  return {
-    accessToken,
-    refreshToken,
-    user: {
-      id: user._id.toString(),
-      username: user.username,
-      email: user.email,
-      roles: user.roles,
-      permissions: allPermissions,
-      fullName: user.fullName,
-    },
-  };
-}
 
   private generateTempToken(user: User): string {
     return this.jwtService.sign(
@@ -256,105 +268,113 @@ export class AuthService {
     );
   }
 
- async refreshTokens(
-  refreshToken: string,
-  userAgent: string,
-  ip: string,
-): Promise<LoginSuccess> {
-  console.log('🔄 [REFRESH] Iniciando renovación...');
+  async refreshTokens(
+    refreshToken: string,
+    userAgent: string,
+    ip: string,
+  ): Promise<LoginSuccess> {
+    console.log('🔄 [REFRESH] Iniciando renovación...');
 
-  // Validar JWT
-  let payload: any;
-  try {
-    payload = this.jwtService.verify(refreshToken, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-    });
-  } catch (error: any) {
-    throw new UnauthorizedException('Refresh token inválido');
-  }
-
-  const userIdObj = new mongoose.Types.ObjectId(payload.sub);
-
-  // Buscar sesión válida
-  const sessions = await this.sessionModel.find({
-    userId: userIdObj,
-    isRevoked: false,
-    expiresAt: { $gt: new Date() },
-  });
-
-  console.log(`🔍 [REFRESH] Sesiones activas: ${sessions.length}`);
-
-  let validSession: (typeof sessions)[0] | null = null;
-
-  for (const session of sessions) {
-    const isValid = await bcrypt.compare(refreshToken, session.refreshTokenHash);
-    if (isValid) {
-      validSession = session;
-      break;
+    // Validar JWT
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+    } catch (error: any) {
+      throw new UnauthorizedException('Refresh token inválido');
     }
-  }
 
-  if (!validSession) {
-    throw new UnauthorizedException('Sesión inválida o expirada');
-  }
+    const userIdObj = new mongoose.Types.ObjectId(payload.sub);
 
-  const user = await this.userModel.findById(payload.sub);
-  if (!user || !user.isActive) {
-    throw new UnauthorizedException('Usuario no autorizado');
-  }
+    // Buscar sesión válida
+    const sessions = await this.sessionModel.find({
+      userId: userIdObj,
+      isRevoked: false,
+      expiresAt: { $gt: new Date() },
+    });
 
-  // ✅ CALCULAR PERMISOS UNIDOS
-  const rolePermissions = getPermissionsForRoles(user.roles || []);
-  const directPermissions = user.permissions || [];
-  const allPermissions = Array.from(new Set([...rolePermissions, ...directPermissions]));
+    console.log(`🔍 [REFRESH] Sesiones activas: ${sessions.length}`);
 
-  // ✅ GENERAR NUEVOS TOKENS
-  const newPayload = {
-    sub: user._id.toString(),
-    username: user.username,
-    roles: user.roles,
-    permissions: allPermissions,
-  };
+    let validSession: (typeof sessions)[0] | null = null;
 
-  const accessToken = this.jwtService.sign(newPayload, {
-    secret: this.configService.get<string>('JWT_SECRET'),
-    expiresIn: '15m',
-  });
+    for (const session of sessions) {
+      const isValid = await bcrypt.compare(
+        refreshToken,
+        session.refreshTokenHash,
+      );
+      if (isValid) {
+        validSession = session;
+        break;
+      }
+    }
 
-  const newRefreshToken = this.jwtService.sign(newPayload, {
-    secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-    expiresIn: '7d',
-  });
+    if (!validSession) {
+      throw new UnauthorizedException('Sesión inválida o expirada');
+    }
 
-  // ✅ ACTUALIZAR LA MISMA SESIÓN (NO CREAR NUEVA)
-  validSession.refreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
-  validSession.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  validSession.lastRefreshedAt = new Date(); // ← Registrar cuándo se renovó
-  validSession.ip = ip; // ← Actualizar IP (puede haber cambiado)
-  await validSession.save();
+    const user = await this.userModel.findById(payload.sub);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Usuario no autorizado');
+    }
 
-  console.log('✅ [REFRESH] Sesión renovada (mismo registro):', validSession._id);
+    // ✅ CALCULAR PERMISOS UNIDOS
+    const rolePermissions = getPermissionsForRoles(user.roles || []);
+    const directPermissions = user.permissions || [];
+    const allPermissions = Array.from(
+      new Set([...rolePermissions, ...directPermissions]),
+    );
 
-  // 🔍 Contar sesiones activas (NO debería cambiar)
-  const activeCount = await this.sessionModel.countDocuments({
-    userId: user._id,
-    isRevoked: false,
-  });
-  console.log('📊 [REFRESH] Sesiones activas:', activeCount);
-
-  return {
-    accessToken,
-    refreshToken: newRefreshToken,
-    user: {
-      id: user._id.toString(),
+    // ✅ GENERAR NUEVOS TOKENS
+    const newPayload = {
+      sub: user._id.toString(),
       username: user.username,
-      email: user.email,
       roles: user.roles,
       permissions: allPermissions,
-      fullName: user.fullName,
-    },
-  };
-}
+    };
+
+    const accessToken = this.jwtService.sign(newPayload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: '15m',
+    });
+
+    const newRefreshToken = this.jwtService.sign(newPayload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: '7d',
+    });
+
+    // ✅ ACTUALIZAR LA MISMA SESIÓN (NO CREAR NUEVA)
+    validSession.refreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
+    validSession.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    validSession.lastRefreshedAt = new Date(); // ← Registrar cuándo se renovó
+    validSession.ip = ip; // ← Actualizar IP (puede haber cambiado)
+    await validSession.save();
+
+    console.log(
+      '✅ [REFRESH] Sesión renovada (mismo registro):',
+      validSession._id,
+    );
+
+    // 🔍 Contar sesiones activas (NO debería cambiar)
+    const activeCount = await this.sessionModel.countDocuments({
+      userId: user._id,
+      isRevoked: false,
+    });
+    console.log('📊 [REFRESH] Sesiones activas:', activeCount);
+
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        roles: user.roles,
+        permissions: allPermissions,
+        fullName: user.fullName,
+      },
+    };
+  }
 
   async logout(userId: string, refreshToken: string): Promise<void> {
     const sessions = await this.sessionModel.find({
@@ -363,7 +383,10 @@ export class AuthService {
     });
 
     for (const session of sessions) {
-      const isValid = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+      const isValid = await bcrypt.compare(
+        refreshToken,
+        session.refreshTokenHash,
+      );
       if (isValid) {
         session.isRevoked = true;
         await session.save();
@@ -391,7 +414,7 @@ export class AuthService {
     user.twoFactorSecret = secret.base32;
     await user.save();
 
-    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url!);
+    const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
 
     return {
       secret: secret.base32,
@@ -463,14 +486,13 @@ export class AuthService {
     const user = await this.userModel
       .findById(userId)
       .select('-password -twoFactorSecret -backupCodes');
-    
+
     if (!user) {
       throw new BadRequestException('Usuario no encontrado');
     }
 
     return user;
   }
-
 
   async loginInspector(
     inspectorKey: string,
@@ -481,8 +503,9 @@ export class AuthService {
     console.log('🔧 [INSPECTOR] Intento de login con API Key');
 
     // 1. Validar API Key
-    const validInspectorKey = this.configService.get<string>('INSPECTOR_API_KEY');
-    
+    const validInspectorKey =
+      this.configService.get<string>('INSPECTOR_API_KEY');
+
     if (!validInspectorKey || inspectorKey !== validInspectorKey) {
       console.error('❌ [INSPECTOR] API Key inválida');
       throw new UnauthorizedException('API Key de inspector inválida');
@@ -491,11 +514,15 @@ export class AuthService {
     console.log('✅ [INSPECTOR] API Key válida');
 
     // 2. Buscar o crear usuario especial "inspector"
-    let inspectorUser = await this.userModel.findOne({ username: 'inspector_tecnico' });
+    let inspectorUser = await this.userModel.findOne({
+      username: 'inspector_tecnico',
+    });
 
     if (!inspectorUser) {
-      console.log('🔧 [INSPECTOR] Creando usuario inspector por primera vez...');
-      
+      console.log(
+        '🔧 [INSPECTOR] Creando usuario inspector por primera vez...',
+      );
+
       // Crear usuario inspector con contraseña aleatoria (nunca se usará)
       const randomPassword = require('crypto').randomBytes(32).toString('hex');
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
@@ -518,23 +545,18 @@ export class AuthService {
 
     // 3. Generar tokens normalmente
     console.log('🔑 [INSPECTOR] Generando tokens para sesión...');
-    
-    const result = await this.generateTokens(
-      inspectorUser,
-      userAgent,
-      ip,
-    );
+
+    const result = await this.generateTokens(inspectorUser, userAgent, ip);
 
     console.log('✅ [INSPECTOR] Login exitoso para inspector');
 
     return result;
   }
 
-
   @Cron(process.env.CRON_SESSION_CLEANUP || '0 3 * * *')
   async scheduledSessionCleanup() {
     this.logger.log('🧹 Iniciando limpieza programada de sesiones');
-    
+
     try {
       const deleted = await this.cleanupExpiredSessions();
       this.logger.log(`✅ Limpieza completada: ${deleted} sesiones eliminadas`);
@@ -543,11 +565,10 @@ export class AuthService {
     }
   }
 
-
   async cleanupExpiredSessions(): Promise<number> {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🧹 [CRON] Iniciando limpieza de sesiones...');
-    
+
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -555,7 +576,9 @@ export class AuthService {
     try {
       // Contar antes de borrar
       const totalBefore = await this.sessionModel.countDocuments({});
-      const activeBefore = await this.sessionModel.countDocuments({ isRevoked: false });
+      const activeBefore = await this.sessionModel.countDocuments({
+        isRevoked: false,
+      });
 
       console.log('📊 [CRON] Estado actual:', {
         total: totalBefore,
@@ -568,13 +591,13 @@ export class AuthService {
         $or: [
           // 1️⃣ Sesiones expiradas (refresh token venció)
           { expiresAt: { $lt: now } },
-          
+
           // 2️⃣ Sesiones revocadas hace más de 7 días (ya no son útiles)
-          { 
+          {
             isRevoked: true,
-            updatedAt: { $lt: sevenDaysAgo }
+            updatedAt: { $lt: sevenDaysAgo },
           },
-          
+
           // 3️⃣ Sesiones sin actividad por 30 días (abandonadas)
           {
             isRevoked: false,
@@ -582,18 +605,20 @@ export class AuthService {
               // Si tiene lastRefreshedAt, usar eso
               { lastRefreshedAt: { $lt: thirtyDaysAgo } },
               // Si no tiene lastRefreshedAt (sesiones viejas), usar createdAt
-              { 
-                lastRefreshedAt: null, 
-                createdAt: { $lt: thirtyDaysAgo }
-              }
-            ]
-          }
-        ]
+              {
+                lastRefreshedAt: null,
+                createdAt: { $lt: thirtyDaysAgo },
+              },
+            ],
+          },
+        ],
       });
 
       // Contar después de borrar
       const totalAfter = await this.sessionModel.countDocuments({});
-      const activeAfter = await this.sessionModel.countDocuments({ isRevoked: false });
+      const activeAfter = await this.sessionModel.countDocuments({
+        isRevoked: false,
+      });
 
       console.log('✅ [CRON] Limpieza completada:', {
         eliminadas: result.deletedCount,
@@ -603,7 +628,6 @@ export class AuthService {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       return result.deletedCount;
-
     } catch (error) {
       console.error('❌ [CRON] Error en limpieza:', error);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

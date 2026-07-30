@@ -42,4 +42,5 @@ export class InspectionSchedule {
   updatedAt?: Date;
 }
 
-export const InspectionScheduleSchema = SchemaFactory.createForClass(InspectionSchedule);
+export const InspectionScheduleSchema =
+  SchemaFactory.createForClass(InspectionSchedule);

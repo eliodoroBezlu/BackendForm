@@ -3,6 +3,8 @@ import { getModelToken } from '@nestjs/mongoose';
 import { NotFoundException } from '@nestjs/common';
 import { PgrService } from './pgr.service';
 import { Pgr, PgrEstado, ActividadEstado } from './schemas/pgr.schema';
+import { Area } from '../area/schema/area.schema';
+import { Superintendencia } from '../superintendencia/schema/superintendencia.schema';
 
 const mockPgr = {
   _id: 'some-id',
@@ -18,8 +20,8 @@ const mockPgr = {
       _id: 'act1',
       descripcion: 'Act 1',
       estadoAprobacion: ActividadEstado.PENDIENTE,
-    }
-  ]
+    },
+  ],
 };
 
 const mockPgrModel = {
@@ -46,6 +48,14 @@ describe('PgrService', () => {
         {
           provide: getModelToken(Pgr.name),
           useValue: mockPgrModel,
+        },
+        {
+          provide: getModelToken(Area.name),
+          useValue: {},
+        },
+        {
+          provide: getModelToken(Superintendencia.name),
+          useValue: {},
         },
       ],
     }).compile();
@@ -85,7 +95,9 @@ describe('PgrService', () => {
       jest.spyOn(model, 'findById').mockReturnValue({
         exec: jest.fn().mockResolvedValueOnce(null),
       } as any);
-      await expect(service.findOne('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('invalid-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -102,7 +114,9 @@ describe('PgrService', () => {
       jest.spyOn(model, 'findByIdAndDelete').mockReturnValue({
         exec: jest.fn().mockResolvedValueOnce(null),
       } as any);
-      await expect(service.remove('invalid-id')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('invalid-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

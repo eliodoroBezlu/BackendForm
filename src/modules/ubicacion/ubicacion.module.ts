@@ -6,7 +6,9 @@ import { Ubicacion, UbicacionSchema } from './schemas/ubicacion.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Ubicacion.name, schema: UbicacionSchema }]),
+    MongooseModule.forFeature([
+      { name: Ubicacion.name, schema: UbicacionSchema },
+    ]),
   ],
   controllers: [UbicacionController],
   providers: [UbicacionService],

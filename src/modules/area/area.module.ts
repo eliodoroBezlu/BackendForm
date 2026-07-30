@@ -3,7 +3,10 @@ import { AreaService } from './area.service';
 import { AreaController } from './area.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Area, AreaSchema } from './schema/area.schema';
-import { Superintendencia, SuperintendenciaSchema } from '../superintendencia/schema/superintendencia.schema';
+import {
+  Superintendencia,
+  SuperintendenciaSchema,
+} from '../superintendencia/schema/superintendencia.schema';
 
 @Module({
   imports: [

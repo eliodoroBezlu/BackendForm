@@ -48,13 +48,28 @@ export class Equipo extends Document {
   @Prop({ type: String, required: true, index: true })
   tipo_equipo: string; // "Escalera", "Amoladora", etc.
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Area', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Area',
+    required: true,
+    index: true,
+  })
   area_id: Types.ObjectId;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Ubicacion', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ubicacion',
+    required: true,
+    index: true,
+  })
   ubicacion_id: Types.ObjectId;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Clasificacion', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clasificacion',
+    required: true,
+    index: true,
+  })
   clasificacion_id: Types.ObjectId;
 
   @Prop({ type: mongoose.Schema.Types.Mixed, default: {} })

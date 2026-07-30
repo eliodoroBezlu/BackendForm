@@ -1,15 +1,15 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   Put,
   Query,
   Request,
-  UseGuards
+  UseGuards,
 } from '@nestjs/common';
 import { SuperintendenciaService } from './superintendencia.service';
 import { CreateSuperintendenciaDto } from './dto/create-superintendencia.dto';
@@ -21,19 +21,26 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('superintendencia')
 export class SuperintendenciaController {
-  constructor(private readonly superintendenciaService: SuperintendenciaService) {}
+  constructor(
+    private readonly superintendenciaService: SuperintendenciaService,
+  ) {}
 
   @Post()
   async create(
     @Body() createSuperintendenciaDto: CreateSuperintendenciaDto,
-    @Request() req: any
+    @Request() req: any,
   ) {
     const usuario = req.user?.username || 'Sistema';
-    return this.superintendenciaService.create(createSuperintendenciaDto, usuario);
+    return this.superintendenciaService.create(
+      createSuperintendenciaDto,
+      usuario,
+    );
   }
 
   @Get('buscar')
-  async buscarSuperintendencias(@Query('query') query: string): Promise<string[]> {
+  async buscarSuperintendencias(
+    @Query('query') query: string,
+  ): Promise<string[]> {
     return this.superintendenciaService.buscarSuperintendencia(query);
   }
 
@@ -51,10 +58,14 @@ export class SuperintendenciaController {
   async update(
     @Param('id') id: string,
     @Body() updateSuperintendenciaDto: UpdateSuperintendenciaDto,
-    @Request() req: any
+    @Request() req: any,
   ) {
     const usuario = req.user?.username || 'Sistema';
-    return this.superintendenciaService.update(id, updateSuperintendenciaDto, usuario);
+    return this.superintendenciaService.update(
+      id,
+      updateSuperintendenciaDto,
+      usuario,
+    );
   }
 
   @Put('desactivar/:id')

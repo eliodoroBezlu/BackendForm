@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelTaladroService {
@@ -48,14 +49,14 @@ export class ExcelTaladroService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -262,57 +263,55 @@ export class ExcelTaladroService {
           let currentRow = sectionConfig.startRow;
 
           // Procesar preguntas
-          Object.entries(sectionResponses as Record<string, any>).forEach(
-            ([questionId, response]) => {
-              if (currentRow > sectionConfig.endRow) {
-                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-                return;
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
+            if (currentRow > sectionConfig.endRow) {
+              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+              return;
+            }
+
+            try {
+              // Limpiar celdas
+              worksheet.getCell(`${siCol}${currentRow}`).value = '';
+              worksheet.getCell(`${noCol}${currentRow}`).value = '';
+              worksheet.getCell(`${naCol}${currentRow}`).value = '';
+
+              // Procesar respuesta
+              if (response.value !== undefined && response.value !== null) {
+                const valor = String(response.value).toLowerCase().trim();
+
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
+                  worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
+                  worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                } else if (valor === 'na' || valor === 'n/a') {
+                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                }
               }
 
-              try {
-                // Limpiar celdas
-                worksheet.getCell(`${siCol}${currentRow}`).value = '';
-                worksheet.getCell(`${noCol}${currentRow}`).value = '';
-                worksheet.getCell(`${naCol}${currentRow}`).value = '';
-
-                // Procesar respuesta
-                if (response.value !== undefined && response.value !== null) {
-                  const valor = String(response.value).toLowerCase().trim();
-
-                  if (
-                    valor === 'bueno' ||
-                    valor === 'si' ||
-                    valor === 'true' ||
-                    valor === '1'
-                  ) {
-                    worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-                  } else if (
-                    valor === 'malo' ||
-                    valor === 'no' ||
-                    valor === 'false' ||
-                    valor === '0'
-                  ) {
-                    worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
-                  } else if (valor === 'na' || valor === 'n/a') {
-                    worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
-                  }
-                }
-
-                // Observaciones
-                if (response.observacion?.trim()) {
-                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                    response.observacion;
-                }
-
-                currentRow++;
-              } catch (error) {
-                this.logger.error(
-                  `Error en fila ${currentRow}: ${error.message}`,
-                );
-                currentRow++;
+              // Observaciones
+              if (response.observacion?.trim()) {
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
               }
-            },
-          );
+
+              currentRow++;
+            } catch (error) {
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
+              currentRow++;
+            }
+          });
         },
       );
 
@@ -377,7 +376,8 @@ export class ExcelTaladroService {
         }
 
         if (insp.inspectionDate)
-          worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
+          worksheet.getCell(posiciones.inspector.fecha).value =
+            insp.inspectionDate;
         // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
       }
 

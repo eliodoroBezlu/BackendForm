@@ -1,4 +1,10 @@
-import { IsString, IsEnum, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ActividadEstado } from '../schemas/pgr.schema';
 

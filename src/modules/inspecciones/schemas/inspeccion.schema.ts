@@ -58,22 +58,22 @@ export class InspeccionSeccion {
 @Schema()
 class InspectionTitle {
   @Prop()
-  id: string
+  id: string;
 
   @Prop()
-  title: string
+  title: string;
 
   @Prop({ type: [InspeccionSeccion] })
-  items: InspeccionSeccion[]
+  items: InspeccionSeccion[];
 }
 
 @Schema()
 export class Inspeccion extends Document {
   @Prop()
-  documentCode: string
+  documentCode: string;
 
   @Prop()
-  revisionNumber: number
+  revisionNumber: number;
 
   @Prop({ type: InformacionGeneral })
   informacionGeneral: InformacionGeneral;
@@ -81,27 +81,26 @@ export class Inspeccion extends Document {
   @Prop({ type: [InspectionTitle] })
   resultados: InspectionTitle[];
 
-  
   @Prop({ type: String, enum: ['SI', 'NO', null] })
-  operativo: "SI" | "NO" | null
+  operativo: 'SI' | 'NO' | null;
 
   @Prop()
   observacionesComplementarias: string;
-  
+
   @Prop()
-  inspectionConductedBy: string
+  inspectionConductedBy: string;
 
   @Prop()
   firmaInspector: string;
 
   @Prop()
-  inspectionApprovedBy: string
+  inspectionApprovedBy: string;
 
   @Prop()
   firmaSupervisor: string;
 
   @Prop({ type: Date })
-  reviewDate: Date
+  reviewDate: Date;
 
   @Prop({ default: Date.now, index: true })
   createdAt: Date;

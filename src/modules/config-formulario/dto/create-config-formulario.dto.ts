@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsBoolean, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  ValidateNested,
+  IsBoolean,
+  IsOptional,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CampoFormularioDto {

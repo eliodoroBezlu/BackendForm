@@ -30,7 +30,8 @@ export class MLRecommendationsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Obtener recomendación ML para una observación específica',
-    description: 'Genera recomendaciones ML para una pregunta/observación individual',
+    description:
+      'Genera recomendaciones ML para una pregunta/observación individual',
   })
   @ApiResponse({
     status: 200,
@@ -51,15 +52,18 @@ export class MLRecommendationsController {
             'Capacitar al personal sobre el riesgo identificado',
             'Documentar y hacer seguimiento semanal',
           ],
-          analysis: 'Brecha de 3 punto(s). Puede alcanzar nivel 3/3 con las acciones recomendadas.',
+          analysis:
+            'Brecha de 3 punto(s). Puede alcanzar nivel 3/3 con las acciones recomendadas.',
         },
       },
     },
   })
   async getRecommendation(@Body() dto: GetRecommendationDto) {
     this.logger.log('🤖 Solicitud de recomendación individual recibida');
-    this.logger.debug(`📦 DTO completo recibido: ${JSON.stringify(dto, null, 2)}`);
-    
+    this.logger.debug(
+      `📦 DTO completo recibido: ${JSON.stringify(dto, null, 2)}`,
+    );
+
     // 🔥 Validación defensiva
     if (!dto.question_text) {
       this.logger.error('❌ question_text es undefined o vacío');
@@ -68,7 +72,7 @@ export class MLRecommendationsController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
+
     if (dto.current_response === undefined || dto.current_response === null) {
       this.logger.error('❌ current_response es undefined o null');
       throw new HttpException(
@@ -76,19 +80,24 @@ export class MLRecommendationsController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    
-    this.logger.debug(`📝 Pregunta: "${dto.question_text.substring(0, 50)}..."`);
+
+    this.logger.debug(
+      `📝 Pregunta: "${dto.question_text.substring(0, 50)}..."`,
+    );
     this.logger.debug(`🔢 Puntaje actual: ${dto.current_response}`);
 
     try {
-      const recommendation = await this.mlRecommendationsService.getRecommendation(
-        dto.question_text,
-        dto.current_response,
-        dto.comment,
-        dto.context,
-      );
+      const recommendation =
+        await this.mlRecommendationsService.getRecommendation(
+          dto.question_text,
+          dto.current_response,
+          dto.comment,
+          dto.context,
+        );
 
-      this.logger.log(`✅ Recomendación generada - Prioridad: ${recommendation.priority}`);
+      this.logger.log(
+        `✅ Recomendación generada - Prioridad: ${recommendation.priority}`,
+      );
 
       return {
         status: 'success',

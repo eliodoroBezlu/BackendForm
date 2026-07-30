@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelElectricoActosService {
@@ -33,14 +34,14 @@ export class ExcelElectricoActosService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -135,14 +136,12 @@ export class ExcelElectricoActosService {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -154,7 +153,6 @@ export class ExcelElectricoActosService {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -196,7 +194,6 @@ export class ExcelElectricoActosService {
     instance: Instance,
   ) {
     try {
-      
       if (!instance.sections || instance.sections.length === 0) {
         this.logger.warn('No se encontraron secciones en la instancia');
         return;
@@ -234,7 +231,6 @@ export class ExcelElectricoActosService {
           continue;
         }
 
-        
         let currentRow = sectionInfo.startRow;
 
         for (let i = 0; i < section.questions.length; i++) {

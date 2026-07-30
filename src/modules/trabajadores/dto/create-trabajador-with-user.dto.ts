@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEmail, IsNotEmpty, IsOptional, IsArray, MinLength, Matches } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  MinLength,
+  Matches,
+} from 'class-validator';
 import { CreateTrabajadorDto } from './create-trabajador.dto';
 
 export class CreateTrabajadorWithUserDto extends CreateTrabajadorDto {
@@ -10,7 +18,8 @@ export class CreateTrabajadorWithUserDto extends CreateTrabajadorDto {
   @IsString()
   @MinLength(3, { message: 'El username debe tener al menos 3 caracteres' })
   @Matches(/^[a-zA-Z0-9._-]+$/, {
-    message: 'El username solo puede contener letras, números, puntos, guiones y guiones bajos'
+    message:
+      'El username solo puede contener letras, números, puntos, guiones y guiones bajos',
   })
   username: string;
 
@@ -39,7 +48,8 @@ export class CreateTrabajadorWithUserDto extends CreateTrabajadorDto {
   temporary_password?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Nombre completo (opcional, se usa nomina si no se proporciona)',
+    description:
+      'Nombre completo (opcional, se usa nomina si no se proporciona)',
     example: 'Juan Pérez González',
   })
   @IsOptional()

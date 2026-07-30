@@ -2,7 +2,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
-@Schema({timestamps: true})
+@Schema({ timestamps: true })
 export class Extintor extends Document {
   @Prop({ required: true })
   area: string;
@@ -16,12 +16,11 @@ export class Extintor extends Document {
   @Prop({ required: true })
   Ubicacion: string;
 
-  @Prop({type: Boolean, default: false})
+  @Prop({ type: Boolean, default: false })
   inspeccionado: boolean;
 
-  @Prop({type: Boolean, default: true})
+  @Prop({ type: Boolean, default: true })
   activo: boolean;
-
 }
 
-export const ExtintorSchema = SchemaFactory.createForClass(Extintor);   
+export const ExtintorSchema = SchemaFactory.createForClass(Extintor);

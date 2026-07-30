@@ -21,18 +21,19 @@ export interface QRGenerationResult {
 
 @Injectable()
 export class QrGeneratorService {
-  
   /**
    * Genera un código QR como Data URL (base64)
    */
   async generateQRDataURL(text: string, options?: QROptions): Promise<string> {
     try {
       this.validateInput(text);
-      
+
       const qrOptions = this.getDefaultOptions(options);
       return await QRCode.toDataURL(text, qrOptions);
     } catch (error) {
-      throw new BadRequestException(`Error generando código QR: ${error.message}`);
+      throw new BadRequestException(
+        `Error generando código QR: ${error.message}`,
+      );
     }
   }
 
@@ -42,11 +43,13 @@ export class QrGeneratorService {
   async generateQRBuffer(text: string, options?: QROptions): Promise<Buffer> {
     try {
       this.validateInput(text);
-      
+
       const qrOptions = this.getDefaultOptions(options);
       return await QRCode.toBuffer(text, qrOptions);
     } catch (error) {
-      throw new BadRequestException(`Error generando código QR: ${error.message}`);
+      throw new BadRequestException(
+        `Error generando código QR: ${error.message}`,
+      );
     }
   }
 
@@ -56,52 +59,65 @@ export class QrGeneratorService {
   async generateQRSVG(text: string, options?: QROptions): Promise<string> {
     try {
       this.validateInput(text);
-      
+
       const qrOptions = this.getDefaultOptions(options);
-      return await QRCode.toString(text, { 
-        ...qrOptions, 
-        type: 'svg' 
+      return await QRCode.toString(text, {
+        ...qrOptions,
+        type: 'svg',
       });
     } catch (error) {
-      throw new BadRequestException(`Error generando código QR: ${error.message}`);
+      throw new BadRequestException(
+        `Error generando código QR: ${error.message}`,
+      );
     }
   }
 
   /**
    * Genera todas las versiones del código QR
    */
-  async generateQRComplete(text: string, options?: QROptions): Promise<QRGenerationResult> {
+  async generateQRComplete(
+    text: string,
+    options?: QROptions,
+  ): Promise<QRGenerationResult> {
     try {
       this.validateInput(text);
-      
+
       const [dataUrl, buffer, svg] = await Promise.all([
         this.generateQRDataURL(text, options),
         this.generateQRBuffer(text, options),
-        this.generateQRSVG(text, options)
+        this.generateQRSVG(text, options),
       ]);
 
       return { dataUrl, buffer, svg };
     } catch (error) {
-      throw new BadRequestException(`Error generando código QR: ${error.message}`);
+      throw new BadRequestException(
+        `Error generando código QR: ${error.message}`,
+      );
     }
   }
 
   /**
    * Envía el código QR como imagen directamente en la respuesta HTTP
    */
-  async sendQRImage(text: string, res: Response, options?: QROptions): Promise<void> {
+  async sendQRImage(
+    text: string,
+    res: Response,
+    options?: QROptions,
+  ): Promise<void> {
     try {
       const buffer = await this.generateQRBuffer(text, options);
-      
+
       res.set({
         'Content-Type': 'image/png',
         'Content-Length': buffer.length.toString(),
-        'Content-Disposition': `inline; filename="qr-code-${Date.now()}.png"`
+        'Content-Disposition': `inline; filename="qr-code-${Date.now()}.png"`,
       });
-      
+
       res.send(buffer);
     } catch (error) {
-      throw new BadRequestException(`Error enviando imagen QR: ${error.message}`);
+      throw new BadRequestException(
+        `Error enviando imagen QR: ${error.message}`,
+      );
     }
   }
 
@@ -111,7 +127,9 @@ export class QrGeneratorService {
     }
 
     if (text.length > 2953) {
-      throw new BadRequestException('El texto es demasiado largo para generar un código QR');
+      throw new BadRequestException(
+        'El texto es demasiado largo para generar un código QR',
+      );
     }
   }
 
@@ -122,9 +140,9 @@ export class QrGeneratorService {
       margin: options?.margin || 2,
       color: {
         dark: options?.color?.dark || '#000000',
-        light: options?.color?.light || '#FFFFFF'
+        light: options?.color?.light || '#FFFFFF',
       },
-      errorCorrectionLevel: options?.errorCorrectionLevel || 'M'
+      errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
     };
   }
 }

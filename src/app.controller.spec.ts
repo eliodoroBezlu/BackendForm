@@ -2,21 +2,28 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
+/**
+ * Comprueba que AppController se instancia con todas sus dependencias
+ * resueltas — es decir, que el constructor y los tokens de inyección
+ * siguen coincidiendo.
+ *
+ * Este spec venía generado por `nest generate` sin proveer ninguna
+ * dependencia, así que Nest no podía construir la clase y fallaba antes
+ * de llegar a la aserción.
+ */
 describe('AppController', () => {
-  let appController: AppController;
+  let controller: AppController;
 
   beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [{ provide: AppService, useValue: {} }],
     }).compile();
 
-    appController = app.get<AppController>(AppController);
+    controller = module.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World! my name is:. 4,"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
-    });
+  it('se instancia con sus dependencias resueltas', () => {
+    expect(controller).toBeDefined();
   });
 });

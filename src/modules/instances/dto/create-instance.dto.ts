@@ -294,7 +294,8 @@ export class CreateInstanceDto {
   totalNaCount?: number;
 
   @ApiProperty({
-    description: 'Porcentaje general de cumplimiento (calculado automáticamente)',
+    description:
+      'Porcentaje general de cumplimiento (calculado automáticamente)',
     example: 89.47,
     minimum: 0,
     maximum: 100,

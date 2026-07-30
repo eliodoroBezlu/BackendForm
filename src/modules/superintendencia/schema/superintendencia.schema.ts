@@ -17,4 +17,5 @@ export class Superintendencia extends Document {
   actualizadoPor: string;
 }
 
-export const SuperintendenciaSchema = SchemaFactory.createForClass(Superintendencia); // Genera el esquema
+export const SuperintendenciaSchema =
+  SchemaFactory.createForClass(Superintendencia); // Genera el esquema

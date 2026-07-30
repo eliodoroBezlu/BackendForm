@@ -1,12 +1,15 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreatePlanAccionDto } from './dto/create-planes-accion.dto';
 import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
 import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
+import { AprobarPlanDto } from './dto/aprobar-plan.dto';
 import { Model, Types } from 'mongoose';
 import { GenerarPlanesDto } from './dto/generar-planes.dto';
 import { InstancesService } from '../instances/instances.service';
@@ -14,9 +17,14 @@ import { TemplatesService } from '../templates/templates.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { PlanDeAccion, TareaObservacion } from './schemas/plan-accion.schema';
 import { ConfigService } from '@nestjs/config';
+import { generarTareasDesdeInstancia } from './domain/generar-plan.logic';
+import { validarActualizacionTarea } from './domain/tarea-update.validation';
+import { Role } from '../auth/enums/role.enum';
 
 @Injectable()
 export class PlanesAccionService {
+  private readonly logger = new Logger(PlanesAccionService.name);
+
   constructor(
     @InjectModel(PlanDeAccion.name)
     private planDeAccionModel: Model<PlanDeAccion>,
@@ -46,131 +54,16 @@ export class PlanesAccionService {
 
     const template = await this.templatesService.findOne(templateId);
 
-    const tareasGeneradas: TareaObservacion[] = [];
-    let numeroItem = 0;
-
-    const sectionsMap = this.crearMapaSecciones(template.sections);
-    const verificationMap = this.convertToMap(instance.verificationList);
-
-    console.log(
-      '🔍 DEBUG - verificationList ORIGINAL:',
-      instance.verificationList,
-    );
-    console.log(
-      '🔍 DEBUG - verificationMap entries:',
-      Array.from(verificationMap.entries()),
-    );
-
-    const vicepresidencia =
-      verificationMap.get('Vicepresidencia') ||
-      verificationMap.get('Gerencia') ||
-      verificationMap.get('Gerencia / Vicepresidencia') ||
-      'Vicepresidencia no especificada';
-
-    const superintendenciaSenior =
-      verificationMap.get('Superintendencia Senior') ||
-      verificationMap.get('Superintendencia Sénior') ||
-      verificationMap.get('Sup. Senior') ||
-      'Superintendencia Senior no especificada';
-
-    const superintendencia =
-      verificationMap.get('Superintendencia') ||
-      verificationMap.get('Sup.') ||
-      'Superintendencia no especificada';
-
-    const areaFisica =
-      verificationMap.get('Área') ||
-      verificationMap.get('Area') ||
-      verificationMap.get('Área Física') ||
-      verificationMap.get('Lugar') ||
-      'Área no especificada';
-
-    const empresa =
-      verificationMap.get('Empresa') ||
-      verificationMap.get('Compañía') ||
-      'MSC';
-
-    console.log('✅ DATOS EXTRAÍDOS:', {
-      vicepresidencia,
-      superintendenciaSenior,
-      superintendencia,
-      areaFisica,
-      empresa,
-    });
-
-    // Generar tareas
-    for (const section of instance.sections) {
-      console.log(`🔍 Procesando sección con ID: ${section.sectionId}`);
-
-      const sectionInfo = sectionsMap.get(section.sectionId);
-
-      if (!sectionInfo) {
-        console.warn(
-          `⚠️ Sección ${section.sectionId} no encontrada en template`,
-        );
-        continue;
-      }
-
-      console.log(`✅ Sección encontrada: "${sectionInfo.title}"`);
-
-      for (const question of section.questions) {
-        console.log(`  🔎 Procesando pregunta: "${question.questionText}"`);
-
-        const puntaje = this.extraerPuntaje(question.response);
-        console.log(`    Puntaje extraído: ${puntaje}`);
-
-        if (puntaje === null) {
-          console.log(`    ❌ Puntaje nulo o inválido. Saltando pregunta.`);
-          continue;
-        }
-
-        const necesitaPlan = this.requierePlanDeAccion(
-          puntaje,
-          question.comment,
-          opciones,
-        );
-        console.log(`    ¿Requiere plan de acción? ${necesitaPlan}`);
-
-        if (!necesitaPlan) {
-          continue;
-        }
-
-        numeroItem++;
-        console.log(`    ✅ Generando tarea de observación #${numeroItem}`);
-
-        const tarea: TareaObservacion = {
-          numeroItem,
-          fechaHallazgo: instance.createdAt || new Date(),
-          responsableObservacion:
-            instance.verificationList.get('Supervisor') || 'No asignado',
-          empresa: empresa,
-          lugarFisico: areaFisica,
-          actividad: template.name || 'Actividad no especificada',
-          familiaPeligro: this.determinarFamiliaPeligro(sectionInfo.title),
-          descripcionObservacion: question.comment || question.questionText,
-
-          // 🔥 CAMBIO PRINCIPAL: accionPropuesta ahora viene VACÍA
-          accionPropuesta: '', // ← Usuario la completará manualmente con ayuda de ML
-
-          responsableAreaCierre:
-            instance.verificationList.get('Supervisor') || 'No asignado',
-          diasRetraso: 0,
-          estado: 'abierto',
-          aprobado: false,
-
-          // Trazabilidad
-          instanceId: instanceId,
-          sectionId: section.sectionId,
-          sectionTitle: sectionInfo.title,
-          questionText: question.questionText,
-        } as TareaObservacion;
-
-        console.log(`    📝 Tarea generada:`, tarea);
-        tareasGeneradas.push(tarea);
-      }
-    }
-
-    console.log(`✅ Total de tareas generadas: ${tareasGeneradas.length}`);
+    // Reglas de puntaje/clasificación puras — no tocan Mongoose.
+    const {
+      metadatosOrganizacionales: {
+        vicepresidencia,
+        superintendenciaSenior,
+        superintendencia,
+        areaFisica,
+      },
+      tareas: tareasGeneradas,
+    } = generarTareasDesdeInstancia(instance, template, instanceId, opciones);
 
     if (tareasGeneradas.length === 0) {
       throw new BadRequestException(
@@ -178,8 +71,9 @@ export class PlanesAccionService {
       );
     }
 
-    // Crear el plan con todas las tareas
-    const metadatos = this.calcularMetadatos(tareasGeneradas);
+    const metadatos = this.calcularMetadatos(
+      tareasGeneradas as unknown as TareaObservacion[],
+    );
 
     const planData = {
       vicepresidencia,
@@ -194,10 +88,7 @@ export class PlanesAccionService {
     };
 
     const plan = new this.planDeAccionModel(planData);
-    const planGuardado = await plan.save();
-
-    console.log(`✅ Plan creado con ${tareasGeneradas.length} tareas`);
-    return planGuardado;
+    return plan.save();
   }
 
   /**
@@ -235,20 +126,21 @@ export class PlanesAccionService {
 
     plan.tareas.push(nuevaTarea);
 
-    const metadatos = this.calcularMetadatos(plan.tareas);
+    const metadatos = this.calcularMetadatos(
+      plan.tareas.filter((t) => (t as any).activo !== false),
+    );
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
 
-    return await plan.save();
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
   }
 
   /**
    * 🆕 Actualizar una tarea específica
    */
-/**
- * 🆕 Actualizar una tarea específica
- */
-async updateTarea(
+  async updateTarea(
     planId: string,
     tareaId: string,
     updateDto: UpdateTareaDto,
@@ -271,82 +163,21 @@ async updateTarea(
 
     const tareaActual = plan.tareas[tareaIndex];
 
-    // 🔥 VALIDACIÓN: No permitir editar si está aprobada
-    if (tareaActual.aprobado) {
-      throw new BadRequestException('No se puede editar una tarea aprobada');
+    if ((tareaActual as any).activo === false) {
+      throw new NotFoundException('Tarea no encontrada');
     }
 
-    // 🔥 CAMPOS BLOQUEADOS para tareas generadas desde inspección
-    const camposBloqueados = [
-      'fechaHallazgo',
-      'responsableObservacion',
-      'empresa',
-      'lugarFisico',
-      'actividad',
-      'descripcionObservacion',
-    ];
-
-    // 🔥 VALIDACIÓN: Si viene de inspección, solo permitir campos editables
-    if (tareaActual.instanceId) {
-      const camposEnviados = Object.keys(updateDto);
-      const intentoCambiarBloqueado = camposEnviados.some(
-        (campo) => camposBloqueados.includes(campo)
-      );
-
-      if (intentoCambiarBloqueado) {
-        throw new BadRequestException(
-          `No se pueden modificar los siguientes campos en tareas generadas desde inspección: ${camposBloqueados.join(', ')}`
-        );
-      }
+    // Validación de estado/campos bloqueados + normalización — función pura,
+    // no toca Mongoose.
+    const { error, actualizacionProcesada } = validarActualizacionTarea(
+      tareaActual,
+      updateDto,
+    );
+    if (error) {
+      throw new BadRequestException(error.message);
     }
 
-    // 🔥 CAPTURAR ESTADO ANTERIOR para detectar cambios
     const estadoAnterior = tareaActual.estado;
-
-    // 🔥 Procesar actualización
-    const actualizacionProcesada: any = { ...updateDto };
-    
-    // Convertir fechas
-    if (updateDto.fechaCumplimientoAcordada) {
-      actualizacionProcesada.fechaCumplimientoAcordada = new Date(updateDto.fechaCumplimientoAcordada);
-    }
-    if (updateDto.fechaCumplimientoEfectiva) {
-      actualizacionProcesada.fechaCumplimientoEfectiva = new Date(updateDto.fechaCumplimientoEfectiva);
-    }
-
-    // Procesar evidencias si vienen en el DTO
-    if (updateDto.evidencias !== undefined) {
-      actualizacionProcesada.evidencias = updateDto.evidencias
-        .filter(ev => ev && ev.nombre && ev.url)
-        .map(ev => ({
-          nombre: String(ev.nombre).trim(),
-          url: String(ev.url).trim()
-        }));
-    }
-
-    // 🔥 VALIDACIONES DE CAMBIO DE ESTADO
-    if (updateDto.estado) {
-      const tareaConCambios = { ...tareaActual, ...actualizacionProcesada };
-
-      if (updateDto.estado === 'en-progreso') {
-        if (!tareaConCambios.familiaPeligro || 
-            !tareaConCambios.accionPropuesta || 
-            !tareaConCambios.responsableAreaCierre ||
-            !tareaConCambios.fechaCumplimientoAcordada) {
-          throw new BadRequestException(
-            'Para pasar a "en-progreso", la tarea debe tener: Familia de Peligro, Acción Propuesta, Responsable y Fecha Acordada'
-          );
-        }
-      }
-
-      if (updateDto.estado === 'cerrado') {
-        if (!tareaConCambios.fechaCumplimientoEfectiva) {
-          throw new BadRequestException(
-            'Para cerrar la tarea, debe tener una Fecha de Cumplimiento Efectiva'
-          );
-        }
-      }
-    }
 
     // Aplicar cambios
     Object.assign(plan.tareas[tareaIndex], actualizacionProcesada);
@@ -362,44 +193,52 @@ async updateTarea(
       );
     }
 
-    // 🔥 NUEVO: Enviar feedback cuando cambia de "abierto" a "en-progreso"
-    if (estadoAnterior === 'abierto' && updateDto.estado === 'en-progreso') {
-      if (updateDto.mlMetadata) {
-        console.log('🔥 Detectado cambio a "en-progreso" - Enviando feedback ML...');
-        
-        // No esperar el feedback para no bloquear la respuesta
-        this.enviarFeedbackML({
-          question_text: tareaActual.questionText || '',
-          current_response: 0, // Asumimos crítico (puntaje bajo)
-          comment: tareaActual.descripcionObservacion,
-          accion_seleccionada: tareaActualizada.accionPropuesta || '',
-          fue_recomendacion_ml: updateDto.mlMetadata.fue_recomendacion_ml || false,
-          indice_recomendacion: updateDto.mlMetadata.indice_recomendacion,
-          recomendaciones_originales: updateDto.mlMetadata.recomendaciones_originales,
-          context: {
-            familia_peligro: tareaActualizada.familiaPeligro,
-            area: plan.areaFisica,
-            empresa: tareaActual.empresa,
-            vicepresidencia: plan.vicepresidencia,
-            superintendencia: plan.superintendencia,
-          },
-          feedback_type: 'guardado',
-          feedback_score: updateDto.mlMetadata.fue_recomendacion_ml ? 1.0 : 0.5,
-        }).catch(error => {
-          // Log del error pero no afectar la operación principal
-          console.error('⚠️ Error enviando feedback (no crítico):', error.message);
-        });
-      }
+    // Enviar feedback ML cuando cambia de "abierto" a "en-progreso" —
+    // fire-and-forget, no bloquea la respuesta ni afecta la operación
+    // principal si falla.
+    if (
+      estadoAnterior === 'abierto' &&
+      updateDto.estado === 'en-progreso' &&
+      updateDto.mlMetadata
+    ) {
+      this.enviarFeedbackML({
+        question_text: tareaActual.questionText || '',
+        current_response: 0, // Asumimos crítico (puntaje bajo)
+        comment: tareaActual.descripcionObservacion,
+        accion_seleccionada: tareaActualizada.accionPropuesta || '',
+        fue_recomendacion_ml:
+          updateDto.mlMetadata.fue_recomendacion_ml || false,
+        indice_recomendacion: updateDto.mlMetadata.indice_recomendacion,
+        recomendaciones_originales:
+          updateDto.mlMetadata.recomendaciones_originales,
+        context: {
+          familia_peligro: tareaActualizada.familiaPeligro,
+          area: plan.areaFisica,
+          empresa: tareaActual.empresa,
+          vicepresidencia: plan.vicepresidencia,
+          superintendencia: plan.superintendencia,
+        },
+        feedback_type: 'guardado',
+        feedback_score: updateDto.mlMetadata.fue_recomendacion_ml ? 1.0 : 0.5,
+      }).catch((error) => {
+        this.logger.warn(
+          `Error enviando feedback ML (no crítico): ${error.message}`,
+        );
+      });
     }
 
-    // Recalcular metadatos del plan
-    const metadatos = this.calcularMetadatos(plan.tareas);
+    // Recalcular metadatos del plan (solo tareas activas)
+    const metadatos = this.calcularMetadatos(
+      plan.tareas.filter((t) => (t as any).activo !== false),
+    );
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
 
     plan.markModified('tareas');
 
-    return await plan.save();
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
   }
 
   private async enviarFeedbackML(feedback: {
@@ -426,9 +265,6 @@ async updateTarea(
         'http://localhost:8000',
       );
 
-      console.log('📤 Enviando feedback a ML Service:', mlServiceUrl);
-      console.log('📊 Datos del feedback:', JSON.stringify(feedback, null, 2));
-
       const response = await fetch(`${mlServiceUrl}/api/ml/feedback`, {
         method: 'POST',
         headers: {
@@ -439,14 +275,17 @@ async updateTarea(
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Error enviando feedback al ML Service:', errorText);
+        this.logger.error(
+          `Error enviando feedback al ML Service: ${errorText}`,
+        );
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ Feedback enviado exitosamente:', result);
+      await response.json();
     } catch (error) {
-      console.error('❌ Error conectando con ML Service:', error);
+      this.logger.error(
+        `Error conectando con ML Service: ${(error as Error).message}`,
+      );
       // No bloqueamos la operación principal si falla el feedback
       throw error; // Re-lanzar para que el catch externo lo maneje
     }
@@ -476,7 +315,7 @@ async updateTarea(
   }
 
   /**
-   * 🆕 Eliminar una tarea
+   * 🆕 Dar de baja una tarea (baja lógica, nunca se elimina físicamente)
    */
   async deleteTarea(planId: string, tareaId: string): Promise<PlanDeAccion> {
     if (!Types.ObjectId.isValid(planId)) {
@@ -488,21 +327,33 @@ async updateTarea(
       throw new NotFoundException('Plan no encontrado');
     }
 
-    plan.tareas = plan.tareas.filter((t) => {
-      const tarea = t as any;
-      return tarea._id ? tarea._id.toString() !== tareaId : true;
+    const tarea = plan.tareas.find((t) => {
+      const tt = t as any;
+      return tt._id && tt._id.toString() === tareaId;
     });
 
-    // Renumerar tareas
-    plan.tareas.forEach((tarea, index) => {
-      tarea.numeroItem = index + 1;
+    if (!tarea || (tarea as any).activo === false) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+
+    (tarea as any).activo = false;
+
+    // Renumerar solo las tareas activas
+    const tareasActivas = plan.tareas.filter(
+      (t) => (t as any).activo !== false,
+    );
+    tareasActivas.forEach((t, index) => {
+      t.numeroItem = index + 1;
     });
 
-    const metadatos = this.calcularMetadatos(plan.tareas);
+    const metadatos = this.calcularMetadatos(tareasActivas);
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
+    plan.markModified('tareas');
 
-    return await plan.save();
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
   }
 
   /**
@@ -528,6 +379,10 @@ async updateTarea(
 
     const tarea = plan.tareas[tareaIndex];
 
+    if ((tarea as any).activo === false) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+
     // 🔥 VALIDACIÓN: Solo se puede aprobar si está cerrada
     if (tarea.estado !== 'cerrado') {
       throw new BadRequestException(
@@ -547,131 +402,112 @@ async updateTarea(
 
     plan.fechaUltimaActualizacion = new Date();
 
-    return await plan.save();
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
+  }
+
+  /**
+   * 🆕 Aprobación global del plan por parte del Superintendente (o Admin).
+   * Es un eje independiente del `aprobado` por tarea: mientras no esté en
+   * estado 'aprobado', el plan no debe ser visible para el Supervisor
+   * (ver `esAdminOSuperintendente` en findAll/findOne).
+   */
+  async aprobarGlobal(
+    planId: string,
+    usuario: string,
+    dto: AprobarPlanDto,
+  ): Promise<PlanDeAccion> {
+    if (!Types.ObjectId.isValid(planId)) {
+      throw new BadRequestException('ID de plan inválido');
+    }
+
+    const plan = await this.planDeAccionModel.findById(planId);
+    if (!plan || (plan as any).activo === false) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+
+    if (plan.estadoAprobacion === 'aprobado') {
+      throw new BadRequestException('El plan ya fue aprobado');
+    }
+
+    const estadoAnterior = plan.estadoAprobacion;
+    plan.estadoAprobacion = 'aprobado';
+    plan.aprobadoPor = usuario;
+    plan.fechaAprobacion = new Date();
+    plan.observacionesAprobacion = dto.observaciones;
+    plan.historialAprobacion.push({
+      usuario,
+      fecha: new Date(),
+      estadoAnterior,
+      estadoNuevo: 'aprobado',
+      observaciones: dto.observaciones,
+    });
+    plan.fechaUltimaActualizacion = new Date();
+    plan.markModified('historialAprobacion');
+
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
+  }
+
+  /**
+   * Un Supervisor (sin ser también Admin o Superintendente) nunca debe
+   * poder ver un plan cuyo `estadoAprobacion` no sea 'aprobado'.
+   */
+  private esAdminOSuperintendente(roles?: string[]): boolean {
+    return (
+      !!roles &&
+      (roles.includes(Role.ADMIN) || roles.includes(Role.SUPERINTENDENTE))
+    );
   }
 
   // ==========================================
   // MÉTODOS AUXILIARES
   // ==========================================
 
-  private convertToMap(verificationList: any): Map<string, string> {
-    if (verificationList instanceof Map) {
-      return verificationList;
-    }
-
-    if (typeof verificationList === 'object' && verificationList !== null) {
-      return new Map(Object.entries(verificationList));
-    }
-
-    return new Map();
+  /**
+   * Quita del array `tareas` las que están dadas de baja (activo === false)
+   * antes de devolver el plan al frontend — nunca se eliminan físicamente,
+   * solo dejan de mostrarse.
+   */
+  private sanitizeTareas(plan: any): PlanDeAccion {
+    plan.tareas = (plan.tareas || []).filter((t: any) => t.activo !== false);
+    return plan;
   }
-
-  private extraerPuntaje(response: string | number): number | null {
-    if (response === 'N/A') return null;
-
-    const puntaje =
-      typeof response === 'number'
-        ? response
-        : parseInt(response as string, 10);
-
-    return isNaN(puntaje) ? null : puntaje;
-  }
-
-  private requierePlanDeAccion(
-    puntaje: number,
-    comentario: string | undefined,
-    opciones: GenerarPlanesDto,
-  ): boolean {
-    const { incluirPuntaje3 = false, incluirSoloConComentario = true } =
-      opciones;
-
-    if (puntaje < 3) {
-      if (incluirSoloConComentario) {
-        return !!comentario && comentario.trim().length > 0;
-      }
-      return true;
-    }
-
-    if (puntaje === 3 && incluirPuntaje3) {
-      return !!comentario && comentario.trim().length > 0;
-    }
-
-    return false;
-  }
-
-  private crearMapaSecciones(sections: any[]): Map<string, any> {
-    const map = new Map();
-
-    const procesarSeccion = (section: any) => {
-      if (!section.isParent && section._id) {
-        const sectionId = section._id.toString();
-        map.set(sectionId, section);
-      }
-
-      if (section.subsections?.length > 0) {
-        section.subsections.forEach(procesarSeccion);
-      }
-    };
-
-    sections.forEach(procesarSeccion);
-    return map;
-  }
-
-  private determinarFamiliaPeligro(sectionTitle: string): string {
-    const title = sectionTitle.toLowerCase();
-
-    const familias: Record<string, string> = {
-      altura: 'Trabajo en Altura',
-      eléctric: 'Riesgo Eléctrico',
-      confinado: 'Espacio Confinado',
-      caliente: 'Trabajo en Caliente',
-      aislamiento: 'Aislamiento de Energía',
-      izaje: 'Izaje y Levante',
-      sustancia: 'Sustancias Peligrosas',
-      maquinaria: 'Uso de Maquinaria',
-    };
-
-    for (const [keyword, familia] of Object.entries(familias)) {
-      if (title.includes(keyword)) {
-        return familia;
-      }
-    }
-
-    return 'Seguridad Industrial';
-  }
-
-  
 
   /**
    * 📊 Calcular metadatos del plan basado en sus tareas
    */
   private calcularMetadatos(tareas: TareaObservacion[]) {
-  const totalTareas = tareas.length;
-  const tareasAbiertas = tareas.filter((t) => t.estado === 'abierto').length;
-  const tareasEnProgreso = tareas.filter((t) => t.estado === 'en-progreso').length;
-  const tareasCerradas = tareas.filter((t) => t.estado === 'cerrado').length;
-  const porcentajeCierre =
-    totalTareas > 0 ? Math.round((tareasCerradas / totalTareas) * 100) : 0;
+    const totalTareas = tareas.length;
+    const tareasAbiertas = tareas.filter((t) => t.estado === 'abierto').length;
+    const tareasEnProgreso = tareas.filter(
+      (t) => t.estado === 'en-progreso',
+    ).length;
+    const tareasCerradas = tareas.filter((t) => t.estado === 'cerrado').length;
+    const porcentajeCierre =
+      totalTareas > 0 ? Math.round((tareasCerradas / totalTareas) * 100) : 0;
 
-  // 🔥 LÓGICA MEJORADA: Todas las tareas deben estar en progreso para que el plan esté en progreso
-  let estado: string;
-  if (tareasCerradas === totalTareas && totalTareas > 0) {
-    estado = 'cerrado';
-  } else if (tareasEnProgreso > 0 || tareasCerradas > 0) {
-    estado = 'en-progreso';
-  } else {
-    estado = 'abierto';
+    // 🔥 LÓGICA MEJORADA: Todas las tareas deben estar en progreso para que el plan esté en progreso
+    let estado: string;
+    if (tareasCerradas === totalTareas && totalTareas > 0) {
+      estado = 'cerrado';
+    } else if (tareasEnProgreso > 0 || tareasCerradas > 0) {
+      estado = 'en-progreso';
+    } else {
+      estado = 'abierto';
+    }
+
+    return {
+      totalTareas,
+      tareasAbiertas,
+      tareasEnProgreso,
+      tareasCerradas,
+      porcentajeCierre,
+      estado,
+    };
   }
-
-  return {
-    totalTareas,
-    tareasAbiertas,
-    tareasEnProgreso,
-    tareasCerradas,
-    porcentajeCierre,
-    estado,
-  };
-}
   // ==========================================
   // MÉTODOS CRUD DE PLANES (sin cambios)
   // ==========================================
@@ -707,13 +543,16 @@ async updateTarea(
     return await plan.save();
   }
 
-  async findAll(filters?: {
-    estado?: string;
-    vicepresidencia?: string;
-    superintendencia?: string;
-    areaFisica?: string;
-  }): Promise<PlanDeAccion[]> {
-    const query: any = {};
+  async findAll(
+    filters?: {
+      estado?: string;
+      vicepresidencia?: string;
+      superintendencia?: string;
+      areaFisica?: string;
+    },
+    requesterRoles?: string[],
+  ): Promise<PlanDeAccion[]> {
+    const query: any = { activo: { $ne: false } };
 
     if (filters?.estado) {
       query.estado = filters.estado;
@@ -728,24 +567,42 @@ async updateTarea(
       query.areaFisica = filters.areaFisica;
     }
 
-    return await this.planDeAccionModel
+    // 🔒 Barrera de seguridad server-side: quien no sea Admin/Superintendente
+    // nunca recibe planes pendientes de aprobación global.
+    if (!this.esAdminOSuperintendente(requesterRoles)) {
+      query.estadoAprobacion = 'aprobado';
+    }
+
+    const planes = await this.planDeAccionModel
       .find(query)
       .sort({ fechaCreacion: -1 })
       .exec();
+
+    return planes.map((p) => this.sanitizeTareas(p));
   }
 
-  async findOne(id: string): Promise<PlanDeAccion> {
+  async findOne(id: string, requesterRoles?: string[]): Promise<PlanDeAccion> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('ID inválido');
     }
 
     const plan = await this.planDeAccionModel.findById(id).exec();
 
-    if (!plan) {
+    if (!plan || (plan as any).activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
-    return plan;
+    // 🔒 Misma barrera que en findAll, aplicada al acceso directo por ID.
+    if (
+      !this.esAdminOSuperintendente(requesterRoles) &&
+      plan.estadoAprobacion !== 'aprobado'
+    ) {
+      throw new ForbiddenException(
+        'Este plan aún no fue aprobado por el Superintendente',
+      );
+    }
+
+    return this.sanitizeTareas(plan);
   }
 
   async update(
@@ -757,40 +614,55 @@ async updateTarea(
     }
 
     const plan = await this.planDeAccionModel.findById(id);
-    if (!plan) {
+    if (!plan || (plan as any).activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
     Object.assign(plan, updateDto);
     plan.fechaUltimaActualizacion = new Date();
 
-    return await plan.save();
+    await plan.save();
+
+    return this.sanitizeTareas(plan);
   }
 
+  /**
+   * Baja lógica del plan — nunca se elimina físicamente de la base de datos.
+   */
   async remove(id: string): Promise<void> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('ID inválido');
     }
 
-    const result = await this.planDeAccionModel.findByIdAndDelete(id).exec();
-
-    if (!result) {
+    const plan = await this.planDeAccionModel.findById(id);
+    if (!plan || (plan as any).activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
+
+    (plan as any).activo = false;
+    plan.fechaUltimaActualizacion = new Date();
+    await plan.save();
   }
 
   /**
    * Obtener estadísticas globales
    */
   async getStats(): Promise<any> {
+    const activoFilter = { activo: { $ne: false } };
     const [total, abiertos, enProgreso, cerrados] = await Promise.all([
-      this.planDeAccionModel.countDocuments().exec(),
-      this.planDeAccionModel.countDocuments({ estado: 'abierto' }).exec(),
-      this.planDeAccionModel.countDocuments({ estado: 'en-progreso' }).exec(),
-      this.planDeAccionModel.countDocuments({ estado: 'cerrado' }).exec(),
+      this.planDeAccionModel.countDocuments(activoFilter).exec(),
+      this.planDeAccionModel
+        .countDocuments({ ...activoFilter, estado: 'abierto' })
+        .exec(),
+      this.planDeAccionModel
+        .countDocuments({ ...activoFilter, estado: 'en-progreso' })
+        .exec(),
+      this.planDeAccionModel
+        .countDocuments({ ...activoFilter, estado: 'cerrado' })
+        .exec(),
     ]);
 
-    const planes = await this.planDeAccionModel.find().exec();
+    const planes = await this.planDeAccionModel.find(activoFilter).exec();
     const sumaPorcentajes = planes.reduce(
       (acc, plan) => acc + plan.porcentajeCierre,
       0,

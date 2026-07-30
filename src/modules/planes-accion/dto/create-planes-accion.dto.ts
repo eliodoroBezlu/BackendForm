@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateTareaDto {
-   @ApiProperty()
+  @ApiProperty()
   @IsString()
   fechaHallazgo: string;
 

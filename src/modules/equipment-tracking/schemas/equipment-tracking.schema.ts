@@ -20,11 +20,15 @@ export class EquipmentInspectionTracking extends Document {
   @Prop({ type: Number, default: 0 })
   preUsoCount?: number;
 
-  @Prop({ type: [{ 
-    inspectionId: String, 
-    date: Date, 
-    inspector: String 
-  }] })
+  @Prop({
+    type: [
+      {
+        inspectionId: String,
+        date: Date,
+        inspector: String,
+      },
+    ],
+  })
   preUsoInspections?: Array<{
     inspectionId: string;
     date: Date;
@@ -64,5 +68,8 @@ export class EquipmentInspectionTracking extends Document {
   updatedAt: Date;
 }
 
-export type EquipmentInspectionTrackingDocument = EquipmentInspectionTracking & Document;
-export const EquipmentInspectionTrackingSchema = SchemaFactory.createForClass(EquipmentInspectionTracking);
+export type EquipmentInspectionTrackingDocument = EquipmentInspectionTracking &
+  Document;
+export const EquipmentInspectionTrackingSchema = SchemaFactory.createForClass(
+  EquipmentInspectionTracking,
+);

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelCalienteService {
@@ -33,14 +34,14 @@ export class ExcelCalienteService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -82,10 +83,10 @@ export class ExcelCalienteService {
       worksheet.getCell('C7').value = valores[0] || '';
       worksheet.getCell('H7').value = valores[1] || '';
       worksheet.getCell('L7').value = valores[2] || '';
-      worksheet.getCell('C9').value = valores[3] || ''; 
+      worksheet.getCell('C9').value = valores[3] || '';
       worksheet.getCell('H8').value = valores[4] || '';
-      worksheet.getCell('C8').value = valores[5] || ''; 
-      worksheet.getCell('H9').value = valores[6] || ''; 
+      worksheet.getCell('C8').value = valores[5] || '';
+      worksheet.getCell('H9').value = valores[6] || '';
 
       this.logger.log('Lista de verificación completada exitosamente');
     } catch (error) {
@@ -187,7 +188,6 @@ export class ExcelCalienteService {
     instance: Instance,
   ) {
     try {
-     
       if (!instance.sections || instance.sections.length === 0) {
         this.logger.warn('No se encontraron secciones en la instancia');
         return;
@@ -204,52 +204,53 @@ export class ExcelCalienteService {
         { startRow: 157, name: 'H. TRABAJOS EN CALIENTE ESPACIOS CONFINADOS' }, // Ajustar según la plantilla
       ];
 
-      
-
       // Columnas para las respuestas
       const responseColumn = 'H'; // Columna donde van las respuestas (0, 1, 2, 3, N/A)
       const commentsColumn = 'I'; // Columna de comentarios
 
       // Procesar cada sección de la instancia
-      for (let sectionIndex = 0; sectionIndex < instance.sections.length; sectionIndex++) {
-      const section = instance.sections[sectionIndex];
-      const sectionInfo = sectionPositions[sectionIndex];
-      
-      if (!sectionInfo) {
-        this.logger.warn(`No se encontró configuración para la sección en posición ${sectionIndex}`);
-        continue;
-      }
+      for (
+        let sectionIndex = 0;
+        sectionIndex < instance.sections.length;
+        sectionIndex++
+      ) {
+        const section = instance.sections[sectionIndex];
+        const sectionInfo = sectionPositions[sectionIndex];
 
-      
-    
-      let currentRow = sectionInfo.startRow;
-      
-      for (let i = 0; i < section.questions.length; i++) {
-        const question = section.questions[i];
-        
-        try {
-          // Insertar la respuesta
-          if (question.response !== undefined && question.response !== null) {
-            const cellRef = `${responseColumn}${currentRow}`;
-            worksheet.getCell(cellRef).value = question.response;
+        if (!sectionInfo) {
+          this.logger.warn(
+            `No se encontró configuración para la sección en posición ${sectionIndex}`,
+          );
+          continue;
+        }
+
+        let currentRow = sectionInfo.startRow;
+
+        for (let i = 0; i < section.questions.length; i++) {
+          const question = section.questions[i];
+
+          try {
+            // Insertar la respuesta
+            if (question.response !== undefined && question.response !== null) {
+              const cellRef = `${responseColumn}${currentRow}`;
+              worksheet.getCell(cellRef).value = question.response;
+            }
+
+            // Insertar comentario si existe
+            if (question.comment && question.comment.trim() !== '') {
+              const commentCellRef = `${commentsColumn}${currentRow}`;
+              worksheet.getCell(commentCellRef).value = question.comment;
+            }
+
+            currentRow++; // Pasar a la siguiente fila para la próxima pregunta
+          } catch (questionError) {
+            this.logger.error(
+              `Error al procesar pregunta ${i + 1} en fila ${currentRow}: ${questionError.message}`,
+            );
+            currentRow++; // Continuar con la siguiente pregunta
           }
-
-          // Insertar comentario si existe
-          if (question.comment && question.comment.trim() !== '') {
-            const commentCellRef = `${commentsColumn}${currentRow}`;
-            worksheet.getCell(commentCellRef).value = question.comment;
-          }
-
-          currentRow++; // Pasar a la siguiente fila para la próxima pregunta
-          
-        } catch (questionError) {
-          this.logger.error(`Error al procesar pregunta ${i + 1} en fila ${currentRow}: ${questionError.message}`);
-          currentRow++; // Continuar con la siguiente pregunta
         }
       }
-
-      
-    }
       this.logger.log('Secciones completadas exitosamente');
     } catch (error) {
       this.logger.error(`Error al llenar secciones: ${error.message}`);
@@ -257,15 +258,15 @@ export class ExcelCalienteService {
     }
   }
 
- 
-
-  private async llenarConclusiones(worksheet: ExcelJS.Worksheet, instance: Instance) {
+  private async llenarConclusiones(
+    worksheet: ExcelJS.Worksheet,
+    instance: Instance,
+  ) {
     this.logger.log('Iniciando llenado de conclusiones y recomendaciones');
     // Aquí puedes implementar la lógica para llenar las conclusiones y recomendaciones
-     worksheet.getCell('A167').value = instance.aspectosPositivos || '';
-     worksheet.getCell('A170').value = instance.aspectosAdicionales || '';
+    worksheet.getCell('A167').value = instance.aspectosPositivos || '';
+    worksheet.getCell('A170').value = instance.aspectosAdicionales || '';
   }
-  
 
   async generateExcel(instance: Instance): Promise<Buffer> {
     try {
@@ -302,13 +303,11 @@ export class ExcelCalienteService {
         );
       }
 
-
       // FASE 1: Solo llenar la Lista de Verificación
       await this.llenarListaVerificacion(worksheet, instance);
       await this.llenarEquipoInspeccion(worksheet, instance);
       await this.llenarSecciones(worksheet, instance);
       await this.llenarConclusiones(worksheet, instance);
-
 
       const excelBuffer = await workbook.xlsx.writeBuffer();
       this.logger.log('Excel generado exitosamente');

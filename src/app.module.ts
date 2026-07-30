@@ -75,7 +75,7 @@ import { EquiposModule } from './modules/equipos/equipos.module';
     UbicacionModule,
     ClasificacionModule,
     ConfigFormularioModule,
-    EquiposModule
+    EquiposModule,
   ],
   providers: [],
 })

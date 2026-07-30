@@ -1,15 +1,15 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   Query,
   Put,
   Request,
-  UseGuards
+  UseGuards,
 } from '@nestjs/common';
 import { AreaService } from './area.service';
 import { CreateAreaDto } from './dto/create-area.dto';
@@ -24,10 +24,7 @@ export class AreaController {
   constructor(private readonly areaService: AreaService) {}
 
   @Post()
-  async create(
-    @Body() createAreaDto: CreateAreaDto,
-    @Request() req: any
-  ) {
+  async create(@Body() createAreaDto: CreateAreaDto, @Request() req: any) {
     const usuario = req.user?.username || 'Sistema';
     return this.areaService.create(createAreaDto, usuario);
   }
@@ -35,6 +32,11 @@ export class AreaController {
   @Get('buscar')
   async buscarAreas(@Query('query') query: string): Promise<string[]> {
     return this.areaService.buscarArea(query);
+  }
+
+  @Post('sync')
+  async sync() {
+    return this.areaService.syncAreasFromIam();
   }
 
   @Get()
@@ -51,7 +53,7 @@ export class AreaController {
   async update(
     @Param('id') id: string,
     @Body() updateAreaDto: UpdateAreaDto,
-    @Request() req: any
+    @Request() req: any,
   ) {
     const usuario = req.user?.username || 'Sistema';
     return this.areaService.update(id, updateAreaDto, usuario);

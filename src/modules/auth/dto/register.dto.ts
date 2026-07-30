@@ -1,11 +1,11 @@
-import { 
-  IsString, 
-  MinLength, 
-  MaxLength, 
-  Matches, 
-  IsEmail, 
+import {
+  IsString,
+  MinLength,
+  MaxLength,
+  Matches,
+  IsEmail,
   IsOptional,
-  IsEnum 
+  IsEnum,
 } from 'class-validator';
 import { Role } from '../enums/role.enum';
 
@@ -14,7 +14,8 @@ export class RegisterDto {
   @MinLength(3)
   @MaxLength(30)
   @Matches(/^[a-zA-Z0-9_-]+$/, {
-    message: 'El username solo puede contener letras, números, guiones y guiones bajos',
+    message:
+      'El username solo puede contener letras, números, guiones y guiones bajos',
   })
   username: string;
 
@@ -24,12 +25,10 @@ export class RegisterDto {
 
   @IsString()
   @MinLength(8)
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
-    {
-      message: 'La contraseña debe contener mayúsculas, minúsculas, números y caracteres especiales',
-    },
-  )
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
+    message:
+      'La contraseña debe contener mayúsculas, minúsculas, números y caracteres especiales',
+  })
   password: string;
 
   @IsOptional()

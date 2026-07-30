@@ -14,22 +14,32 @@ describe('MigracionService', () => {
   let clasificacionService: any;
 
   const mockUbicacionService = {
-    findByNameOrCreate: jest.fn().mockResolvedValue({ _id: 'mock-ubicacion-id', nombre: 'Taller' }),
+    findByNameOrCreate: jest
+      .fn()
+      .mockResolvedValue({ _id: 'mock-ubicacion-id', nombre: 'Taller' }),
   };
 
   const mockClasificacionService = {
-    findByNameOrCreate: jest.fn().mockResolvedValue({ _id: 'mock-clasificacion-id', nombre: 'Herramientas_eléctricas' }),
+    findByNameOrCreate: jest.fn().mockResolvedValue({
+      _id: 'mock-clasificacion-id',
+      nombre: 'Herramientas_eléctricas',
+    }),
   };
 
   const mockAreaModel = {
     findOne: jest.fn().mockReturnValue({
-      exec: jest.fn().mockResolvedValue({ _id: 'mock-area-id', nombre: 'CHANCADO' }),
+      exec: jest
+        .fn()
+        .mockResolvedValue({ _id: 'mock-area-id', nombre: 'CHANCADO' }),
     }),
   };
 
   const mockSuperModel = {
     findOne: jest.fn().mockReturnValue({
-      exec: jest.fn().mockResolvedValue({ _id: 'mock-super-id', nombre: 'Superintendencia' }),
+      exec: jest.fn().mockResolvedValue({
+        _id: 'mock-super-id',
+        nombre: 'Superintendencia',
+      }),
     }),
   };
 
@@ -78,7 +88,8 @@ describe('MigracionService', () => {
     areaModel = module.get(getModelToken('Area'));
     superModel = module.get(getModelToken('Superintendencia'));
     ubicacionService = module.get<UbicacionService>(UbicacionService);
-    clasificacionService = module.get<ClasificacionService>(ClasificacionService);
+    clasificacionService =
+      module.get<ClasificacionService>(ClasificacionService);
   });
 
   afterEach(() => {
@@ -116,17 +127,16 @@ describe('MigracionService', () => {
     });
 
     it('should extract the text of hyperlink cells', () => {
-      const cell = { value: { text: 'PL-713', hyperlink: 'http://example.com' } } as any;
+      const cell = {
+        value: { text: 'PL-713', hyperlink: 'http://example.com' },
+      } as any;
       expect(service['getCellStringValue'](cell)).toBe('PL-713');
     });
 
     it('should extract text from rich text cells', () => {
       const cell = {
         value: {
-          richText: [
-            { text: 'Rich ' },
-            { text: 'Text', font: { bold: true } },
-          ],
+          richText: [{ text: 'Rich ' }, { text: 'Text', font: { bold: true } }],
         },
       } as any;
       expect(service['getCellStringValue'](cell)).toBe('Rich Text');
@@ -134,12 +144,7 @@ describe('MigracionService', () => {
 
     it('should handle array value containing objects/text', () => {
       const cell = {
-        value: [
-          { text: 'A' },
-          'B',
-          null,
-          12,
-        ],
+        value: [{ text: 'A' }, 'B', null, 12],
       } as any;
       expect(service['getCellStringValue'](cell)).toBe('AB12');
     });
@@ -156,7 +161,7 @@ describe('MigracionService', () => {
         getCell: jest.fn().mockReturnValue({ value: 'Test Value' }),
       } as any;
       const headerMap = { test: 3 };
-      
+
       const res = service['getCellValue'](row, headerMap, ['test']);
       expect(res).toBe('Test Value');
       expect(row.getCell).toHaveBeenCalledWith(3);
@@ -167,8 +172,11 @@ describe('MigracionService', () => {
         getCell: jest.fn().mockReturnValue({ value: 'Alternative Value' }),
       } as any;
       const headerMap = { alternative: 4 };
-      
-      const res = service['getCellValue'](row, headerMap, ['missing', 'alternative']);
+
+      const res = service['getCellValue'](row, headerMap, [
+        'missing',
+        'alternative',
+      ]);
       expect(res).toBe('Alternative Value');
       expect(row.getCell).toHaveBeenCalledWith(4);
     });
@@ -178,8 +186,11 @@ describe('MigracionService', () => {
         getCell: jest.fn(),
       } as any;
       const headerMap = { alternative: 4 };
-      
-      const res = service['getCellValue'](row, headerMap, ['missing1', 'missing2']);
+
+      const res = service['getCellValue'](row, headerMap, [
+        'missing1',
+        'missing2',
+      ]);
       expect(res).toBeUndefined();
       expect(row.getCell).not.toHaveBeenCalled();
     });

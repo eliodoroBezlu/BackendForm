@@ -29,9 +29,12 @@ export class RbacCacheService {
   constructor(private readonly config: ConfigService) {}
 
   private async loadMap(): Promise<RbacMap | null> {
-    if (this.cache && Date.now() - this.cache.fetchedAt < this.TTL) return this.cache;
+    if (this.cache && Date.now() - this.cache.fetchedAt < this.TTL)
+      return this.cache;
 
-    const base = this.config.get<string>('IAM_CORE_URL', 'http://localhost:4000').replace(/\/+$/, '');
+    const base = this.config
+      .get<string>('IAM_CORE_URL', 'http://localhost:4000')
+      .replace(/\/+$/, '');
     try {
       const res = await fetch(`${base}/api/rbac/${this.serviceKey}`);
       if (res.ok) {
@@ -40,15 +43,17 @@ export class RbacCacheService {
           permissionCatalog?: string[];
         };
         this.cache = {
-          rolePermissions:   data.rolePermissions ?? {},
+          rolePermissions: data.rolePermissions ?? {},
           permissionCatalog: data.permissionCatalog ?? [],
-          fetchedAt:         Date.now(),
+          fetchedAt: Date.now(),
         };
         return this.cache;
       }
       this.logger.warn(`RBAC del IAM respondió ${res.status}; uso cache/local`);
     } catch (e) {
-      this.logger.warn(`No se pudo obtener RBAC del IAM (${(e as Error).message}); uso cache/local`);
+      this.logger.warn(
+        `No se pudo obtener RBAC del IAM (${(e as Error).message}); uso cache/local`,
+      );
     }
     return this.cache; // puede ser null → fallback local
   }

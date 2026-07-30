@@ -1,29 +1,52 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { InspectionSchedule, InspectionScheduleDocument } from './entities/inspection-schedule.entity';
+import {
+  InspectionSchedule,
+  InspectionScheduleDocument,
+} from './entities/inspection-schedule.entity';
 import { CreateInspectionScheduleDto } from './dto/create-inspection-schedule.dto';
 import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dto';
 
 @Injectable()
 export class InspectionScheduleService {
   constructor(
-    @InjectModel(InspectionSchedule.name) 
+    @InjectModel(InspectionSchedule.name)
     private inspectionScheduleModel: Model<InspectionScheduleDocument>,
   ) {}
 
-  async create(createDto: CreateInspectionScheduleDto): Promise<InspectionSchedule> {
+  async create(
+    createDto: CreateInspectionScheduleDto,
+  ): Promise<InspectionSchedule> {
     if (!createDto.firstSemesterDueDate && !createDto.secondSemesterDueDate) {
-      throw new BadRequestException('Al menos una programación (primer o segundo semestre) debe estar presente');
+      throw new BadRequestException(
+        'Al menos una programación (primer o segundo semestre) debe estar presente',
+      );
     }
 
-    console.log('First semester date:', createDto.firstSemesterDueDate, 'Type:', typeof createDto.firstSemesterDueDate);
-    console.log('Second semester date:', createDto.secondSemesterDueDate, 'Type:', typeof createDto.secondSemesterDueDate);
+    console.log(
+      'First semester date:',
+      createDto.firstSemesterDueDate,
+      'Type:',
+      typeof createDto.firstSemesterDueDate,
+    );
+    console.log(
+      'Second semester date:',
+      createDto.secondSemesterDueDate,
+      'Type:',
+      typeof createDto.secondSemesterDueDate,
+    );
 
     const inspectionSchedule = new this.inspectionScheduleModel({
       ...createDto,
       templateId: new Types.ObjectId(createDto.templateId),
-      hasValidSchedule: !!(createDto.firstSemesterDueDate || createDto.secondSemesterDueDate)
+      hasValidSchedule: !!(
+        createDto.firstSemesterDueDate || createDto.secondSemesterDueDate
+      ),
     });
 
     return inspectionSchedule.save();
@@ -52,17 +75,32 @@ export class InspectionScheduleService {
     return inspectionSchedule;
   }
 
-  async update(id: string, updateDto: UpdateInspectionScheduleDto): Promise<InspectionSchedule> {
+  async update(
+    id: string,
+    updateDto: UpdateInspectionScheduleDto,
+  ): Promise<InspectionSchedule> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('ID inválido');
     }
 
-    console.log('Update - First semester date:', updateDto.firstSemesterDueDate, 'Type:', typeof updateDto.firstSemesterDueDate);
-    console.log('Update - Second semester date:', updateDto.secondSemesterDueDate, 'Type:', typeof updateDto.secondSemesterDueDate);
+    console.log(
+      'Update - First semester date:',
+      updateDto.firstSemesterDueDate,
+      'Type:',
+      typeof updateDto.firstSemesterDueDate,
+    );
+    console.log(
+      'Update - Second semester date:',
+      updateDto.secondSemesterDueDate,
+      'Type:',
+      typeof updateDto.secondSemesterDueDate,
+    );
 
     const updateData: any = {
       ...updateDto,
-      hasValidSchedule: !!(updateDto.firstSemesterDueDate || updateDto.secondSemesterDueDate)
+      hasValidSchedule: !!(
+        updateDto.firstSemesterDueDate || updateDto.secondSemesterDueDate
+      ),
     };
 
     if (updateDto.templateId) {
@@ -70,11 +108,7 @@ export class InspectionScheduleService {
     }
 
     const updated = await this.inspectionScheduleModel
-      .findByIdAndUpdate(
-        id, 
-        updateData, 
-        { new: true }
-      )
+      .findByIdAndUpdate(id, updateData, { new: true })
       .exec();
 
     if (!updated) {
@@ -89,8 +123,10 @@ export class InspectionScheduleService {
       throw new BadRequestException('ID inválido');
     }
 
-    const deleted = await this.inspectionScheduleModel.findByIdAndDelete(id).exec();
-    
+    const deleted = await this.inspectionScheduleModel
+      .findByIdAndDelete(id)
+      .exec();
+
     if (!deleted) {
       throw new NotFoundException('Programación no encontrada');
     }
@@ -99,18 +135,20 @@ export class InspectionScheduleService {
   }
 
   async registerCompletion(
-    id: string, 
-    semester: 'first' | 'second', 
-    instanceId: string
+    id: string,
+    semester: 'first' | 'second',
+    instanceId: string,
   ): Promise<InspectionSchedule> {
-    const updated = await this.inspectionScheduleModel.findByIdAndUpdate(
-      id,
-      {
-        instanceId: new Types.ObjectId(instanceId),
-        [`${semester}SemesterCompletionDate`]: new Date()
-      },
-      { new: true }
-    ).exec();
+    const updated = await this.inspectionScheduleModel
+      .findByIdAndUpdate(
+        id,
+        {
+          instanceId: new Types.ObjectId(instanceId),
+          [`${semester}SemesterCompletionDate`]: new Date(),
+        },
+        { new: true },
+      )
+      .exec();
 
     if (!updated) {
       throw new NotFoundException('Programación no encontrada');
@@ -119,37 +157,38 @@ export class InspectionScheduleService {
     return updated;
   }
 
-  async findByTemplateAndYear(templateId: string, year: number): Promise<InspectionSchedule[]> {
+  async findByTemplateAndYear(
+    templateId: string,
+    year: number,
+  ): Promise<InspectionSchedule[]> {
     return this.inspectionScheduleModel
-      .find({ 
-        templateId: new Types.ObjectId(templateId), 
-        managementYear: year 
+      .find({
+        templateId: new Types.ObjectId(templateId),
+        managementYear: year,
       })
       .exec();
   }
 
   async findByArea(area: string): Promise<InspectionSchedule[]> {
-    return this.inspectionScheduleModel
-      .find({ area, status: 'active' })
-      .exec();
+    return this.inspectionScheduleModel.find({ area, status: 'active' }).exec();
   }
 
   async getPendingInspections(): Promise<InspectionSchedule[]> {
     const today = new Date();
-    
+
     return this.inspectionScheduleModel
       .find({
         status: 'active',
         $or: [
-          { 
-            firstSemesterDueDate: { $lt: today }, 
-            firstSemesterCompletionDate: null 
+          {
+            firstSemesterDueDate: { $lt: today },
+            firstSemesterCompletionDate: null,
           },
-          { 
-            secondSemesterDueDate: { $lt: today }, 
-            secondSemesterCompletionDate: null 
-          }
-        ]
+          {
+            secondSemesterDueDate: { $lt: today },
+            secondSemesterCompletionDate: null,
+          },
+        ],
       })
       .exec();
   }

@@ -7,6 +7,8 @@ import {
   EquipmentInspectionTrackingSchema,
 } from './schemas/equipment-tracking.schema';
 import { TemplateConfigService } from './template-config.service';
+import { TemplateHerraEquiposModule } from '../template-herra-equipos/template-herra-equipos.module';
+import { EquiposModule } from '../equipos/equipos.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { TemplateConfigService } from './template-config.service';
         schema: EquipmentInspectionTrackingSchema,
       },
     ]),
+    TemplateHerraEquiposModule,
+    EquiposModule,
   ],
 
   controllers: [EquipmentTrackingController],

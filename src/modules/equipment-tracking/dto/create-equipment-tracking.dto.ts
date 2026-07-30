@@ -1,6 +1,5 @@
 export class CreateEquipmentTrackingDto {
-
- equipmentId: string;
+  equipmentId: string;
   equipmentName: string;
   equipmentType: string;
   templateCode: string;

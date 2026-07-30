@@ -206,7 +206,7 @@ export class CreateFormularioInspeccionDto {
   mesActual: Mes;
 
   @IsObject()
-  meses: Record<string, any>
+  meses: Record<string, any>;
 
   // @IsObject()
   // @ValidateNested({ each: true })

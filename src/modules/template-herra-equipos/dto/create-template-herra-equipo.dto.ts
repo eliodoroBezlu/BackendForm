@@ -1,7 +1,21 @@
-import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsDefined, IsEnum, IsOptional, IsString, ValidateNested } from "class-validator";
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsDefined,
+  IsEnum,
+  IsMongoId,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 
 export class CreateResponseOptionDto {
+  @IsOptional()
+  @IsMongoId()
+  _id?: string;
+
   @IsString()
   label: string;
 
@@ -43,6 +57,10 @@ export class CreateQuestionImageDto {
 }
 
 export class CreateQuestionDto {
+  @IsOptional()
+  @IsMongoId()
+  _id?: string;
+
   @IsString()
   text: string;
 
@@ -63,6 +81,10 @@ export class CreateQuestionDto {
 }
 
 export class CreateSectionImageDto {
+  @IsOptional()
+  @IsMongoId()
+  _id?: string;
+
   @IsString()
   url: string;
 
@@ -75,6 +97,10 @@ export class CreateSectionImageDto {
 
 // ← IMPORTANTE: Esta clase se auto-referencia
 export class CreateSectionDto {
+  @IsOptional()
+  @IsMongoId()
+  _id?: string;
+
   @IsString()
   title: string;
 
@@ -132,6 +158,27 @@ export class CreateVerificationFieldDto {
   obligatorio?: boolean;
 }
 
+export class CreateFrecuenciaInspeccionDto {
+  @IsEnum([
+    'diaria',
+    'semanal',
+    'mensual',
+    'trimestral',
+    'semestral',
+    'anual',
+    'personalizada',
+  ])
+  unidad: string;
+
+  @IsOptional()
+  @IsNumber()
+  valorPersonalizado?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  activa?: boolean;
+}
+
 export class CreateTemplateHerraEquipoDto {
   @IsString()
   name: string;
@@ -145,6 +192,16 @@ export class CreateTemplateHerraEquipoDto {
   @IsEnum(['interna', 'externa'])
   type: string;
 
+  @IsOptional()
+  @IsString()
+  descripcion?: string;
+
+  /** Roles que ven esta plantilla. Vacío = visible para todos. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  rolesVisibles?: string[];
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateVerificationFieldDto)
@@ -154,4 +211,13 @@ export class CreateTemplateHerraEquipoDto {
   @ValidateNested({ each: true })
   @Type(() => CreateSectionDto)
   sections: CreateSectionDto[];
+
+  @IsOptional()
+  @IsString()
+  campoCodigoEquipo?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateFrecuenciaInspeccionDto)
+  frecuencia?: CreateFrecuenciaInspeccionDto;
 }

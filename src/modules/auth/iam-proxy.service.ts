@@ -12,16 +12,21 @@ import { Response } from 'express';
 @Injectable()
 export class IamProxyService {
   private readonly logger = new Logger(IamProxyService.name);
-  private readonly iamUrl:  string;
-  private readonly apiKey:  string;
+  private readonly iamUrl: string;
+  private readonly apiKey: string;
 
   constructor(private readonly config: ConfigService) {
-    this.iamUrl = this.config.get<string>('IAM_CORE_URL', 'http://localhost:4000');
-    this.apiKey  = this.config.get<string>('IAM_CORE_API_KEY', '');
+    this.iamUrl = this.config.get<string>(
+      'IAM_CORE_URL',
+      'http://localhost:4000',
+    );
+    this.apiKey = this.config.get<string>('IAM_CORE_API_KEY', '');
   }
 
   // ── Cabeceras comunes ─────────────────────────────────────────
-  private baseHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  private baseHeaders(
+    extra: Record<string, string> = {},
+  ): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
     if (this.apiKey) headers['X-Api-Key'] = this.apiKey;
     return headers;
@@ -30,8 +35,8 @@ export class IamProxyService {
   // ── POST genérico ──────────────────────────────────────────────
 
   async post(
-    path:    string,
-    body:    Record<string, unknown>,
+    path: string,
+    body: Record<string, unknown>,
     cookies: Record<string, string> = {},
   ): Promise<{ data: unknown; rawHeaders: string[] }> {
     const url = `${this.iamUrl}/api${path}`;
@@ -41,7 +46,7 @@ export class IamProxyService {
       .join('; ');
 
     const res = await fetch(url, {
-      method:  'POST',
+      method: 'POST',
       headers: this.baseHeaders({
         'Content-Type': 'application/json',
         ...(cookieHeader && { Cookie: cookieHeader }),
@@ -53,7 +58,9 @@ export class IamProxyService {
     const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      this.logger.warn(`IAM Core ${path} → ${res.status}: ${JSON.stringify(data)}`);
+      this.logger.warn(
+        `IAM Core ${path} → ${res.status}: ${JSON.stringify(data)}`,
+      );
       throw new HttpException(
         (data as { message?: string }).message ?? res.statusText,
         res.status,
@@ -66,7 +73,7 @@ export class IamProxyService {
   // ── GET genérico ───────────────────────────────────────────────
 
   async get(
-    path:    string,
+    path: string,
     cookies: Record<string, string> = {},
   ): Promise<unknown> {
     const url = `${this.iamUrl}/api${path}`;
@@ -112,7 +119,7 @@ export class IamProxyService {
 
   clearCookies(res: Response): void {
     const domain = this.config.get<string>('COOKIE_DOMAIN') || undefined;
-    res.clearCookie('access_token',  { path: '/', domain });
+    res.clearCookie('access_token', { path: '/', domain });
     res.clearCookie('refresh_token', { path: '/', domain });
   }
 }

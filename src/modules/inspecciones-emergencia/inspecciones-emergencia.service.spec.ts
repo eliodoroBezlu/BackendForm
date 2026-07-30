@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
 import { FormularioInspeccionEmergencia } from './schemas/inspeccion-emergencia.schema';
 import { ExtintorService } from '../extintor/extintor.service';
@@ -76,7 +80,9 @@ describe('InspeccionesEmergenciaService', () => {
       ],
     }).compile();
 
-    service = module.get<InspeccionesEmergenciaService>(InspeccionesEmergenciaService);
+    service = module.get<InspeccionesEmergenciaService>(
+      InspeccionesEmergenciaService,
+    );
     model = module.get(getModelToken(FormularioInspeccionEmergencia.name));
     extintorService = module.get<ExtintorService>(ExtintorService);
     areaModel = module.get(getModelToken(Area.name));
@@ -103,8 +109,16 @@ describe('InspeccionesEmergenciaService', () => {
       // Debería correr dos updateMany: uno para años anteriores (año < 2026)
       // y otro para el semestre pasado (año = 2026, periodo = 'ENERO-JUNIO') porque estamos en Julio (index 6)
       expect(spyUpdateMany).toHaveBeenCalledTimes(2);
-      expect(spyUpdateMany).toHaveBeenNthCalledWith(1, { año: { $lt: 2026 }, estado: 'activo' }, { $set: { estado: 'completado' } });
-      expect(spyUpdateMany).toHaveBeenNthCalledWith(2, { año: 2026, periodo: 'ENERO-JUNIO', estado: 'activo' }, { $set: { estado: 'completado' } });
+      expect(spyUpdateMany).toHaveBeenNthCalledWith(
+        1,
+        { año: { $lt: 2026 }, estado: 'activo' },
+        { $set: { estado: 'completado' } },
+      );
+      expect(spyUpdateMany).toHaveBeenNthCalledWith(
+        2,
+        { año: 2026, periodo: 'ENERO-JUNIO', estado: 'activo' },
+        { $set: { estado: 'completado' } },
+      );
 
       jest.useRealTimers();
     });
@@ -119,7 +133,10 @@ describe('InspeccionesEmergenciaService', () => {
 
       // Solo debería correr el primer updateMany para años anteriores
       expect(spyUpdateMany).toHaveBeenCalledTimes(1);
-      expect(spyUpdateMany).toHaveBeenCalledWith({ año: { $lt: 2026 }, estado: 'activo' }, { $set: { estado: 'completado' } });
+      expect(spyUpdateMany).toHaveBeenCalledWith(
+        { año: { $lt: 2026 }, estado: 'activo' },
+        { $set: { estado: 'completado' } },
+      );
 
       jest.useRealTimers();
     });
@@ -128,12 +145,19 @@ describe('InspeccionesEmergenciaService', () => {
   describe('create', () => {
     it('should throw BadRequestException if tag is missing', async () => {
       const payload: any = { area: 'Recursos Hidricos' };
-      await expect(service.create(payload)).rejects.toThrow(BadRequestException);
+      await expect(service.create(payload)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should return existing form if it already exists (prevents duplicate insertion)', async () => {
-      const payload: any = { tag: 'TAG-TEST-01', periodo: 'ENERO-JUNIO', año: 2026, area: 'Recursos Hidricos' };
-      
+      const payload: any = {
+        tag: 'TAG-TEST-01',
+        periodo: 'ENERO-JUNIO',
+        año: 2026,
+        area: 'Recursos Hidricos',
+      };
+
       jest.spyOn(model, 'findOne').mockResolvedValue(mockFormInfo);
 
       const result = await service.create(payload);
@@ -141,7 +165,7 @@ describe('InspeccionesEmergenciaService', () => {
       expect(model.findOne).toHaveBeenCalledWith({
         tag: 'TAG-TEST-01',
         periodo: 'ENERO-JUNIO',
-        año: 2026
+        año: 2026,
       });
       expect(result).toEqual(mockFormInfo);
     });
@@ -156,12 +180,16 @@ describe('InspeccionesEmergenciaService', () => {
 
       jest.spyOn(model, 'findOne').mockResolvedValue({
         ...mockFormInfo,
-        estado: 'completado'
+        estado: 'completado',
       });
 
       const result = await service.verificarTag(tag, period, year, area);
 
-      expect(model.findOne).toHaveBeenCalledWith({ tag, periodo: period, año: year });
+      expect(model.findOne).toHaveBeenCalledWith({
+        tag,
+        periodo: period,
+        año: year,
+      });
       expect(result.existe).toBe(true);
       expect(result.esActivo).toBe(false);
       expect(result.puedeModificar).toBe(false);
@@ -178,10 +206,12 @@ describe('InspeccionesEmergenciaService', () => {
       // Mock validarEstadoActivo finding a completed form
       jest.spyOn(model, 'findOne').mockResolvedValue({
         ...mockFormInfo,
-        estado: 'completado'
+        estado: 'completado',
       });
 
-      await expect(service.actualizarMesPorTag(tag, mes, datosMes, area)).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.actualizarMesPorTag(tag, mes, datosMes, area),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelSustanciasService {
@@ -33,14 +34,14 @@ export class ExcelSustanciasService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -76,7 +77,7 @@ export class ExcelSustanciasService {
     try {
       const verificationList = instance.verificationList;
       // Fallback: usar los valores por posición
-      
+
       const valores = Array.from(verificationList.values());
 
       // Mapeo basado en la estructura real de datos
@@ -104,7 +105,6 @@ export class ExcelSustanciasService {
     instance: Instance,
   ) {
     try {
-      
       // Verificar que existe el equipo de inspección
       if (!instance.inspectionTeam || instance.inspectionTeam.length === 0) {
         this.logger.warn('No se encontró equipo de inspección en la instancia');
@@ -134,14 +134,12 @@ export class ExcelSustanciasService {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -153,7 +151,6 @@ export class ExcelSustanciasService {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -228,8 +225,6 @@ export class ExcelSustanciasService {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 

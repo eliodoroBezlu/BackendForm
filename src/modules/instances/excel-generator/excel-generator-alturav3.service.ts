@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelAlturav3Service {
@@ -33,14 +34,14 @@ export class ExcelAlturav3Service {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -135,14 +136,12 @@ export class ExcelAlturav3Service {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -154,7 +153,6 @@ export class ExcelAlturav3Service {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -210,7 +208,10 @@ export class ExcelAlturav3Service {
         { startRow: 68, name: 'D. LINEAS DE VIDA HORIZONTALES' }, // Ajustar según la plantilla
         { startRow: 73, name: 'E. ESCALERAS' },
         { startRow: 103, name: 'F. EQUIPOS ELEVADORES DE PERSONAS' }, // Ajustar según la plantilla
-        { startRow: 115, name: 'F. EQUIPO CANASTILLO PARA LA ELEVACIÓN DE PERSONAS' }, // Ajustar según la plantilla
+        {
+          startRow: 115,
+          name: 'F. EQUIPO CANASTILLO PARA LA ELEVACIÓN DE PERSONAS',
+        }, // Ajustar según la plantilla
         { startRow: 127, name: 'F. ANDAMIOS' }, // Ajustar según la plantilla
       ];
 
@@ -233,8 +234,6 @@ export class ExcelAlturav3Service {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 

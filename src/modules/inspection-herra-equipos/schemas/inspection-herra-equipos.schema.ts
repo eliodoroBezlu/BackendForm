@@ -6,7 +6,7 @@ import { InspectionStatus } from '../types/IProps';
 // SUB-SCHEMAS
 // ============================================
 
-@Schema({  })
+@Schema({})
 export class QuestionResponse {
   @Prop({ required: true, type: mongoose.Schema.Types.Mixed })
   value: string | number | boolean;
@@ -18,7 +18,7 @@ export class QuestionResponse {
   description?: string;
 }
 
-@Schema({ })
+@Schema({})
 export class GroupedQuestionData {
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   values: Record<string, string>; // "si", "no", "na"
@@ -27,7 +27,7 @@ export class GroupedQuestionData {
   observacion: string;
 }
 
-@Schema({ strict: false})
+@Schema({ strict: false })
 export class OutOfServiceData {
   @Prop()
   status?: string;
@@ -54,7 +54,7 @@ export class OutOfServiceData {
   fechaCorrecion?: string;
 }
 
-@Schema({ })
+@Schema({})
 export class DamageMarker {
   @Prop({ required: true })
   x: number;
@@ -66,7 +66,7 @@ export class DamageMarker {
   description?: string;
 }
 
-@Schema({  })
+@Schema({})
 export class VehicleData {
   @Prop({ type: [DamageMarker] })
   damages?: DamageMarker[];
@@ -90,7 +90,7 @@ export class VehicleData {
   responsableProximaInspeccion?: string;
 }
 
-@Schema({  })
+@Schema({})
 export class RoutineInspectionEntry {
   @Prop({ required: true })
   date: string;
@@ -108,7 +108,7 @@ export class RoutineInspectionEntry {
   signature?: string;
 }
 
-@Schema({  })
+@Schema({})
 export class ScaffoldData {
   @Prop({ type: [RoutineInspectionEntry] })
   routineInspections?: RoutineInspectionEntry[];
@@ -117,7 +117,7 @@ export class ScaffoldData {
   finalConclusion?: string;
 }
 
-@Schema({  })
+@Schema({})
 export class AccesorioConfig {
   @Prop({ required: true })
   cantidad: number;
@@ -149,14 +149,13 @@ export class ApprovalData {
 // SCHEMA PRINCIPAL - InspectionHerraEquipos
 // ============================================
 
-@Schema({ 
+@Schema({
   timestamps: true,
-  collection: 'inspections_herra_equipos' 
+  collection: 'inspections_herra_equipos',
 })
 export class InspectionHerraEquipos {
-
   _id?: mongoose.Types.ObjectId;
-  
+
   @Prop({ required: true, type: Types.ObjectId, ref: 'TemplateHerraEquipos' })
   templateId: Types.ObjectId;
 
@@ -217,10 +216,10 @@ export class InspectionHerraEquipos {
   // ============================================
   // METADATOS
   // ============================================
-  @Prop({ 
-    required: true, 
-    enum: Object.values(InspectionStatus), 
-    default: InspectionStatus.DRAFT 
+  @Prop({
+    required: true,
+    enum: Object.values(InspectionStatus),
+    default: InspectionStatus.DRAFT,
   })
   status: InspectionStatus;
 
@@ -246,10 +245,17 @@ export class InspectionHerraEquipos {
   // Campo denormalizado: área extraída de verification al momento de crear
   @Prop({ required: false, index: true })
   area?: string;
+
+  // Campo denormalizado: código de equipo extraído de verification usando
+  // template.campoCodigoEquipo, al momento de crear (mismo patrón que area).
+  @Prop({ required: false })
+  codigoEquipo?: string;
 }
 
 export type InspectionHerraEquiposDocument = InspectionHerraEquipos & Document;
-export const InspectionHerraEquiposSchema = SchemaFactory.createForClass(InspectionHerraEquipos);
+export const InspectionHerraEquiposSchema = SchemaFactory.createForClass(
+  InspectionHerraEquipos,
+);
 
 // ============================================
 // ÍNDICES PARA OPTIMIZAR BÚSQUEDAS

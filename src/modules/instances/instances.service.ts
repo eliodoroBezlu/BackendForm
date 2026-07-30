@@ -90,55 +90,60 @@ export class InstancesService {
    * Actualiza una instancia recalculando métricas si es necesario
    */
   async update(
-  id: string,
-  updateInstanceDto: UpdateInstanceDto,
-): Promise<Instance> {
-  if (!Types.ObjectId.isValid(id)) {
-    throw new BadRequestException('ID de instancia inválido');
-  }
-
-  // ✅ CORRECCIÓN: Resolver templateId si viene como objeto populado
-  if (updateInstanceDto.templateId) {
-    const templateId = updateInstanceDto.templateId as any;
-    if (typeof templateId === 'object' && templateId !== null && '_id' in templateId) {
-      updateInstanceDto.templateId = templateId._id.toString();
+    id: string,
+    updateInstanceDto: UpdateInstanceDto,
+  ): Promise<Instance> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('ID de instancia inválido');
     }
+
+    // ✅ CORRECCIÓN: Resolver templateId si viene como objeto populado
+    if (updateInstanceDto.templateId) {
+      const templateId = updateInstanceDto.templateId as any;
+      if (
+        typeof templateId === 'object' &&
+        templateId !== null &&
+        '_id' in templateId
+      ) {
+        updateInstanceDto.templateId = templateId._id.toString();
+      }
+    }
+
+    if (updateInstanceDto.sections) {
+      const instance = await this.findOne(id);
+
+      // Usar el templateId ya resuelto o el de la instancia existente
+      const templateIdToUse =
+        updateInstanceDto.templateId || instance.templateId.toString();
+      const template = await this.templatesService.findOne(templateIdToUse);
+
+      const flatSections = this.flattenSections(template.sections);
+      const calculatedSections = this.calculateAllSectionMetrics(
+        updateInstanceDto.sections,
+        flatSections,
+      );
+      const instanceTotals = this.calculateInstanceTotals(calculatedSections);
+
+      updateInstanceDto.sections = calculatedSections;
+      Object.assign(updateInstanceDto, instanceTotals);
+    }
+
+    updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
+
+    const updatedInstance = await this.instanceModel
+      .findByIdAndUpdate(id, updateInstanceDto, {
+        new: true,
+        runValidators: true,
+      })
+      .populate('templateId')
+      .exec();
+
+    if (!updatedInstance) {
+      throw new NotFoundException('Instancia no encontrada');
+    }
+
+    return updatedInstance;
   }
-
-  if (updateInstanceDto.sections) {
-    const instance = await this.findOne(id);
-    
-    // Usar el templateId ya resuelto o el de la instancia existente
-    const templateIdToUse = updateInstanceDto.templateId || instance.templateId.toString();
-    const template = await this.templatesService.findOne(templateIdToUse);
-
-    const flatSections = this.flattenSections(template.sections);
-    const calculatedSections = this.calculateAllSectionMetrics(
-      updateInstanceDto.sections,
-      flatSections,
-    );
-    const instanceTotals = this.calculateInstanceTotals(calculatedSections);
-
-    updateInstanceDto.sections = calculatedSections;
-    Object.assign(updateInstanceDto, instanceTotals);
-  }
-
-  updateInstanceDto.updatedBy = updateInstanceDto.updatedBy || 'system';
-
-  const updatedInstance = await this.instanceModel
-    .findByIdAndUpdate(id, updateInstanceDto, {
-      new: true,
-      runValidators: true,
-    })
-    .populate('templateId')
-    .exec();
-
-  if (!updatedInstance) {
-    throw new NotFoundException('Instancia no encontrada');
-  }
-
-  return updatedInstance;
-}
 
   async findAll(filters?: {
     templateId?: string;
@@ -635,5 +640,81 @@ export class InstancesService {
       },
       sectionAnalysis,
     };
+  }
+
+  // ========================================
+  // MÉTODOS DE LECTURA PARA ML-RECOMENDATIONS
+  // ========================================
+  // Usados por MLRecommendationsService en vez de inyectar el modelo
+  // Mongoose de Instance directamente (respeta el límite del módulo:
+  // solo InstancesService conoce el schema de Instance).
+
+  /** Total de instancias en la base de datos (sin filtros). */
+  async countAll(): Promise<number> {
+    return this.instanceModel.countDocuments({}).exec();
+  }
+
+  /** Distribución de instancias por estado, para diagnóstico de entrenamiento. */
+  async countByStatus(): Promise<Array<{ status: string; count: number }>> {
+    const result = await this.instanceModel
+      .aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])
+      .exec();
+
+    return result.map((item) => ({ status: item._id, count: item.count }));
+  }
+
+  /**
+   * Instancias candidatas para entrenar el modelo ML: filtradas por estado
+   * (por defecto, todas las que ya tienen respuestas completas) y
+   * opcionalmente por template/rango de fechas. Devuelve documentos `lean`
+   * (planos) con el template poblado, como requiere el servicio ML.
+   */
+  async findForTraining(filters?: {
+    templateId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    statuses?: string[];
+  }): Promise<any[]> {
+    const query: any = {
+      status: {
+        $in: filters?.statuses ?? [
+          'completado',
+          'revisado',
+          'aprobado',
+          'borrador',
+        ],
+      },
+    };
+
+    if (filters?.templateId) {
+      query.templateId = new Types.ObjectId(filters.templateId);
+    }
+
+    if (filters?.dateFrom || filters?.dateTo) {
+      query.createdAt = {};
+      if (filters.dateFrom) {
+        query.createdAt.$gte = filters.dateFrom;
+      }
+      if (filters.dateTo) {
+        query.createdAt.$lte = filters.dateTo;
+      }
+    }
+
+    return this.instanceModel.find(query).populate('templateId').lean().exec();
+  }
+
+  /**
+   * Muestra pequeña de instancias por estado — usada como diagnóstico
+   * cuando `findForTraining` no encuentra resultados con los filtros dados.
+   */
+  async findSampleByStatuses(
+    statuses: string[],
+    limit: number,
+  ): Promise<any[]> {
+    return this.instanceModel
+      .find({ status: { $in: statuses } })
+      .limit(limit)
+      .lean()
+      .exec();
   }
 }

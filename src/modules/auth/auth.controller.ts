@@ -6,19 +6,27 @@
  * FormNext no necesita saber que existe IAM Core.
  */
 import {
-  Controller, Post, Get, Body, Req, Res,
-  HttpCode, HttpStatus, UseGuards, UnauthorizedException,
+  Controller,
+  Post,
+  Get,
+  Body,
+  Req,
+  Res,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService }   from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
-import { JwtAuthGuard }    from './guards/jwt-auth.guard';
-import { CurrentUser }     from 'src/common/decorators/current-user.decorator';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from './decorators/current-user.decorator';
 import { IamProxyService } from './iam-proxy.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly iam:    IamProxyService,
+    private readonly iam: IamProxyService,
     private readonly config: ConfigService,
   ) {}
 
@@ -53,7 +61,7 @@ export class AuthController {
   ) {
     const { data, rawHeaders } = await this.iam.post('/auth/login/2fa', {
       tempToken: body.tempToken,
-      code:      body.code,
+      code: body.code,
     });
 
     this.iam.forwardCookies(rawHeaders, res);
@@ -65,10 +73,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(
-    @Req()  req: any,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async refresh(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) throw new UnauthorizedException('Sin refresh token');
 
@@ -86,18 +91,23 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(
-    @Req() req: any,
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    const accessToken  = req.cookies?.access_token;
+  async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const accessToken = req.cookies?.access_token;
     const refreshToken = req.cookies?.refresh_token;
 
     if (accessToken || refreshToken) {
-      await this.iam.post('/auth/logout', {}, {
-        ...(accessToken  && { access_token:  accessToken }),
-        ...(refreshToken && { refresh_token: refreshToken }),
-      }).catch(() => {/* ignorar error — siempre limpiar cookies */});
+      await this.iam
+        .post(
+          '/auth/logout',
+          {},
+          {
+            ...(accessToken && { access_token: accessToken }),
+            ...(refreshToken && { refresh_token: refreshToken }),
+          },
+        )
+        .catch(() => {
+          /* ignorar error — siempre limpiar cookies */
+        });
     }
 
     this.iam.clearCookies(res);
@@ -109,17 +119,16 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(
-    @Req()         req: any,
-    @CurrentUser() user: any,
-  ) {
+  async me(@Req() req: any, @CurrentUser() user: any) {
     const accessToken = req.cookies?.access_token;
     if (!accessToken) throw new UnauthorizedException('Sin token');
 
     // Llamar a IAM Core para datos frescos (fullName, lastLoginAt, servicios, etc.)
-    const iamUser: any = await this.iam.get('/auth/me', {
-      access_token: accessToken,
-    }).catch(() => null);
+    const iamUser: any = await this.iam
+      .get('/auth/me', {
+        access_token: accessToken,
+      })
+      .catch(() => null);
 
     // roles/permissions SIEMPRE deben venir de `user` (calculados por JwtStrategy
     // vía RbacCacheService, específicos del servicio "forms") — el JWT de IAM Core
@@ -127,13 +136,14 @@ export class AuthController {
     // para este servicio, así que nunca deben sobreescribirse con lo que venga de IAM.
     return {
       ...(iamUser ?? {}),
-      id:                 user.id,
-      username:           user.username,
-      email:              iamUser?.email ?? user.email,
-      fullName:           iamUser?.fullName ?? user.fullName,
-      roles:              user.roles,
-      permissions:        user.permissions,
-      isTwoFactorEnabled: iamUser?.isTwoFactorEnabled ?? user.isTwoFactorEnabled,
+      id: user.id,
+      username: user.username,
+      email: iamUser?.email ?? user.email,
+      fullName: iamUser?.fullName ?? user.fullName,
+      roles: user.roles,
+      permissions: user.permissions,
+      isTwoFactorEnabled:
+        iamUser?.isTwoFactorEnabled ?? user.isTwoFactorEnabled,
     };
   }
 
@@ -149,10 +159,7 @@ export class AuthController {
 
   @Post('2fa/enable')
   @UseGuards(JwtAuthGuard)
-  async enable2FA(
-    @Req()  req: any,
-    @Body() body: { code: string },
-  ) {
+  async enable2FA(@Req() req: any, @Body() body: { code: string }) {
     const accessToken = req.cookies?.access_token;
     const { data } = await this.iam.post(
       '/auth/totp/enable',
@@ -164,10 +171,7 @@ export class AuthController {
 
   @Post('2fa/disable')
   @UseGuards(JwtAuthGuard)
-  async disable2FA(
-    @Req()  req: any,
-    @Body() body: { code: string },
-  ) {
+  async disable2FA(@Req() req: any, @Body() body: { code: string }) {
     const accessToken = req.cookies?.access_token;
     const { data } = await this.iam.post(
       '/auth/totp/disable',
@@ -210,7 +214,10 @@ export class AuthController {
     }
 
     // 2. Usuario inspector dedicado en IAM Core
-    const username = this.config.get<string>('INSPECTOR_USERNAME', 'inspector_tecnico');
+    const username = this.config.get<string>(
+      'INSPECTOR_USERNAME',
+      'inspector_tecnico',
+    );
 
     // 3. Service-login contra IAM Core: sin contraseña, la confianza está
     //    en la X-Api-Key que añade IamProxyService. Evita el problema de

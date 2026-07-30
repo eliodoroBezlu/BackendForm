@@ -7,7 +7,7 @@ export class OrdenTrabajo extends Document {
     type: String,
     required: true,
     unique: true,
-    index: true
+    index: true,
   })
   tag: string;
 

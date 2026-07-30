@@ -18,6 +18,10 @@ import {
 } from './dto/update-inspection-herra-equipo.dto';
 import { EquipmentTrackingService } from '../equipment-tracking/equipment-tracking.service';
 import { TemplateConfigService } from '../equipment-tracking/template-config.service';
+import { TemplateHerraEquiposService } from '../template-herra-equipos/template-herra-equipos.service';
+import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
+import { TemplateHerraEquipos } from '../template-herra-equipos/schema/template-herra-equipo.schema';
+import { diasPorFrecuencia } from '../template-herra-equipos/domain/frecuencia.util';
 import { InspectionStatus } from './types/IProps';
 
 @Injectable()
@@ -29,7 +33,50 @@ export class InspectionsHerraEquiposService {
     private inspectionModel: Model<InspectionHerraEquiposDocument>,
     private equipmentTrackingService: EquipmentTrackingService,
     private templateConfigService: TemplateConfigService,
+    private templateHerraEquiposService: TemplateHerraEquiposService,
   ) {}
+
+  /**
+   * Carga el template por código sin bloquear la creación/aprobación de la
+   * inspección si falla — el control de frecuencia/código es una mejora
+   * opt-in, no una dependencia dura del flujo de guardado.
+   */
+  private async intentarObtenerTemplate(
+    templateCode: string,
+  ): Promise<TemplateHerraEquipos | null> {
+    try {
+      return await this.templateHerraEquiposService.findByCode(templateCode);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Registra el tracking de frecuencia configurable (independiente de la
+   * lógica hardcodeada de tecles en TemplateConfigService) cuando el
+   * template tiene `frecuencia.activa` y `campoCodigoEquipo` configurados.
+   */
+  private async trackearFrecuenciaSiCorresponde(
+    template: TemplateHerraEquipos | null,
+    templateCode: string,
+    verification: Record<string, string | number>,
+  ): Promise<void> {
+    if (!template?.frecuencia?.activa || !template.campoCodigoEquipo) return;
+
+    const codigoEquipo = this.extractEquipmentId(
+      verification,
+      template.campoCodigoEquipo,
+    );
+    if (!codigoEquipo) return;
+
+    await this.equipmentTrackingService.registrarProximaInspeccionPorFrecuencia(
+      {
+        equipmentId: codigoEquipo,
+        templateCode,
+        frecuenciaDias: diasPorFrecuencia(template.frecuencia),
+      },
+    );
+  }
 
   // ============================================
   // CREAR INSPECCIÓN
@@ -41,6 +88,9 @@ export class InspectionsHerraEquiposService {
       const config = this.templateConfigService.getConfig(
         createDto.templateCode,
       );
+      const template = await this.intentarObtenerTemplate(
+        createDto.templateCode,
+      );
 
       // ✅ Guardar inspección
       const inspection = new this.inspectionModel({
@@ -48,6 +98,13 @@ export class InspectionsHerraEquiposService {
         submittedAt: new Date(createDto.submittedAt),
         // Extraer área desde verification (clave puede variar)
         area: this.extractAreaFromVerification(createDto.verification),
+        // Código de equipo denormalizado (si el template lo tiene configurado)
+        codigoEquipo: template?.campoCodigoEquipo
+          ? (this.extractEquipmentId(
+              createDto.verification,
+              template.campoCodigoEquipo,
+            ) ?? undefined)
+          : undefined,
       });
 
       const saved = await inspection.save();
@@ -63,6 +120,14 @@ export class InspectionsHerraEquiposService {
         );
         return { inspection: saved };
       }
+
+      // 🆕 Frecuencia configurable desde el template — independiente de la
+      // config hardcodeada de tecles, corre siempre que aplique.
+      await this.trackearFrecuenciaSiCorresponde(
+        template,
+        createDto.templateCode,
+        createDto.verification,
+      );
 
       // Tracking normal para inspecciones que no requieren aprobación
       if (config.type === 'pre-uso' || config.type === 'diaria') {
@@ -146,6 +211,15 @@ export class InspectionsHerraEquiposService {
     // ✅ Ahora sí ejecutar tracking
     const config = this.templateConfigService.getConfig(
       inspection.templateCode,
+    );
+    const template = await this.intentarObtenerTemplate(
+      inspection.templateCode,
+    );
+
+    await this.trackearFrecuenciaSiCorresponde(
+      template,
+      inspection.templateCode,
+      inspection.verification,
     );
 
     if (config.type !== 'pre-uso' && config.type !== 'diaria') {
@@ -321,7 +395,7 @@ export class InspectionsHerraEquiposService {
     }
 
     if (updateDto.status) {
-      inspection.status = updateDto.status as InspectionStatus;
+      inspection.status = updateDto.status;
     }
 
     const updated = await inspection.save();
@@ -347,12 +421,39 @@ export class InspectionsHerraEquiposService {
     return this.inspectionModel.find(query).sort({ updatedAt: -1 }).exec();
   }
 
-  async findAll(filters?: any): Promise<InspectionHerraEquiposDocument[]> {
+  async findAll(
+    filters?: any,
+    roles?: string[],
+  ): Promise<InspectionHerraEquiposDocument[]> {
     const query: any = {};
 
     if (filters?.status) query.status = filters.status;
     if (filters?.templateCode) query.templateCode = filters.templateCode;
     if (filters?.submittedBy) query.submittedBy = filters.submittedBy;
+
+    // Acota el listado a las plantillas visibles para los roles del usuario.
+    // Los roles de visibilidad total no se filtran; los restringidos ven
+    // inspecciones de sus plantillas asignadas — de cualquier usuario, no
+    // solo las propias.
+    //
+    // La regla de visibilidad se pide al servicio de plantillas en vez de
+    // reimplementarla: duplicarla es la forma segura de que las dos copias
+    // se desincronicen con el tiempo.
+    if (
+      roles?.length &&
+      !roles.some((r) => ROLES_VISIBILIDAD_TOTAL.includes(r))
+    ) {
+      const visibles =
+        await this.templateHerraEquiposService.codigosVisibles(roles);
+      const pedido = query.templateCode as string | undefined;
+      query.templateCode = pedido
+        ? // Si ya pedía un código concreto, solo pasa si está permitido;
+          // si no, se fuerza un resultado vacío en vez de devolverlo todo.
+          visibles.includes(pedido)
+          ? pedido
+          : { $in: [] }
+        : { $in: visibles };
+    }
 
     if (filters?.startDate || filters?.endDate) {
       query.submittedAt = {};

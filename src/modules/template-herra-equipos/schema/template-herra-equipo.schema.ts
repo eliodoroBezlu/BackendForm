@@ -3,9 +3,9 @@ import mongoose from 'mongoose';
 
 export type ResponseType =
   | 'si_no_na'
-  | "bien_mal"
-  | "bueno_malo_na"
-  | "operativo_mantenimiento"
+  | 'bien_mal'
+  | 'bueno_malo_na'
+  | 'operativo_mantenimiento'
   | 'text'
   | 'number'
   | 'boolean'
@@ -122,7 +122,7 @@ export const SectionSchema = SchemaFactory.createForClass(Section);
 
 // Agregar recursión manualmente
 SectionSchema.add({
-  subsections: [SectionSchema]
+  subsections: [SectionSchema],
 });
 
 // ============================================
@@ -148,6 +148,47 @@ export class VerificationField {
 }
 
 // ============================================
+// FRECUENCIA DE INSPECCIÓN
+// ============================================
+
+export type UnidadFrecuencia =
+  | 'diaria'
+  | 'semanal'
+  | 'mensual'
+  | 'trimestral'
+  | 'semestral'
+  | 'anual'
+  | 'personalizada';
+
+@Schema({ _id: false })
+export class FrecuenciaInspeccion {
+  @Prop({
+    required: true,
+    enum: [
+      'diaria',
+      'semanal',
+      'mensual',
+      'trimestral',
+      'semestral',
+      'anual',
+      'personalizada',
+    ],
+  })
+  unidad: UnidadFrecuencia;
+
+  // Solo aplica cuando unidad === 'personalizada' (cantidad de días).
+  @Prop()
+  valorPersonalizado?: number;
+
+  // Permite desactivar el control de disponibilidad sin borrar la config.
+  @Prop({ default: true })
+  activa: boolean;
+}
+
+export const FrecuenciaInspeccionSchema =
+  SchemaFactory.createForClass(FrecuenciaInspeccion);
+
+// ============================================
 // SCHEMA PRINCIPAL - TemplateHerraEquipos
 // ============================================
 
@@ -165,11 +206,37 @@ export class TemplateHerraEquipos {
   @Prop({ required: true, enum: ['interna', 'externa'] })
   type: string;
 
+  @Prop()
+  descripcion?: string;
+
+  /**
+   * Roles que pueden ver y llenar esta plantilla.
+   *
+   * Vacío (por defecto) = visible para todos, que es el comportamiento
+   * histórico: así las plantillas ya existentes no cambian de alcance.
+   *
+   * Los roles de visibilidad total (`ROLES_VISIBILIDAD_TOTAL`) ignoran este
+   * campo y ven el catálogo completo. Solo acota a los roles restringidos.
+   */
+  @Prop({ type: [String], default: [], index: true })
+  rolesVisibles: string[];
+
   @Prop({ type: [VerificationField], required: true })
   verificationFields: VerificationField[];
 
   @Prop({ type: [SectionSchema], required: true })
   sections: Section[];
+
+  // Label de verificationFields que identifica el código del equipo/
+  // herramienta (ej. "TAG", "PLACA", "CÓDIGO DE LA ESCALERA").
+  @Prop()
+  campoCodigoEquipo?: string;
+
+  // Frecuencia de inspección de este tipo de plantilla. Si no está
+  // configurada (o `activa: false`), no se restringe la disponibilidad de
+  // equipos — comportamiento idéntico al actual (opt-in, retrocompatible).
+  @Prop({ type: FrecuenciaInspeccionSchema })
+  frecuencia?: FrecuenciaInspeccion;
 
   @Prop()
   createdAt?: Date;
@@ -182,8 +249,10 @@ export class TemplateHerraEquipos {
 // EXPORTACIONES
 // ============================================
 
-export type TemplateHerraEquiposDocument = TemplateHerraEquipos & mongoose.Document;
-export const TemplateHerraEquiposSchema = SchemaFactory.createForClass(TemplateHerraEquipos);
+export type TemplateHerraEquiposDocument = TemplateHerraEquipos &
+  mongoose.Document;
+export const TemplateHerraEquiposSchema =
+  SchemaFactory.createForClass(TemplateHerraEquipos);
 
 // ============================================
 // ÍNDICES

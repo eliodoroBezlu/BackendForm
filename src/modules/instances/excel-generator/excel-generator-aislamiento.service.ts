@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelAislamientoervice {
@@ -33,14 +34,14 @@ export class ExcelAislamientoervice {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -134,14 +135,12 @@ export class ExcelAislamientoervice {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -153,7 +152,6 @@ export class ExcelAislamientoervice {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -204,13 +202,22 @@ export class ExcelAislamientoervice {
 
       const sectionPositions = [
         { startRow: 33, name: 'A. GENERAL' },
-        { startRow: 40, name: 'B. CONDICIONES DE PARADAS Y ARRANQUE DE EQUIPOS' }, // Ajustar según la plantilla
+        {
+          startRow: 40,
+          name: 'B. CONDICIONES DE PARADAS Y ARRANQUE DE EQUIPOS',
+        }, // Ajustar según la plantilla
         { startRow: 50, name: 'C. AISLAMIENTO DE EQUIPOS' },
         { startRow: 71, name: 'D. TRABAJOS SIMULTÁNEOS' }, // Ajustar según la plantilla
         { startRow: 84, name: 'E. AISLAMIENTO REMOTO' },
         { startRow: 89, name: 'F. LIMPIEZA CORREAS TRANSPORTADORAS' },
-        { startRow: 98, name: 'G. AISLAMIENTOS ELÉCTRICOS / DE FUENTES RADIOACTIVAS' },
-        { startRow: 105, name: 'H. AISLAMIENTO DE EQUIPO PESADO EN MANTENIMIENTO MINA' }, // Ajustar según la plantilla
+        {
+          startRow: 98,
+          name: 'G. AISLAMIENTOS ELÉCTRICOS / DE FUENTES RADIOACTIVAS',
+        },
+        {
+          startRow: 105,
+          name: 'H. AISLAMIENTO DE EQUIPO PESADO EN MANTENIMIENTO MINA',
+        }, // Ajustar según la plantilla
       ];
 
       // Columnas para las respuestas
@@ -232,8 +239,6 @@ export class ExcelAislamientoervice {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 

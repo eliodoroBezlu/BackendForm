@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelAlturav4Service {
@@ -33,14 +34,14 @@ export class ExcelAlturav4Service {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -135,14 +136,12 @@ export class ExcelAlturav4Service {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -154,7 +153,6 @@ export class ExcelAlturav4Service {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -208,10 +206,13 @@ export class ExcelAlturav4Service {
         { startRow: 59, name: 'B. PUNTOS DE ANCLAJE' }, // Ajustar según la plantilla
         { startRow: 64, name: 'C. LINEAS DE VIDA HORIZONTALES' },
         { startRow: 78, name: 'D. LINEAS DE VIDA HORIZONTALES' },
-        { startRow: 85, name: 'D. LINEAS DE ADVERTENCIA' }, 
+        { startRow: 85, name: 'D. LINEAS DE ADVERTENCIA' },
         { startRow: 95, name: 'E. ESCALERAS' },
         { startRow: 124, name: 'F. EQUIPOS ELEVADORES DE PERSONAS' }, // Ajustar según la plantilla
-        { startRow: 149, name: 'F. EQUIPO CANASTILLO PARA LA ELEVACIÓN DE PERSONAS' }, // Ajustar según la plantilla
+        {
+          startRow: 149,
+          name: 'F. EQUIPO CANASTILLO PARA LA ELEVACIÓN DE PERSONAS',
+        }, // Ajustar según la plantilla
         { startRow: 162, name: 'F. ANDAMIOS' }, // Ajustar según la plantilla
       ];
 
@@ -234,8 +235,6 @@ export class ExcelAlturav4Service {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 
@@ -281,133 +280,126 @@ export class ExcelAlturav4Service {
     worksheet.getCell('B185').value = instance.aspectosAdicionales || '';
   }
 
- /**
- * Método para llenar la tabla de equipo de trabajo / personal involucrado
- * Estructura: 2 columnas (izquierda y derecha) x múltiples filas
- * Columnas: Nombre y Apellido (A, C) | C.I. (B, D)
- */
-private async llenarEquipoDeTrabajo(
-  worksheet: ExcelJS.Worksheet,
-  instance: Instance,
-) {
-  try {
-    this.logger.log('Iniciando llenado del equipo de trabajo');
+  /**
+   * Método para llenar la tabla de equipo de trabajo / personal involucrado
+   * Estructura: 2 columnas (izquierda y derecha) x múltiples filas
+   * Columnas: Nombre y Apellido (A, C) | C.I. (B, D)
+   */
+  private async llenarEquipoDeTrabajo(
+    worksheet: ExcelJS.Worksheet,
+    instance: Instance,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado del equipo de trabajo');
 
-    // Verificar que existe el personal involucrado
-    if (
-      !instance.personalInvolucrado ||
-      instance.personalInvolucrado.length === 0
-    ) {
-      this.logger.warn(
-        'No se encontró personal involucrado en la instancia',
-      );
-      return;
-    }
-
-    const startRow = 190; 
-    const maxRowsPerPage = 6; 
-
-    const nameColumn1 = 'B'; 
-    const ciColumn1 = 'G'; 
-    const nameColumn2 = 'H'; 
-    const ciColumn2 = 'M'; 
-
-    let personIndex = 0;
-    const personalList = instance.personalInvolucrado;
-
-    // Llenar dos columnas de forma horizontal (izquierda y derecha)
-    for (let rowOffset = 0; rowOffset < maxRowsPerPage; rowOffset++) {
-      const currentRow = startRow + rowOffset;
-
-      // ============ LLENAR COLUMNA IZQUIERDA ============
-      if (personIndex < personalList.length) {
-        const person1 = personalList[personIndex];
-
-        try {
-          // Validar que el registro tiene datos
-          if (person1.nombre || person1.ci) {
-            // Nombre y Apellido (columna A)
-            if (person1.nombre) {
-              worksheet.getCell(`${nameColumn1}${currentRow}`).value =
-                person1.nombre;
-              this.logger.debug(
-                `Nombre ingresado en A${currentRow}: ${person1.nombre}`,
-              );
-            }
-
-            // C.I. (columna B)
-            if (person1.ci) {
-              worksheet.getCell(`${ciColumn1}${currentRow}`).value = person1.ci;
-              this.logger.debug(
-                `C.I. ingresado en B${currentRow}: ${person1.ci}`,
-              );
-            }
-
-          }
-        } catch (error) {
-          this.logger.error(
-            `Error al procesar personal ${personIndex + 1} (columna izquierda): ${error.message}`,
-          );
-        }
-
-        personIndex++;
+      // Verificar que existe el personal involucrado
+      if (
+        !instance.personalInvolucrado ||
+        instance.personalInvolucrado.length === 0
+      ) {
+        this.logger.warn('No se encontró personal involucrado en la instancia');
+        return;
       }
 
-      // ============ LLENAR COLUMNA DERECHA ============
-      if (personIndex < personalList.length) {
-        const person2 = personalList[personIndex];
+      const startRow = 190;
+      const maxRowsPerPage = 6;
 
-        try {
-          // Validar que el registro tiene datos
-          if (person2.nombre || person2.ci) {
-            // Nombre y Apellido (columna C)
-            if (person2.nombre) {
-              worksheet.getCell(`${nameColumn2}${currentRow}`).value =
-                person2.nombre;
-              this.logger.debug(
-                `Nombre ingresado en C${currentRow}: ${person2.nombre}`,
-              );
+      const nameColumn1 = 'B';
+      const ciColumn1 = 'G';
+      const nameColumn2 = 'H';
+      const ciColumn2 = 'M';
+
+      let personIndex = 0;
+      const personalList = instance.personalInvolucrado;
+
+      // Llenar dos columnas de forma horizontal (izquierda y derecha)
+      for (let rowOffset = 0; rowOffset < maxRowsPerPage; rowOffset++) {
+        const currentRow = startRow + rowOffset;
+
+        // ============ LLENAR COLUMNA IZQUIERDA ============
+        if (personIndex < personalList.length) {
+          const person1 = personalList[personIndex];
+
+          try {
+            // Validar que el registro tiene datos
+            if (person1.nombre || person1.ci) {
+              // Nombre y Apellido (columna A)
+              if (person1.nombre) {
+                worksheet.getCell(`${nameColumn1}${currentRow}`).value =
+                  person1.nombre;
+                this.logger.debug(
+                  `Nombre ingresado en A${currentRow}: ${person1.nombre}`,
+                );
+              }
+
+              // C.I. (columna B)
+              if (person1.ci) {
+                worksheet.getCell(`${ciColumn1}${currentRow}`).value =
+                  person1.ci;
+                this.logger.debug(
+                  `C.I. ingresado en B${currentRow}: ${person1.ci}`,
+                );
+              }
             }
-
-            // C.I. (columna D)
-            if (person2.ci) {
-              worksheet.getCell(`${ciColumn2}${currentRow}`).value = person2.ci;
-              this.logger.debug(
-                `C.I. ingresado en D${currentRow}: ${person2.ci}`,
-              );
-            }
-
+          } catch (error) {
+            this.logger.error(
+              `Error al procesar personal ${personIndex + 1} (columna izquierda): ${error.message}`,
+            );
           }
-        } catch (error) {
-          this.logger.error(
-            `Error al procesar personal ${personIndex + 1} (columna derecha): ${error.message}`,
-          );
+
+          personIndex++;
         }
 
-        personIndex++;
+        // ============ LLENAR COLUMNA DERECHA ============
+        if (personIndex < personalList.length) {
+          const person2 = personalList[personIndex];
+
+          try {
+            // Validar que el registro tiene datos
+            if (person2.nombre || person2.ci) {
+              // Nombre y Apellido (columna C)
+              if (person2.nombre) {
+                worksheet.getCell(`${nameColumn2}${currentRow}`).value =
+                  person2.nombre;
+                this.logger.debug(
+                  `Nombre ingresado en C${currentRow}: ${person2.nombre}`,
+                );
+              }
+
+              // C.I. (columna D)
+              if (person2.ci) {
+                worksheet.getCell(`${ciColumn2}${currentRow}`).value =
+                  person2.ci;
+                this.logger.debug(
+                  `C.I. ingresado en D${currentRow}: ${person2.ci}`,
+                );
+              }
+            }
+          } catch (error) {
+            this.logger.error(
+              `Error al procesar personal ${personIndex + 1} (columna derecha): ${error.message}`,
+            );
+          }
+
+          personIndex++;
+        }
       }
-    }
 
-    // Registrar advertencia si hay más personal del que cabe
-    if (personalList.length > personIndex) {
-      this.logger.warn(
-        `Se encontraron ${personalList.length} personas, pero solo se pueden mostrar ${personIndex} en la tabla`,
+      // Registrar advertencia si hay más personal del que cabe
+      if (personalList.length > personIndex) {
+        this.logger.warn(
+          `Se encontraron ${personalList.length} personas, pero solo se pueden mostrar ${personIndex} en la tabla`,
+        );
+      }
+
+      this.logger.log(
+        `Equipo de trabajo completado. Se ingresaron ${Math.min(personalList.length, personIndex)} personas`,
       );
+    } catch (error) {
+      this.logger.error(`Error al llenar equipo de trabajo: ${error.message}`);
+      throw new Error(`Error al llenar el equipo de trabajo: ${error.message}`);
     }
-
-    this.logger.log(
-      `Equipo de trabajo completado. Se ingresaron ${Math.min(personalList.length, personIndex)} personas`,
-    );
-  } catch (error) {
-    this.logger.error(
-      `Error al llenar equipo de trabajo: ${error.message}`,
-    );
-    throw new Error(
-      `Error al llenar el equipo de trabajo: ${error.message}`,
-    );
   }
-}
-
 
   async generateExcel(instance: Instance): Promise<Buffer> {
     try {

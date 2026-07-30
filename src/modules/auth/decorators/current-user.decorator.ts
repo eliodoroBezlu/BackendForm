@@ -2,12 +2,12 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 /**
  * Decorador para extraer el usuario autenticado del request.
- * 
+ *
  * Uso:
  * - @CurrentUser() user: User
  * - @CurrentUser('username') username: string
  * - @CurrentUser('roles') roles: Role[]
- * 
+ *
  * Reemplaza a @AuthenticatedUser() de Keycloak
  */
 export const CurrentUser = createParamDecorator(

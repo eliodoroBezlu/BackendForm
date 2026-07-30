@@ -14,7 +14,10 @@ import { ExcelAndamiosService } from './andamio.service';
 import { ExcelFrecuenteTecleService } from './frecuente-tecles.service';
 import { ExcelPreUsoTecleService } from './preuso-tecle.service';
 import { MongooseModule } from '@nestjs/mongoose';
-import { InspectionHerraEquipos, InspectionHerraEquiposSchema } from '../schemas/inspection-herra-equipos.schema';
+import {
+  InspectionHerraEquipos,
+  InspectionHerraEquiposSchema,
+} from '../schemas/inspection-herra-equipos.schema';
 import { ExcelElementosIzajeService } from './elementos-izaje.service';
 import { ExcelArnestService } from './arnes.service';
 
@@ -43,7 +46,7 @@ import { ExcelArnestService } from './arnes.service';
     ExcelFrecuenteTecleService,
     ExcelPreUsoTecleService,
     ExcelElementosIzajeService,
-    ExcelArnestService
+    ExcelArnestService,
   ],
   exports: [
     ExcelVehicleService,
@@ -59,8 +62,8 @@ import { ExcelArnestService } from './arnes.service';
     ExcelAndamiosService,
     ExcelFrecuenteTecleService,
     ExcelPreUsoTecleService,
-    ExcelElementosIzajeService, 
-    ExcelArnestService
+    ExcelElementosIzajeService,
+    ExcelArnestService,
   ],
 })
 export class ExcelHerraEquipoModule {}

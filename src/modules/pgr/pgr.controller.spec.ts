@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PgrController } from './pgr.controller';
 import { PgrService } from './pgr.service';
+import { PgrImportService } from './pgr-import.service';
+import { PgrExcelService } from './pgr-excel.service';
 import { CreatePgrDto } from './dto/create-pgr.dto';
 import { UpdatePgrDto } from './dto/update-pgr.dto';
 import { AprobarPgrDto } from './dto/aprobar-pgr.dto';
@@ -19,7 +21,12 @@ describe('PgrController', () => {
     aprobar: jest.fn(),
     addSeguimiento: jest.fn(),
     remove: jest.fn(),
+    findByCodigoExterno: jest.fn(),
+    findOneConIndicadores: jest.fn(),
   };
+
+  const mockPgrImportService = { parsear: jest.fn() };
+  const mockPgrExcelService = { generar: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -28,6 +35,14 @@ describe('PgrController', () => {
         {
           provide: PgrService,
           useValue: mockPgrService,
+        },
+        {
+          provide: PgrImportService,
+          useValue: mockPgrImportService,
+        },
+        {
+          provide: PgrExcelService,
+          useValue: mockPgrExcelService,
         },
       ],
     }).compile();
@@ -49,8 +64,12 @@ describe('PgrController', () => {
         vicepresidencia: 'VP Test',
         gestion: '2026',
       };
-      const result = { _id: '1', ...createPgrDto, codigoAutogenerado: 'PLAN-2026-0001' };
-      
+      const result = {
+        _id: '1',
+        ...createPgrDto,
+        codigoAutogenerado: 'PLAN-2026-0001',
+      };
+
       mockPgrService.create.mockResolvedValue(result);
 
       expect(await controller.create(createPgrDto)).toEqual(result);
@@ -69,12 +88,19 @@ describe('PgrController', () => {
   });
 
   describe('findOne', () => {
-    it('should return a single PGR', async () => {
-      const result = { _id: '1', empresa: 'Test' };
-      mockPgrService.findOne.mockResolvedValue(result);
+    it('devuelve el PGR con sus indicadores calculados', async () => {
+      const result = {
+        _id: '1',
+        empresa: 'Test',
+        indicadores: {
+          periodo: { programado: 2, eficacia: 2, eficiencia: 2 },
+          gestion: { programado: 2, eficacia: 2, eficiencia: 2 },
+        },
+      };
+      mockPgrService.findOneConIndicadores.mockResolvedValue(result);
 
       expect(await controller.findOne('1')).toEqual(result);
-      expect(service.findOne).toHaveBeenCalledWith('1');
+      expect(service.findOneConIndicadores).toHaveBeenCalledWith('1');
     });
   });
 
@@ -82,7 +108,7 @@ describe('PgrController', () => {
     it('should update a PGR', async () => {
       const updateDto: UpdatePgrDto = { empresa: 'Updated Empresa' };
       const result = { _id: '1', empresa: 'Updated Empresa' };
-      
+
       mockPgrService.update.mockResolvedValue(result);
 
       expect(await controller.update('1', updateDto)).toEqual(result);
@@ -94,13 +120,15 @@ describe('PgrController', () => {
     it('should approve/reject actvities in a PGR', async () => {
       const aprobarDto: AprobarPgrDto = {
         aprobadoPor: 'Admin',
-        actividadesAprobacion: [{
+        actividadesAprobacion: [
+          {
             _id: 'a1',
-            estadoAprobacion: ActividadEstado.APROBADO
-        }]
+            estadoAprobacion: ActividadEstado.APROBADO,
+          },
+        ],
       };
       const result = { _id: '1', estado: PgrEstado.APROBADO };
-      
+
       mockPgrService.aprobar.mockResolvedValue(result);
 
       expect(await controller.aprobar('1', aprobarDto)).toEqual(result);
@@ -113,12 +141,21 @@ describe('PgrController', () => {
       const seguimientoDto: SeguimientoPgrDto = {
         semaforoTiempo: 'En el Mes',
       };
-      const result = { _id: '1', actividades: [{ _id: 'a1', semaforoTiempo: 'En el Mes' }] };
-      
+      const result = {
+        _id: '1',
+        actividades: [{ _id: 'a1', semaforoTiempo: 'En el Mes' }],
+      };
+
       mockPgrService.addSeguimiento.mockResolvedValue(result);
 
-      expect(await controller.addSeguimiento('1', 'a1', seguimientoDto)).toEqual(result);
-      expect(service.addSeguimiento).toHaveBeenCalledWith('1', 'a1', seguimientoDto);
+      expect(
+        await controller.addSeguimiento('1', 'a1', seguimientoDto),
+      ).toEqual(result);
+      expect(service.addSeguimiento).toHaveBeenCalledWith(
+        '1',
+        'a1',
+        seguimientoDto,
+      );
     });
   });
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelManLiftService {
@@ -48,14 +49,14 @@ export class ExcelManLiftService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -110,7 +111,7 @@ export class ExcelManLiftService {
       worksheet.getCell('D4').value = valores[0] || ''; // EMPRESA
       worksheet.getCell('D5').value = valores[1] || ''; // FECHA
       worksheet.getCell('D6').value = valores[2] || ''; // OPERADOR
-      worksheet.getCell('D7').value = valores[3] || ''; // SUPERVISOR DE AREA 
+      worksheet.getCell('D7').value = valores[3] || ''; // SUPERVISOR DE AREA
       worksheet.getCell('D8').value = valores[4] || ''; // AREA
       worksheet.getCell('K4').value = valores[5] || ''; // MARCA
       worksheet.getCell('K5').value = valores[6] || ''; // TIPO
@@ -127,171 +128,206 @@ export class ExcelManLiftService {
     }
   }
 
-private async marcarCasilla(
-  worksheet: ExcelJS.Worksheet,
-  cellRef: string,
-  marcado: boolean,
-  concatenar: boolean = false // ← Nuevo parámetro
-) {
-  const CASILLA_MARCADA = '☑';
-  const CASILLA_VACIA = '☐';
-  
-  const cell = worksheet.getCell(cellRef);
-  const marca = marcado ? CASILLA_MARCADA : CASILLA_VACIA;
-  
-  if (concatenar && cell.value) {
-    // Concatenar con el texto existente
-    cell.value = `${cell.value} ${marca}`;
-  } else {
-    // Reemplazar completamente
-    cell.value = marca;
+  private async marcarCasilla(
+    worksheet: ExcelJS.Worksheet,
+    cellRef: string,
+    marcado: boolean,
+    concatenar: boolean = false, // ← Nuevo parámetro
+  ) {
+    const CASILLA_MARCADA = '☑';
+    const CASILLA_VACIA = '☐';
+
+    const cell = worksheet.getCell(cellRef);
+    const marca = marcado ? CASILLA_MARCADA : CASILLA_VACIA;
+
+    if (concatenar && cell.value) {
+      // Concatenar con el texto existente
+      cell.value = `${cell.value} ${marca}`;
+    } else {
+      // Reemplazar completamente
+      cell.value = marca;
+    }
+
+    // Aplicar formato centrado
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
   }
-  
-  // Aplicar formato centrado
-  cell.alignment = {
-    vertical: 'middle',
-    horizontal: 'center'
-  };
-}
   /**
    * Llena los datos específicos del vehículo (tipo inspección, certificación, etc.)
    */
 
- 
+  private async llenarDatosManlift(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (!inspection.outOfService) {
+        this.logger.warn('No se encontraron datos específicos del vehículo');
+        return;
+      }
 
+      this.logger.log('Iniciando llenado de datos específicos del vehículo');
 
+      // Tipo de inspección
+      if (inspection.outOfService?.status) {
+        const tipoInspeccion = inspection.outOfService?.status?.toLowerCase();
+        await this.marcarCasilla(
+          worksheet,
+          'D57',
+          tipoInspeccion.includes('no'),
+          true,
+        );
+        await this.marcarCasilla(
+          worksheet,
+          'F57',
+          tipoInspeccion.includes('si'),
+          true,
+        );
+      }
 
-private async llenarDatosManlift(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    if (!inspection.outOfService) {
-      this.logger.warn('No se encontraron datos específicos del vehículo');
-      return;
-    }
-
-    this.logger.log('Iniciando llenado de datos específicos del vehículo');
-
-    // Tipo de inspección
-    if (inspection.outOfService?.status) {
-      const tipoInspeccion = inspection.outOfService?.status?.toLowerCase();
-      await this.marcarCasilla(worksheet, 'D57', tipoInspeccion.includes('no'), true);
-      await this.marcarCasilla(worksheet, 'F57', tipoInspeccion.includes('si'), true);
-    }
-
-    if(inspection.outOfService?.fechaCorrecion){
+      if (inspection.outOfService?.fechaCorrecion) {
         worksheet.getCell('K57').value = inspection.outOfService.fechaCorrecion;
+      }
+
+      this.logger.log('Datos específicos del vehículo completados');
+    } catch (error) {
+      this.logger.error(`Error al llenar datos del vehículo: ${error.message}`);
+      throw error;
     }
-
-
-    this.logger.log('Datos específicos del vehículo completados');
-  } catch (error) {
-    this.logger.error(`Error al llenar datos del vehículo: ${error.message}`);
-    throw error;
   }
-}
 
   /**
    * Llena las respuestas de las preguntas de inspección
    */
   private async llenarRespuestas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de respuestas');
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de respuestas');
 
-    if (!inspection.responses || Object.keys(inspection.responses).length === 0) {
-      this.logger.warn('No se encontraron respuestas en la inspección');
-      return;
-    }
-
-    // Configuración de todas las secciones posibles
-    const allSections = [
-      { id: 'section_0', startRow: 12, endRow: 22, name: 'PLATAFORMA (S)' },
-      { id: 'section_1', startRow: 24, endRow: 28, name: 'NIVELES' },
-      { id: 'section_2', startRow: 30, endRow: 36, name: 'FUNCIONES' },
-      { id: 'section_3', startRow: 38, endRow: 48, name: 'DISPOSITIVOS DE SEGURIDAD' },
-      { id: 'compartimientoMotor', startRow: 50, endRow: 52, name: 'PARTE INFERIOR' },
-    ];
-
-    // Columnas fijas
-    const siCol = 'G';
-    const noCol = 'H';
-    const naCol = 'I';
-    const observacionesCol = 'J';
-
-    // Procesar cada sección que exista en las respuestas
-    Object.entries(inspection.responses).forEach(([sectionId, sectionResponses], index) => {
-      
-      // Encontrar configuración para esta sección
-      let sectionConfig = allSections.find(s => s.id === sectionId);
-      
-      // Si no se encuentra por ID exacto, usar por índice
-      if (!sectionConfig && index < allSections.length) {
-        sectionConfig = allSections[index];
-        this.logger.log(`Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`);
-      }
-
-      if (!sectionConfig) {
-        this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+      if (
+        !inspection.responses ||
+        Object.keys(inspection.responses).length === 0
+      ) {
+        this.logger.warn('No se encontraron respuestas en la inspección');
         return;
       }
 
-      this.logger.log(`Procesando: ${sectionConfig.name} (desde ${sectionId})`);
-      
-      let currentRow = sectionConfig.startRow;
+      // Configuración de todas las secciones posibles
+      const allSections = [
+        { id: 'section_0', startRow: 12, endRow: 22, name: 'PLATAFORMA (S)' },
+        { id: 'section_1', startRow: 24, endRow: 28, name: 'NIVELES' },
+        { id: 'section_2', startRow: 30, endRow: 36, name: 'FUNCIONES' },
+        {
+          id: 'section_3',
+          startRow: 38,
+          endRow: 48,
+          name: 'DISPOSITIVOS DE SEGURIDAD',
+        },
+        {
+          id: 'compartimientoMotor',
+          startRow: 50,
+          endRow: 52,
+          name: 'PARTE INFERIOR',
+        },
+      ];
 
-      // Procesar preguntas
-      Object.entries(sectionResponses as Record<string, any>).forEach(([questionId, response]) => {
-        if (currentRow > sectionConfig.endRow) {
-          this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-          return;
-        }
+      // Columnas fijas
+      const siCol = 'G';
+      const noCol = 'H';
+      const naCol = 'I';
+      const observacionesCol = 'J';
 
-        try {
-          // Limpiar celdas
-          worksheet.getCell(`${siCol}${currentRow}`).value = '';
-          worksheet.getCell(`${noCol}${currentRow}`).value = '';
-          worksheet.getCell(`${naCol}${currentRow}`).value = '';
+      // Procesar cada sección que exista en las respuestas
+      Object.entries(inspection.responses).forEach(
+        ([sectionId, sectionResponses], index) => {
+          // Encontrar configuración para esta sección
+          let sectionConfig = allSections.find((s) => s.id === sectionId);
 
-          // Procesar respuesta
-          if (response.value !== undefined && response.value !== null) {
-            const valor = String(response.value).toLowerCase().trim();
-            
-            if (valor === 'bueno' || valor === 'si' || valor === 'true' || valor === '1') {
-              worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-            } else if (valor === 'malo' || valor === 'no' || valor === 'false' || valor === '0') {
-              worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
-            } else if (valor === 'na' || valor === 'n/a') {
-              worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+          // Si no se encuentra por ID exacto, usar por índice
+          if (!sectionConfig && index < allSections.length) {
+            sectionConfig = allSections[index];
+            this.logger.log(
+              `Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`,
+            );
+          }
+
+          if (!sectionConfig) {
+            this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+            return;
+          }
+
+          this.logger.log(
+            `Procesando: ${sectionConfig.name} (desde ${sectionId})`,
+          );
+
+          let currentRow = sectionConfig.startRow;
+
+          // Procesar preguntas
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
+            if (currentRow > sectionConfig.endRow) {
+              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+              return;
             }
-          }
 
-          // Observaciones
-          if (response.observacion?.trim()) {
-            worksheet.getCell(`${observacionesCol}${currentRow}`).value = response.observacion;
-          }
+            try {
+              // Limpiar celdas
+              worksheet.getCell(`${siCol}${currentRow}`).value = '';
+              worksheet.getCell(`${noCol}${currentRow}`).value = '';
+              worksheet.getCell(`${naCol}${currentRow}`).value = '';
 
-          currentRow++;
-        } catch (error) {
-          this.logger.error(`Error en fila ${currentRow}: ${error.message}`);
-          currentRow++;
-        }
-      });
-    });
+              // Procesar respuesta
+              if (response.value !== undefined && response.value !== null) {
+                const valor = String(response.value).toLowerCase().trim();
 
-    this.logger.log('Respuestas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar respuestas: ${error.message}`);
-    throw error;
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
+                  worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
+                  worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                } else if (valor === 'na' || valor === 'n/a') {
+                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                }
+              }
+
+              // Observaciones
+              if (response.observacion?.trim()) {
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
+              }
+
+              currentRow++;
+            } catch (error) {
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
+              currentRow++;
+            }
+          });
+        },
+      );
+
+      this.logger.log('Respuestas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar respuestas: ${error.message}`);
+      throw error;
+    }
   }
-}
   /**
    * Llena el diagrama de daños del vehículo
    */
- 
 
   /**
    * Llena las observaciones generales
@@ -320,70 +356,82 @@ private async llenarDatosManlift(
   /**
    * Llena las firmas del inspector y supervisor
    */
-private async llenarFirmas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de firmas');
+  private async llenarFirmas(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de firmas');
 
-    // Configuración de posiciones exactas
-    const posiciones = {
-      inspector: {
-        nombre: 'A85',
-        firma: 'C58',
-        fecha: 'B85', 
-        cargo: 'A70'
-      },
-      supervisor: {
-        nombre: 'E85',
-        firma: 'J58',
-        fecha: 'J85',
-        cargo: 'I70'
-      }
-    };
+      // Configuración de posiciones exactas
+      const posiciones = {
+        inspector: {
+          nombre: 'A85',
+          firma: 'C58',
+          fecha: 'B85',
+          cargo: 'A70',
+        },
+        supervisor: {
+          nombre: 'E85',
+          firma: 'J58',
+          fecha: 'J85',
+          cargo: 'I70',
+        },
+      };
 
-    // INSPECTOR
-    if (inspection.inspectorSignature) {
-      const insp = inspection.inspectorSignature;
-      
-      //if (insp.inspectorName) worksheet.getCell(posiciones.inspector.nombre).value = insp.inspectorName;
-      
-      if (insp.inspectorSignature && typeof insp.inspectorSignature === 'string' && insp.inspectorSignature.startsWith('data:image/')) {
-        await this.insertarImagen(worksheet, insp.inspectorSignature, posiciones.inspector.firma);
+      // INSPECTOR
+      if (inspection.inspectorSignature) {
+        const insp = inspection.inspectorSignature;
+
+        //if (insp.inspectorName) worksheet.getCell(posiciones.inspector.nombre).value = insp.inspectorName;
+
+        if (
+          insp.inspectorSignature &&
+          typeof insp.inspectorSignature === 'string' &&
+          insp.inspectorSignature.startsWith('data:image/')
+        ) {
+          await this.insertarImagen(
+            worksheet,
+            insp.inspectorSignature,
+            posiciones.inspector.firma,
+          );
+        }
+
+        //if (insp.inspectionDate) worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
+        // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
       }
-      
-//if (insp.inspectionDate) worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
-     // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
+
+      // SUPERVISOR
+      if (inspection.supervisorSignature) {
+        const sup = inspection.supervisorSignature;
+
+        //if (sup.supervisorName) worksheet.getCell(posiciones.supervisor.nombre).value = sup.supervisorName;
+
+        if (
+          sup.supervisorSignature &&
+          typeof sup.supervisorSignature === 'string' &&
+          sup.supervisorSignature.startsWith('data:image/')
+        ) {
+          await this.insertarImagen(
+            worksheet,
+            sup.supervisorSignature,
+            posiciones.supervisor.firma,
+          );
+        }
+
+        //  if (sup.supervisorDate) worksheet.getCell(posiciones.supervisor.fecha).value = sup.supervisorDate;
+        //  if (sup.cargo) worksheet.getCell(posiciones.supervisor.cargo).value = sup.cargo;
+      }
+
+      // Ajustar altura de filas para las imágenes de firma
+      //worksheet.getRow(69).height = 40;
+
+      this.logger.log('Firmas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar firmas: ${error.message}`);
+      throw error;
     }
-
-    // SUPERVISOR
-    if (inspection.supervisorSignature) {
-      const sup = inspection.supervisorSignature;
-      
-      //if (sup.supervisorName) worksheet.getCell(posiciones.supervisor.nombre).value = sup.supervisorName;
-      
-      if (sup.supervisorSignature && typeof sup.supervisorSignature === 'string' && sup.supervisorSignature.startsWith('data:image/')) {
-        await this.insertarImagen(worksheet, sup.supervisorSignature, posiciones.supervisor.firma);
-      }
-      
-    //  if (sup.supervisorDate) worksheet.getCell(posiciones.supervisor.fecha).value = sup.supervisorDate;
-    //  if (sup.cargo) worksheet.getCell(posiciones.supervisor.cargo).value = sup.cargo;
-    }
-
-    // Ajustar altura de filas para las imágenes de firma
-    //worksheet.getRow(69).height = 40;
-
-    this.logger.log('Firmas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar firmas: ${error.message}`);
-    throw error;
   }
-}
-
-
-
-
 
   /**
    * Genera el archivo Excel completo para inspección de vehículos
@@ -436,7 +484,6 @@ private async llenarFirmas(
       await this.llenarRespuestas(worksheet, inspection);
       await this.llenarObservacionesGenerales(worksheet, inspection);
       await this.llenarFirmas(worksheet, inspection);
-      
 
       // 5. Generar el buffer del Excel
       const excelBuffer = await workbook.xlsx.writeBuffer();

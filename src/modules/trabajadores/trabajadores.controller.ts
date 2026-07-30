@@ -24,7 +24,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { Permission } from '../auth/enums/permission.enum';
@@ -72,6 +72,18 @@ export class TrabajadoresController {
     @CurrentUser() user: AuthenticatedUserData,
   ) {
     return this.trabajadoresService.createWithUser(createDto, user);
+  }
+
+  @Post('sync')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Sincroniza el roster completo de trabajadores + roles de un servicio desde el IAM Core (solo admin)',
+  })
+  async sync(@Query('role') role: string = 'supervisor') {
+    const roster = await this.trabajadoresService.syncTrabajadoresFromIam();
+    const roles = await this.trabajadoresService.syncRolFromIam(role);
+    return { roster, roles };
   }
 
   @Get()

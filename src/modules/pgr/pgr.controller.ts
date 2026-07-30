@@ -1,17 +1,95 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Put } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Put,
+  UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  Query,
+  BadRequestException,
+  ConflictException,
+  Res,
+} from '@nestjs/common';
+import { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PgrService } from './pgr.service';
+import { PgrImportService } from './pgr-import.service';
+import { PgrExcelService } from './pgr-excel.service';
 import { CreatePgrDto } from './dto/create-pgr.dto';
 import { UpdatePgrDto } from './dto/update-pgr.dto';
 import { AprobarPgrDto } from './dto/aprobar-pgr.dto';
 import { SeguimientoPgrDto } from './dto/seguimiento-pgr.dto';
+import { SeguimientoBatchDto } from './dto/seguimiento-batch.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('pgr')
 export class PgrController {
-  constructor(private readonly pgrService: PgrService) {}
+  constructor(
+    private readonly pgrService: PgrService,
+    private readonly pgrImportService: PgrImportService,
+    private readonly pgrExcelService: PgrExcelService,
+  ) {}
 
   @Post()
   create(@Body() createPgrDto: CreatePgrDto) {
     return this.pgrService.create(createPgrDto);
+  }
+
+  /**
+   * Importa un PGR desde la planilla oficial (1.02.P06.F29).
+   *
+   * Devuelve siempre un resumen (leídas / importadas / omitidas) en vez de un
+   * OK mudo: un import que pierde filas en silencio es el peor resultado
+   * posible con este formulario.
+   *
+   * Idempotencia: si ya existe un PGR con el mismo `codigoExterno`, se
+   * rechaza con 409 salvo que se pase `?sobrescribir=true`.
+   */
+  @Post('import')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE)
+  @UseInterceptors(FileInterceptor('file'))
+  async importar(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('sobrescribir') sobrescribir?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se recibió ningún archivo.');
+    }
+
+    const resumen = await this.pgrImportService.parsear(file.buffer);
+
+    const existente = resumen.pgr.codigoExterno
+      ? await this.pgrService.findByCodigoExterno(resumen.pgr.codigoExterno)
+      : null;
+
+    if (existente && sobrescribir !== 'true') {
+      throw new ConflictException({
+        message:
+          `Ya existe un PGR importado desde el mismo documento ` +
+          `(${resumen.pgr.codigoExterno}). Reenviá con ?sobrescribir=true para reemplazarlo.`,
+        pgrExistenteId: existente._id,
+        codigoAutogenerado: existente.codigoAutogenerado,
+      });
+    }
+
+    const guardado = existente
+      ? await this.pgrService.update(String(existente._id), resumen.pgr)
+      : await this.pgrService.create(resumen.pgr);
+
+    return {
+      ...resumen,
+      pgr: guardado,
+      reemplazado: Boolean(existente),
+    };
   }
 
   @Get()
@@ -19,9 +97,35 @@ export class PgrController {
     return this.pgrService.findAll();
   }
 
+  /**
+   * Descarga el PGR en el formato de la planilla oficial (1.02.P06.F29).
+   * Los indicadores se recalculan al generar: no se copian de ningún origen.
+   */
+  @Get(':id/excel')
+  async downloadExcel(@Param('id') id: string, @Res() res: Response) {
+    const pgr = await this.pgrService.findOne(id);
+    const buffer = await this.pgrExcelService.generar(pgr);
+
+    const limpiar = (s: string) => s.replace(/[\\/:*?"<>|]/g, '-');
+    const nombre = `PGR ${limpiar(pgr.superintendencia)} ${pgr.gestion}.xlsx`;
+
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${nombre}"`,
+      'Content-Length': String((buffer as Buffer).length),
+    });
+    res.end(Buffer.from(buffer as ArrayBuffer));
+  }
+
+  /**
+   * Devuelve el PGR con sus indicadores de eficacia y eficiencia ya
+   * calculados (periodo y total gestión, más los de cada actividad).
+   * Se calculan al vuelo: no están persistidos.
+   */
   @Get(':id')
   findOne(@Param('id') id: string) {
-    return this.pgrService.findOne(id);
+    return this.pgrService.findOneConIndicadores(id);
   }
 
   @Put(':id')
@@ -30,6 +134,7 @@ export class PgrController {
   }
 
   @Patch(':id/aprobar')
+  @Roles(Role.SUPERINTENDENTE, Role.ADMIN)
   aprobar(@Param('id') id: string, @Body() aprobarPgrDto: AprobarPgrDto) {
     return this.pgrService.aprobar(id, aprobarPgrDto);
   }
@@ -43,7 +148,16 @@ export class PgrController {
     return this.pgrService.addSeguimiento(id, tareaId, seguimientoDto);
   }
 
+  @Patch(':id/seguimiento/batch')
+  addSeguimientoBatch(
+    @Param('id') id: string,
+    @Body() batchDto: SeguimientoBatchDto,
+  ) {
+    return this.pgrService.addSeguimientoBatch(id, batchDto.seguimientos);
+  }
+
   @Delete(':id')
+  @Roles(Role.ADMIN)
   remove(@Param('id') id: string) {
     return this.pgrService.remove(id);
   }

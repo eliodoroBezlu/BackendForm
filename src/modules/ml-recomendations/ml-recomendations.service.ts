@@ -1,8 +1,6 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Instance } from '../instances/schemas/instance.schema';
+import { InstancesService } from '../instances/instances.service';
 import {
   MLRecommendation,
   MLTrainingMetrics,
@@ -16,8 +14,7 @@ export class MLRecommendationsService {
   private readonly mlServiceUrl: string;
 
   constructor(
-    @InjectModel(Instance.name)
-    private instanceModel: Model<Instance>,
+    private readonly instancesService: InstancesService,
     private configService: ConfigService,
   ) {
     this.mlServiceUrl = this.configService.get<string>(
@@ -31,214 +28,233 @@ export class MLRecommendationsService {
    * Entrena el modelo ML con datos históricos de MongoDB
    */
   async trainModel(filters?: {
-  templateId?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
-}): Promise<{
-  success: boolean;
-  metrics: MLTrainingMetrics;
-  message: string;
-}> {
-  try {
-    this.logger.log('🔄 Iniciando entrenamiento del modelo ML...');
-    this.logger.debug(`📋 Filtros recibidos: ${JSON.stringify(filters, null, 2)}`);
+    templateId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+  }): Promise<{
+    success: boolean;
+    metrics: MLTrainingMetrics;
+    message: string;
+  }> {
+    try {
+      this.logger.log('🔄 Iniciando entrenamiento del modelo ML...');
+      this.logger.debug(
+        `📋 Filtros recibidos: ${JSON.stringify(filters, null, 2)}`,
+      );
 
-    // Construir query para obtener solo instancias completadas
-    const query: any = {
-      status: { $in: ['completado', 'revisado', 'aprobado', 'borrador'] },
-    };
-
-    if (filters?.templateId) {
-      query.templateId = new Types.ObjectId(filters.templateId);
-      this.logger.debug(`🔍 Filtrando por templateId: ${filters.templateId}`);
-    }
-
-    if (filters?.dateFrom || filters?.dateTo) {
-      query.createdAt = {};
-      if (filters.dateFrom) {
-        query.createdAt.$gte = filters.dateFrom;
+      if (filters?.templateId) {
+        this.logger.debug(`🔍 Filtrando por templateId: ${filters.templateId}`);
+      }
+      if (filters?.dateFrom) {
         this.logger.debug(`📅 Fecha desde: ${filters.dateFrom.toISOString()}`);
       }
-      if (filters.dateTo) {
-        query.createdAt.$lte = filters.dateTo;
+      if (filters?.dateTo) {
         this.logger.debug(`📅 Fecha hasta: ${filters.dateTo.toISOString()}`);
       }
-    }
 
-    this.logger.debug(`🔎 Query MongoDB: ${JSON.stringify(query, null, 2)}`);
+      const totalInstances = await this.instancesService.countAll();
+      this.logger.log(`📊 Total instancias en BD: ${totalInstances}`);
 
-    const totalInstances = await this.instanceModel.countDocuments({});
-    this.logger.log(`📊 Total instancias en BD: ${totalInstances}`);
+      const statusCounts = await this.instancesService.countByStatus();
+      this.logger.debug(
+        `📈 Instancias por estado: ${JSON.stringify(statusCounts, null, 2)}`,
+      );
 
-    const statusCounts = await this.instanceModel.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
-    this.logger.debug(`📈 Instancias por estado: ${JSON.stringify(statusCounts, null, 2)}`);
+      const instances = await this.instancesService.findForTraining(filters);
 
-    const instances = await this.instanceModel
-      .find(query)
-      .populate('templateId')
-      .lean()
-      .exec();
+      this.logger.log(
+        `✅ Instancias encontradas con query: ${instances.length}`,
+      );
 
-    this.logger.log(`✅ Instancias encontradas con query: ${instances.length}`);
+      if (instances.length === 0) {
+        this.logger.warn(
+          '⚠️ No se encontraron instancias con el query especificado',
+        );
+        const anyInstances = await this.instancesService.findSampleByStatuses(
+          ['completado', 'revisado', 'aprobado'],
+          5,
+        );
+        this.logger.debug(
+          `💡 Ejemplos de instancias completadas (sin filtros): ${anyInstances.length}`,
+        );
+        if (anyInstances.length > 0) {
+          this.logger.debug(
+            `📝 Primera instancia ejemplo: ${JSON.stringify(
+              {
+                id: anyInstances[0]._id,
+                status: anyInstances[0].status,
+                templateId: anyInstances[0].templateId,
+              },
+              null,
+              2,
+            )}`,
+          );
+        }
+        throw new HttpException(
+          'No hay suficientes datos históricos para entrenar el modelo',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
-    if (instances.length === 0) {
-      this.logger.warn('⚠️ No se encontraron instancias con el query especificado');
-      this.logger.warn(`🔍 Query usado: ${JSON.stringify(query, null, 2)}`);
-      const anyInstances = await this.instanceModel.find({ status: { $in: ['completado', 'revisado', 'aprobado'] } }).limit(5).lean();
-      this.logger.debug(`💡 Ejemplos de instancias completadas (sin filtros): ${anyInstances.length}`);
-      if (anyInstances.length > 0) {
-        this.logger.debug(`📝 Primera instancia ejemplo: ${JSON.stringify({
-          id: anyInstances[0]._id,
-          status: anyInstances[0].status,
-          templateId: anyInstances[0].templateId,
-        }, null, 2)}`);
+      this.logger.log(
+        `📊 Preparando entrenamiento con ${instances.length} instancias...`,
+      );
+      // ===============================================================================================
+      // LOGGING RESUMIDO y SEGURO antes de enviar a ML Service
+      this.logger.debug(
+        `📦 Cantidad de instancias enviadas: ${instances.length}`,
+      );
+      if (instances.length > 0) {
+        this.logger.debug(
+          `[trainModel] Primera instancia enviada: ` +
+            JSON.stringify({
+              _id: instances[0]._id,
+              status: instances[0].status,
+              templateId: instances[0].templateId,
+            }),
+        );
+      }
+      // ===============================================================================================
+
+      this.logger.log(
+        `🚀 Enviando datos al servicio ML en: ${this.mlServiceUrl}/api/ml/train`,
+      );
+
+      const response = await fetch(`${this.mlServiceUrl}/api/ml/train/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ instances }),
+      });
+
+      this.logger.debug(`📡 Respuesta ML Service - Status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        // SOLO se muestra el campo 'detail', no el body completo
+        this.logger.error(
+          `❌ Error del ML Service: ${errorData.detail || 'Sin detalle'}`,
+        );
+        throw new HttpException(
+          errorData.detail || 'Error al entrenar modelo',
+          response.status,
+        );
+      }
+
+      const data = await response.json();
+      this.logger.debug(
+        `📊 Métricas recibidas: ${JSON.stringify(data.metrics, null, 2)}`,
+      );
+      this.logger.log('✅ Modelo entrenado exitosamente');
+
+      return {
+        success: true,
+        metrics: data.metrics,
+        message: `Modelo entrenado con ${instances.length} instancias`,
+      };
+    } catch (error) {
+      this.logger.error(`❌ Error entrenando modelo: ${error.message}`);
+      this.logger.error(`Stack trace: ${error.stack}`);
+      if (error instanceof HttpException) {
+        throw error;
       }
       throw new HttpException(
-        'No hay suficientes datos históricos para entrenar el modelo',
-        HttpStatus.BAD_REQUEST,
+        `Error al entrenar modelo: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
-    this.logger.log(`📊 Preparando entrenamiento con ${instances.length} instancias...`);
-    // ===============================================================================================
-    // LOGGING RESUMIDO y SEGURO antes de enviar a ML Service
-    this.logger.debug(`📦 Cantidad de instancias enviadas: ${instances.length}`);
-    if (instances.length > 0) {
-      this.logger.debug(`[trainModel] Primera instancia enviada: ` +
-        JSON.stringify({
-          _id: instances[0]._id,
-          status: instances[0].status,
-          templateId: instances[0].templateId
-        })
-      );
-    }
-    // ===============================================================================================
-
-    this.logger.log(`🚀 Enviando datos al servicio ML en: ${this.mlServiceUrl}/api/ml/train`);
-
-    const response = await fetch(`${this.mlServiceUrl}/api/ml/train/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ instances }),
-    });
-
-    this.logger.debug(`📡 Respuesta ML Service - Status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      // SOLO se muestra el campo 'detail', no el body completo
-      this.logger.error(`❌ Error del ML Service: ${errorData.detail || 'Sin detalle'}`);
-      throw new HttpException(
-        errorData.detail || 'Error al entrenar modelo',
-        response.status,
-      );
-    }
-
-    const data = await response.json();
-    this.logger.debug(`📊 Métricas recibidas: ${JSON.stringify(data.metrics, null, 2)}`);
-    this.logger.log('✅ Modelo entrenado exitosamente');
-
-    return {
-      success: true,
-      metrics: data.metrics,
-      message: `Modelo entrenado con ${instances.length} instancias`,
-    };
-  } catch (error) {
-    this.logger.error(`❌ Error entrenando modelo: ${error.message}`);
-    this.logger.error(`Stack trace: ${error.stack}`);
-    if (error instanceof HttpException) {
-      throw error;
-    }
-    throw new HttpException(
-      `Error al entrenar modelo: ${error.message}`,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
   }
-}
-
-
 
   /**
    * Obtiene recomendación para una observación específica
    */
   async getRecommendation(
-  questionText: string,
-  currentResponse: number,
-  comment?: string,
-  context?: {
-    sectionCompliance?: number;
-    overallCompliance?: number;
-    area?: string;
-    naCount?: number;
-  },
-): Promise<MLRecommendation> {
-  try {
-    this.logger.debug(`🤖 Solicitando recomendación para: "${questionText.substring(0, 50)}..."`);
-    
-    // 🔥 URL correcta del servicio Python ML
-    const url = `${this.mlServiceUrl}/api/ml/recommend/`;
-    
-    this.logger.debug(`🎯 Llamando a: ${url}`);
-    
-    const requestBody = {
-      question_text: questionText,
-      current_response: currentResponse,
-      comment: comment || '',
-      context: context || {},
-    };
-    
-    this.logger.debug(`📤 Body enviado: ${JSON.stringify(requestBody, null, 2)}`);
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
+    questionText: string,
+    currentResponse: number,
+    comment?: string,
+    context?: {
+      sectionCompliance?: number;
+      overallCompliance?: number;
+      area?: string;
+      naCount?: number;
+    },
+  ): Promise<MLRecommendation> {
+    try {
+      this.logger.debug(
+        `🤖 Solicitando recomendación para: "${questionText.substring(0, 50)}..."`,
+      );
 
-    this.logger.debug(`📡 Respuesta del ML Service - Status: ${response.status}`);
+      // 🔥 URL correcta del servicio Python ML
+      const url = `${this.mlServiceUrl}/api/ml/recommend/`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      this.logger.error(`❌ Error en ML Service: ${response.status} - ${errorText}`);
+      this.logger.debug(`🎯 Llamando a: ${url}`);
+
+      const requestBody = {
+        question_text: questionText,
+        current_response: currentResponse,
+        comment: comment || '',
+        context: context || {},
+      };
+
+      this.logger.debug(
+        `📤 Body enviado: ${JSON.stringify(requestBody, null, 2)}`,
+      );
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      this.logger.debug(
+        `📡 Respuesta del ML Service - Status: ${response.status}`,
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(
+          `❌ Error en ML Service: ${response.status} - ${errorText}`,
+        );
+        throw new HttpException(
+          `Error al generar recomendación: ${errorText}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+
+      const data = await response.json();
+      this.logger.debug(
+        `✅ Datos recibidos del ML Service: ${JSON.stringify(data, null, 2)}`,
+      );
+
+      // 🔥 El servicio Python retorna: { status: "success", recommendation: {...} }
+      if (data.recommendation) {
+        this.logger.log(
+          `✅ Recomendación generada - Prioridad: ${data.recommendation.priority}`,
+        );
+        return data.recommendation;
+      } else {
+        this.logger.error('⚠️ Respuesta sin campo "recommendation"');
+        throw new HttpException(
+          'Formato de respuesta inválido del ML Service',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+    } catch (error) {
+      this.logger.error(`❌ Error obteniendo recomendación: ${error.message}`);
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
       throw new HttpException(
-        `Error al generar recomendación: ${errorText}`,
+        `Error al generar recomendación: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
-    const data = await response.json();
-    this.logger.debug(`✅ Datos recibidos del ML Service: ${JSON.stringify(data, null, 2)}`);
-    
-    // 🔥 El servicio Python retorna: { status: "success", recommendation: {...} }
-    if (data.recommendation) {
-      this.logger.log(`✅ Recomendación generada - Prioridad: ${data.recommendation.priority}`);
-      return data.recommendation;
-    } else {
-      this.logger.error('⚠️ Respuesta sin campo "recommendation"');
-      throw new HttpException(
-        'Formato de respuesta inválido del ML Service',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  } catch (error) {
-    this.logger.error(`❌ Error obteniendo recomendación: ${error.message}`);
-    
-    if (error instanceof HttpException) {
-      throw error;
-    }
-    
-    throw new HttpException(
-      `Error al generar recomendación: ${error.message}`,
-      HttpStatus.INTERNAL_SERVER_ERROR,
-    );
   }
-}
 
   /**
    * Obtiene recomendaciones para toda una instancia
@@ -247,23 +263,17 @@ export class MLRecommendationsService {
     instanceId: string,
   ): Promise<InstanceRecommendations> {
     try {
-      this.logger.log(`🔍 Generando recomendaciones para instancia: ${instanceId}`);
-      
-      // Obtener instancia completa
-      const instance = await this.instanceModel
-        .findById(instanceId)
-        .populate('templateId')
-        .exec();
+      this.logger.log(
+        `🔍 Generando recomendaciones para instancia: ${instanceId}`,
+      );
 
-      if (!instance) {
-        this.logger.warn(`⚠️ Instancia no encontrada: ${instanceId}`);
-        throw new HttpException(
-          'Instancia no encontrada',
-          HttpStatus.NOT_FOUND,
-        );
-      }
+      // Obtener instancia completa (InstancesService valida el id y lanza
+      // NotFoundException/BadRequestException si corresponde)
+      const instance = await this.instancesService.findOne(instanceId);
 
-      this.logger.debug(`📋 Instancia encontrada - Secciones: ${instance.sections.length}`);
+      this.logger.debug(
+        `📋 Instancia encontrada - Secciones: ${instance.sections.length}`,
+      );
 
       const template = instance.templateId as any;
       const recommendations: Array<{
@@ -281,7 +291,7 @@ export class MLRecommendationsService {
       // Procesar cada sección
       for (const section of instance.sections) {
         this.logger.debug(`📑 Procesando sección: ${section.sectionId}`);
-        
+
         // Buscar título de sección en template
         const templateSection = this._findSectionInTemplate(
           template.sections,
@@ -320,10 +330,12 @@ export class MLRecommendationsService {
         }
       }
 
-      this.logger.log(`✅ Recomendaciones generadas - Alta: ${highPriority}, Media: ${mediumPriority}, Baja: ${lowPriority}`);
+      this.logger.log(
+        `✅ Recomendaciones generadas - Alta: ${highPriority}, Media: ${mediumPriority}, Baja: ${lowPriority}`,
+      );
 
       return {
-        instanceId: instance._id.toString(),
+        instanceId,
         overallCompliance: instance.overallCompliancePercentage,
         recommendations: recommendations.filter(
           (r) => r.recommendation.improvement_gap > 0,
@@ -338,7 +350,9 @@ export class MLRecommendationsService {
         },
       };
     } catch (error) {
-      this.logger.error(`❌ Error generando recomendaciones de instancia: ${error.message}`);
+      this.logger.error(
+        `❌ Error generando recomendaciones de instancia: ${error.message}`,
+      );
       throw error;
     }
   }
@@ -348,12 +362,16 @@ export class MLRecommendationsService {
    */
   async healthCheck(): Promise<MLHealthStatus> {
     try {
-      this.logger.debug(`🏥 Verificando salud de ML Service: ${this.mlServiceUrl}/health`);
-      
+      this.logger.debug(
+        `🏥 Verificando salud de ML Service: ${this.mlServiceUrl}/health`,
+      );
+
       const response = await fetch(`${this.mlServiceUrl}/health`);
-      
+
       if (!response.ok) {
-        this.logger.error(`❌ ML Service health check falló: ${response.status}`);
+        this.logger.error(
+          `❌ ML Service health check falló: ${response.status}`,
+        );
         throw new Error('Servicio no disponible');
       }
 

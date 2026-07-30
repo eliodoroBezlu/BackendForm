@@ -10,7 +10,12 @@ import { ClasificacionService } from '../clasificacion/clasificacion.service';
 @Injectable()
 export class MigracionService {
   private readonly logger = new Logger(MigracionService.name);
-  private readonly localExcelPath = path.join(process.cwd(), 'src', 'templates', 'Inventario.xlsx');
+  private readonly localExcelPath = path.join(
+    process.cwd(),
+    'src',
+    'templates',
+    'Inventario.xlsx',
+  );
 
   // Mapeamos los nombres comunes para ignorarlos al extraer especificaciones dinámicas
   private readonly camposComunesExcel = [
@@ -53,7 +58,9 @@ export class MigracionService {
   ) {}
 
   async ejecutarMigracionDesdePath(): Promise<any> {
-    this.logger.log(`Iniciando migración desde archivo local: ${this.localExcelPath}`);
+    this.logger.log(
+      `Iniciando migración desde archivo local: ${this.localExcelPath}`,
+    );
     const workbook = new ExcelJS.Workbook();
     try {
       await workbook.xlsx.readFile(this.localExcelPath);
@@ -79,23 +86,29 @@ export class MigracionService {
   private async procesarLibroExcel(workbook: ExcelJS.Workbook): Promise<any> {
     let creadosCount = 0;
     let actualizadosCount = 0;
-    let omitidosCount = 0;
+    const omitidosCount = 0;
     const detalles: string[] = [];
 
     // Hojas a procesar (las primeras 8 hojas de herramientas, excluyendo las hojas de config "Hoja1", "Hoja2", "Hoja3")
-    const hojasIgnorar = ['Hoja1', 'Hoja2', 'Hoja3', 'ParaCopiar (2)', 'ParaCopiar'];
-    
+    const hojasIgnorar = [
+      'Hoja1',
+      'Hoja2',
+      'Hoja3',
+      'ParaCopiar (2)',
+      'ParaCopiar',
+    ];
+
     for (const sheet of workbook.worksheets) {
       if (hojasIgnorar.includes(sheet.name) || sheet.rowCount === 0) {
         continue;
       }
 
       this.logger.log(`Procesando hoja: ${sheet.name}`);
-      
+
       // Leer fila 1 para mapear encabezados
       const headerRow = sheet.getRow(1);
       const headerMap: Record<string, number> = {};
-      
+
       headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         if (colNumber > 20) return; // Ignorar columnas de validación después de la 20 para evitar colisiones
         if (cell.value) {
@@ -105,9 +118,14 @@ export class MigracionService {
       });
 
       // Validar si existe la columna de código único para identificar los registros
-      const colCodigo = headerMap['cód. nuevo asig'] || headerMap['codigo interno'] || headerMap['cod. nuevo asig'];
+      const colCodigo =
+        headerMap['cód. nuevo asig'] ||
+        headerMap['codigo interno'] ||
+        headerMap['cod. nuevo asig'];
       if (!colCodigo) {
-        detalles.push(`Hoja '${sheet.name}' omitida: No se encontró columna 'Cód. Nuevo Asig' o 'Código Interno'`);
+        detalles.push(
+          `Hoja '${sheet.name}' omitida: No se encontró columna 'Cód. Nuevo Asig' o 'Código Interno'`,
+        );
         continue;
       }
 
@@ -119,7 +137,7 @@ export class MigracionService {
         const row = sheet.getRow(r);
         const cellCodigo = row.getCell(colCodigo);
         const codigo = this.getCellStringValue(cellCodigo);
-        
+
         if (
           !codigo ||
           codigo.startsWith('SinItem') ||
@@ -132,32 +150,67 @@ export class MigracionService {
           continue; // Descartar filas con códigos de error/fórmulas vacías
         }
 
-        const itemName = colItem ? this.getCellStringValue(row.getCell(colItem)) : '';
-        const areaName = colArea ? this.getCellStringValue(row.getCell(colArea)) : '';
+        const itemName = colItem
+          ? this.getCellStringValue(row.getCell(colItem))
+          : '';
+        const areaName = colArea
+          ? this.getCellStringValue(row.getCell(colArea))
+          : '';
         if (!itemName && !areaName) {
           continue; // Descartar filas vacías
         }
 
         try {
           // 1. Extraer campos comunes
-          const areaNameRaw = this.getCellValue(row, headerMap, ['area']) || 'Sin Área';
+          const areaNameRaw =
+            this.getCellValue(row, headerMap, ['area']) || 'Sin Área';
           const cantidadRaw = this.getCellValue(row, headerMap, ['cantidad']);
-          const clasificacionRaw = this.getCellValue(row, headerMap, ['clasificacion', 'clasificación']) || 'Sin Clasificación';
-          const descripcion = this.getCellValue(row, headerMap, ['descripción del equipo', 'descripcion del equipo']) || `${sheet.name} ${codigo}`;
+          const clasificacionRaw =
+            this.getCellValue(row, headerMap, [
+              'clasificacion',
+              'clasificación',
+            ]) || 'Sin Clasificación';
+          const descripcion =
+            this.getCellValue(row, headerMap, [
+              'descripción del equipo',
+              'descripcion del equipo',
+            ]) || `${sheet.name} ${codigo}`;
           const marca = this.getCellValue(row, headerMap, ['marca']);
           const modelo = this.getCellValue(row, headerMap, ['modelo']);
-          const codigo_antiguo = this.getCellValue(row, headerMap, ['cod. antiguo', 'codigo antiguo']);
-          const num_serie = this.getCellValue(row, headerMap, ['número de serie', 'numero de serie', 'nº de serie']);
-          const codigo_parte = this.getCellValue(row, headerMap, ['codigo de parte', 'código de parte']);
-          const ubicacionNameRaw = this.getCellValue(row, headerMap, ['ubicación', 'ubicacion']) || 'Sin Ubicación';
-          const frecuencia_uso = this.getCellValue(row, headerMap, ['frecuencia de uso']);
+          const codigo_antiguo = this.getCellValue(row, headerMap, [
+            'cod. antiguo',
+            'codigo antiguo',
+          ]);
+          const num_serie = this.getCellValue(row, headerMap, [
+            'número de serie',
+            'numero de serie',
+            'nº de serie',
+          ]);
+          const codigo_parte = this.getCellValue(row, headerMap, [
+            'codigo de parte',
+            'código de parte',
+          ]);
+          const ubicacionNameRaw =
+            this.getCellValue(row, headerMap, ['ubicación', 'ubicacion']) ||
+            'Sin Ubicación';
+          const frecuencia_uso = this.getCellValue(row, headerMap, [
+            'frecuencia de uso',
+          ]);
           const estado = this.getCellValue(row, headerMap, ['estado']);
-          const observaciones = this.getCellValue(row, headerMap, ['observaciones']);
+          const observaciones = this.getCellValue(row, headerMap, [
+            'observaciones',
+          ]);
 
           // 2. Resolver Relaciones
           // 2.1 Area
-          let areaNameSearch = areaNameRaw.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-          const areaUpper = areaNameSearch.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          let areaNameSearch = areaNameRaw
+            .replace(/[\r\n]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const areaUpper = areaNameSearch
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
 
           if (
             areaUpper === 'VIAS FERREAS' ||
@@ -189,9 +242,16 @@ export class MigracionService {
             areaNameSearch = 'Planificacion';
           }
 
-          let area = await this.areaModel.findOne({
-            nombre: { $regex: new RegExp(`^${this.escapeRegex(areaNameSearch)}$`, 'i') }
-          }).exec();
+          let area = await this.areaModel
+            .findOne({
+              nombre: {
+                $regex: new RegExp(
+                  `^${this.escapeRegex(areaNameSearch)}$`,
+                  'i',
+                ),
+              },
+            })
+            .exec();
 
           if (!area) {
             // Crear el área con la primera superintendencia de la base de datos
@@ -206,10 +266,14 @@ export class MigracionService {
           }
 
           // 2.2 Ubicacion
-          const ubicacion = await this.ubicacionService.findByNameOrCreate(ubicacionNameRaw);
+          const ubicacion =
+            await this.ubicacionService.findByNameOrCreate(ubicacionNameRaw);
 
           // 2.3 Clasificacion
-          const clasificacion = await this.clasificacionService.findByNameOrCreate(clasificacionRaw);
+          const clasificacion =
+            await this.clasificacionService.findByNameOrCreate(
+              clasificacionRaw,
+            );
 
           // 3. Extraer especificaciones dinámicas
           const especificaciones: Record<string, any> = {};
@@ -218,7 +282,7 @@ export class MigracionService {
             if (cell.value) {
               const nameRaw = cell.value.toString().trim();
               const nameClean = nameRaw.toLowerCase();
-              
+
               if (!this.camposComunesExcel.includes(nameClean)) {
                 const cellVal = this.getCellStringValue(row.getCell(colNumber));
                 if (cellVal !== '') {
@@ -244,7 +308,7 @@ export class MigracionService {
             estado,
             observaciones,
             tipo_equipo: sheet.name,
-            area_id: area._id as any,
+            area_id: area._id,
             ubicacion_id: ubicacion._id as any,
             clasificacion_id: clasificacion._id as any,
             especificaciones,
@@ -253,17 +317,22 @@ export class MigracionService {
           // 5. Upsert
           const existing = await this.equipoModel.findOne({ codigo }).exec();
           if (existing) {
-            await this.equipoModel.findByIdAndUpdate(existing._id, equipoData).exec();
+            await this.equipoModel
+              .findByIdAndUpdate(existing._id, equipoData)
+              .exec();
             actualizadosCount++;
           } else {
             const created = new this.equipoModel(equipoData);
             await created.save();
             creadosCount++;
           }
-
         } catch (err) {
-          this.logger.error(`Error procesando fila ${r} en '${sheet.name}': ${err.message}`);
-          detalles.push(`Error en fila ${r} de '${sheet.name}': ${err.message}`);
+          this.logger.error(
+            `Error procesando fila ${r} en '${sheet.name}': ${err.message}`,
+          );
+          detalles.push(
+            `Error en fila ${r} de '${sheet.name}': ${err.message}`,
+          );
         }
       }
     }
@@ -281,9 +350,9 @@ export class MigracionService {
     if (!cell || cell.value === undefined || cell.value === null) {
       return '';
     }
-    
+
     let val = cell.value;
-    
+
     // 1. Formula
     if (typeof val === 'object' && 'result' in val) {
       const res = (val as any).result;
@@ -292,7 +361,7 @@ export class MigracionService {
       }
       val = res;
     }
-    
+
     // 2. Hyperlink
     if (val && typeof val === 'object' && 'text' in val) {
       const txt = (val as any).text;
@@ -301,32 +370,42 @@ export class MigracionService {
       }
       val = txt;
     }
-    
+
     // 3. RichText / Array of objects
     if (val && typeof val === 'object' && 'richText' in val) {
       const richText = (val as any).richText;
       if (Array.isArray(richText)) {
-        return richText.map(rt => (rt && rt.text) ? rt.text : '').join('').trim();
+        return richText
+          .map((rt) => (rt && rt.text ? rt.text : ''))
+          .join('')
+          .trim();
       }
     }
-    
+
     if (Array.isArray(val)) {
-      return val.map(item => {
-        if (item && typeof item === 'object' && 'text' in item) {
-          return (item as any).text || '';
-        }
-        return item ? item.toString() : '';
-      }).join('').trim();
+      return val
+        .map((item) => {
+          if (item && typeof item === 'object' && 'text' in item) {
+            return item.text || '';
+          }
+          return item ? item.toString() : '';
+        })
+        .join('')
+        .trim();
     }
-    
+
     if (typeof val === 'object') {
       return '';
     }
-    
+
     return val.toString().trim();
   }
 
-  private getCellValue(row: ExcelJS.Row, headerMap: Record<string, number>, keys: string[]): string | undefined {
+  private getCellValue(
+    row: ExcelJS.Row,
+    headerMap: Record<string, number>,
+    keys: string[],
+  ): string | undefined {
     for (const key of keys) {
       const colIndex = headerMap[key];
       if (colIndex !== undefined) {
@@ -342,7 +421,3 @@ export class MigracionService {
     return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
   }
 }
-
-
-
-

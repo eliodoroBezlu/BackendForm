@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelArnestService {
@@ -78,11 +79,12 @@ export class ExcelArnestService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer = await resizeImageBuffer(rawBuffer);
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer as any,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -100,7 +102,7 @@ export class ExcelArnestService {
       });
 
       // Asegurar altura mínima de fila para que se vea bien
-      // worksheet.getRow(row).height = 40; 
+      // worksheet.getRow(row).height = 40;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       // No lanzamos error para no detener todo el reporte si falla una imagen
@@ -233,7 +235,7 @@ export class ExcelArnestService {
   /**
    * Llena las respuestas de las preguntas de inspección
    */
- private async llenarRespuestas(
+  private async llenarRespuestas(
     workbook: ExcelJS.Workbook,
     inspection: InspectionHerraEquipos,
   ) {
@@ -315,7 +317,7 @@ export class ExcelArnestService {
           type: 'boolean',
           columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' },
         },
-        
+
         // --- Sección 1: Autoretráctil (Anverso) ---
         section_1: {
           sheet: 'ANVERSO',
@@ -382,7 +384,7 @@ export class ExcelArnestService {
         },
         section_2_sub0: {
           sheet: 'REVERSO',
-          startRow: 8, 
+          startRow: 8,
           endRow: 10,
           name: 'CARACTERISTICAS',
           type: 'inline_response',
@@ -391,12 +393,12 @@ export class ExcelArnestService {
         },
         section_2_sub1: {
           sheet: 'REVERSO',
-          startRow: 9, 
+          startRow: 9,
           endRow: 12,
           name: 'TEJIDO TRENZADO',
-         type: 'boolean',
+          type: 'boolean',
           // ⚠️ AJUSTA LAS COLUMNAS A TU TEMPLATE DEL REVERSO
-          columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' }, 
+          columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' },
         },
         section_2_sub2: {
           sheet: 'REVERSO',
@@ -406,7 +408,7 @@ export class ExcelArnestService {
           shortName: 'Eslinga',
           type: 'boolean',
           // ⚠️ AJUSTA LAS COLUMNAS A TU TEMPLATE DEL REVERSO
-          columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' } 
+          columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' },
         },
         section_2_sub3: {
           sheet: 'REVERSO',
@@ -427,7 +429,7 @@ export class ExcelArnestService {
           columns: { si: 'G', no: 'H', na: 'I', observaciones: 'Y' },
         },
 
-         section_3: {
+        section_3: {
           sheet: 'REVERSO',
           startRow: 8, // Ajusta según tu template
           endRow: 29,
@@ -436,7 +438,7 @@ export class ExcelArnestService {
         },
         section_3_sub0: {
           sheet: 'REVERSO',
-          startRow: 8, 
+          startRow: 8,
           endRow: 10,
           name: 'CARACTERISTICAS',
           type: 'inline_response',
@@ -445,12 +447,12 @@ export class ExcelArnestService {
         },
         section_3_sub1: {
           sheet: 'REVERSO',
-          startRow: 9, 
+          startRow: 9,
           endRow: 15,
           name: 'CORREA O TEJIDO TRENZADO ',
           type: 'boolean',
           // ⚠️ AJUSTA LAS COLUMNAS A TU TEMPLATE DEL REVERSO
-          columns: { si: 'V', no: 'W', na: 'X', observaciones: 'Y' }, 
+          columns: { si: 'V', no: 'W', na: 'X', observaciones: 'Y' },
         },
         section_3_sub2: {
           sheet: 'REVERSO',
@@ -460,29 +462,33 @@ export class ExcelArnestService {
           shortName: 'Eslinga',
           type: 'boolean',
           // ⚠️ AJUSTA LA COLUMNAS A TU TEMPLATE DEL REVERSO
-          columns: { si: 'V', no: 'W', na: 'X', observaciones: 'Y' }, 
+          columns: { si: 'V', no: 'W', na: 'X', observaciones: 'Y' },
         },
       };
 
       // 3. PROCESAMIENTO
       Object.entries(inspection.responses).forEach(
         ([sectionId, sectionResponses]) => {
-          const hasSubsections = this.tieneSubseccionesAnidadas(sectionResponses);
+          const hasSubsections =
+            this.tieneSubseccionesAnidadas(sectionResponses);
 
           // --- Función auxiliar para procesar seleccionando la hoja correcta ---
           const procesarItem = (id: string, responses: any) => {
             const config = sectionConfig[id];
-            
+
             if (config) {
               // 🔥 SELECCIÓN DINÁMICA DE HOJA
-              const targetSheet = config.sheet === 'REVERSO' ? sheetReverso : sheetAnverso;
-              
+              const targetSheet =
+                config.sheet === 'REVERSO' ? sheetReverso : sheetAnverso;
+
               if (config.hasSubsections) {
-                 this.logger.log(`⏭️ Contenedor ${id} - Hoja: ${config.sheet}`);
-                 return;
+                this.logger.log(`⏭️ Contenedor ${id} - Hoja: ${config.sheet}`);
+                return;
               }
 
-              this.logger.log(`📋 Procesando ${id} en hoja ${targetSheet.name}`);
+              this.logger.log(
+                `📋 Procesando ${id} en hoja ${targetSheet.name}`,
+              );
               this.procesarSeccion(targetSheet, config, responses);
             } else {
               this.logger.warn(`⚠️ Config no encontrada para: ${id}`);
@@ -492,7 +498,7 @@ export class ExcelArnestService {
 
           if (hasSubsections) {
             this.logger.log(`📦 Sección ${sectionId} con subsecciones`);
-            Object.entries(sectionResponses as Record<string, any>).forEach(
+            Object.entries(sectionResponses).forEach(
               ([subId, subResponses]) => {
                 if (subId.startsWith('sub')) {
                   procesarItem(`${sectionId}_${subId}`, subResponses);
@@ -501,7 +507,7 @@ export class ExcelArnestService {
             );
           } else {
             // Caso raro: sección sin subsecciones
-             procesarItem(sectionId, sectionResponses);
+            procesarItem(sectionId, sectionResponses);
           }
         },
       );
@@ -829,48 +835,50 @@ export class ExcelArnestService {
   /**
    * Llena las observaciones generales
    */
-//   private async llenarObservacionesGenerales(
-//     worksheet: ExcelJS.Worksheet,
-//     inspection: InspectionHerraEquipos,
-//   ) {
-//     try {
-//       if (
-//         inspection.generalObservations &&
-//         inspection.generalObservations.trim() !== ''
-//       ) {
-//         // ⚠️ AJUSTAR POSICIÓN SEGÚN TU TEMPLATE
-//         worksheet.getCell('A54').value = inspection.generalObservations;
-//         this.logger.log('Observaciones generales completadas');
-//       }
-//     } catch (error) {
-//       this.logger.error(
-//         `Error al llenar observaciones generales: ${error.message}`,
-//       );
-//       throw error;
-//     }
-//   }
+  //   private async llenarObservacionesGenerales(
+  //     worksheet: ExcelJS.Worksheet,
+  //     inspection: InspectionHerraEquipos,
+  //   ) {
+  //     try {
+  //       if (
+  //         inspection.generalObservations &&
+  //         inspection.generalObservations.trim() !== ''
+  //       ) {
+  //         // ⚠️ AJUSTAR POSICIÓN SEGÚN TU TEMPLATE
+  //         worksheet.getCell('A54').value = inspection.generalObservations;
+  //         this.logger.log('Observaciones generales completadas');
+  //       }
+  //     } catch (error) {
+  //       this.logger.error(
+  //         `Error al llenar observaciones generales: ${error.message}`,
+  //       );
+  //       throw error;
+  //     }
+  //   }
 
   /**
    * Llena las firmas del inspector y supervisor
    */
- private async llenarFirmas(
+  private async llenarFirmas(
     sheets: ExcelJS.Worksheet[],
     inspection: InspectionHerraEquipos,
   ) {
     try {
-      this.logger.log(`Iniciando llenado de firmas en ${sheets.length} hojas...`);
+      this.logger.log(
+        `Iniciando llenado de firmas en ${sheets.length} hojas...`,
+      );
 
       // 1. TU CONFIGURACIÓN EXACTA (NO SE TOCA)
       const posiciones = {
         inspector: {
           nombre: 'D40', // Corregí D4O a D40 (parecía un error tipográfico O -> 0)
-          firma: 'G40', 
+          firma: 'G40',
           fecha: 'G40',
           cargo: 'A70',
         },
         supervisor: {
           nombre: 'Q40',
-          firma: 'Z40', 
+          firma: 'Z40',
           fecha: 'Z40',
           cargo: 'I70',
         },
@@ -878,7 +886,6 @@ export class ExcelArnestService {
 
       // 2. ITERAMOS HOJAS
       for (const currentSheet of sheets) {
-        
         // =========================================================
         // INSPECTOR
         // El objeto 'inspectorSignature' trae todo: nombre, firma (img) y fecha
@@ -890,7 +897,7 @@ export class ExcelArnestService {
           if (inspData.inspectionDate) {
             const cell = currentSheet.getCell(posiciones.inspector.fecha);
             cell.value = inspData.inspectionDate; // "2026-02-18"
-            
+
             // Estilo: Pegado al fondo para que no lo tape la firma
             cell.alignment = { vertical: 'bottom', horizontal: 'center' };
             cell.font = { name: 'Arial', size: 8 };
@@ -898,15 +905,15 @@ export class ExcelArnestService {
 
           // B) FIRMA (Imagen en G40)
           if (
-            inspData.inspectorSignature && 
+            inspData.inspectorSignature &&
             typeof inspData.inspectorSignature === 'string' &&
             inspData.inspectorSignature.startsWith('data:image/')
           ) {
             await this.insertarImagen(
               currentSheet,
               inspData.inspectorSignature, // El string base64
-              posiciones.inspector.firma,  // 'G40'
-              0.75 // Altura 75% (Dejar espacio abajo para la fecha)
+              posiciones.inspector.firma, // 'G40'
+              0.75, // Altura 75% (Dejar espacio abajo para la fecha)
             );
           }
           if (inspData.inspectorName) {
@@ -926,7 +933,7 @@ export class ExcelArnestService {
           if (supData.supervisorDate) {
             const cell = currentSheet.getCell(posiciones.supervisor.fecha);
             cell.value = supData.supervisorDate; // "2026-02-18"
-            
+
             cell.alignment = { vertical: 'bottom', horizontal: 'center' };
             cell.font = { name: 'Arial', size: 8 };
           }
@@ -941,7 +948,7 @@ export class ExcelArnestService {
               currentSheet,
               supData.supervisorSignature, // El string base64
               posiciones.supervisor.firma, // 'Z40'
-              0.75 // Altura 75%
+              0.75, // Altura 75%
             );
           }
 
@@ -974,25 +981,29 @@ export class ExcelArnestService {
     inspection: InspectionHerraEquipos,
   ) {
     try {
-      this.logger.log('Iniciando llenado de Estado Operativo (Columnas separadas + Multi-hoja)...');
+      this.logger.log(
+        'Iniciando llenado de Estado Operativo (Columnas separadas + Multi-hoja)...',
+      );
 
       // 1. DATA
       const data = inspection.outOfService as any;
       if (!data) return;
 
       // 2. IDENTIFICAR HOJAS
-      const sheetAnverso = sheets.find((s) => s.name === 'ANVERSO') || sheets[0];
-      const sheetReverso = sheets.find((s) => s.name === 'REVERSO') || sheets[1];
-        const CHECKED = 'SI ☑';  // Casilla marcada
+      const sheetAnverso =
+        sheets.find((s) => s.name === 'ANVERSO') || sheets[0];
+      const sheetReverso =
+        sheets.find((s) => s.name === 'REVERSO') || sheets[1];
+      const CHECKED = 'SI ☑'; // Casilla marcada
       const UNCHECKED = 'NO ☐'; // Casilla vacía
       // 3. CONFIGURACIÓN MAESTRA
       // Ahora definimos celdaSi y celdaNo por separado
       const configuracion = {
         arnes: {
           hoja: sheetAnverso,
-          celdaSi: 'X36',      // 👈 Columna del SI
-          celdaNo: 'Y36',      // 👈 Columna del NO
-          celdaCodigo: 'Z36',  // 👈 Columna del Código
+          celdaSi: 'X36', // 👈 Columna del SI
+          celdaNo: 'Y36', // 👈 Columna del NO
+          celdaCodigo: 'Z36', // 👈 Columna del Código
           valorStatus: data.statusArnes,
           valorCodigo: data.codArnes,
         },
@@ -1007,17 +1018,17 @@ export class ExcelArnestService {
         // Para el reverso, ajusta las celdas a donde correspondan los checks
         conectorAnclaje: {
           hoja: sheetReverso,
-          celdaSi: 'X36',       // ⚠️ Ajusta a la celda real del SI en reverso
-          celdaNo: 'Y36',       // ⚠️ Ajusta a la celda real del NO en reverso
+          celdaSi: 'X36', // ⚠️ Ajusta a la celda real del SI en reverso
+          celdaNo: 'Y36', // ⚠️ Ajusta a la celda real del NO en reverso
           celdaCodigo: 'Z36',
           valorStatus: data.statusConectorAnclaje,
           valorCodigo: data.codConectorAnclaje,
         },
         conector: {
           hoja: sheetReverso,
-          celdaSi: 'X37',       // ⚠️ Ajusta celda SI
-          celdaNo: 'Y37',       // ⚠️ Ajusta celda NO
-          celdaCodigo: 'Z37',   
+          celdaSi: 'X37', // ⚠️ Ajusta celda SI
+          celdaNo: 'Y37', // ⚠️ Ajusta celda NO
+          celdaCodigo: 'Z37',
           valorStatus: data.statusConector,
           valorCodigo: data.codConector,
         },
@@ -1037,11 +1048,11 @@ export class ExcelArnestService {
 
           // Lógica: "Si es SI, marca SI y desmarca NO. Si es NO, marca NO y desmarca SI"
           if (item.valorStatus === 'yes') {
-            cellSi.value = CHECKED;   // ☑
+            cellSi.value = CHECKED; // ☑
             cellNo.value = UNCHECKED; // ☐
           } else if (item.valorStatus === 'no') {
             cellSi.value = UNCHECKED; // ☐
-            cellNo.value = CHECKED;   // ☑
+            cellNo.value = CHECKED; // ☑
           } else {
             // Si no hay respuesta, ambas vacías
             cellSi.value = UNCHECKED;
@@ -1051,7 +1062,7 @@ export class ExcelArnestService {
           // Centrado para que se vea bien la casilla
           cellSi.alignment = { horizontal: 'center', vertical: 'middle' };
           cellNo.alignment = { horizontal: 'center', vertical: 'middle' };
-          
+
           // Opcional: Aumentar un poco la fuente si el símbolo se ve muy chico
           // cellSi.font = { size: 12 };
           // cellNo.font = { size: 12 };
@@ -1060,12 +1071,16 @@ export class ExcelArnestService {
         // --- PASO B: ESCRIBIR CÓDIGO ---
         if (item.celdaCodigo && item.valorCodigo) {
           const cell = hoja.getCell(item.celdaCodigo);
-          
-          // Escribimos el código directamente. 
+
+          // Escribimos el código directamente.
           // Si quieres mantener el formato "COD.: ..." puedes concatenar
           cell.value = `COD.: ${item.valorCodigo}`;
-          
-          cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+
+          cell.alignment = {
+            horizontal: 'left',
+            vertical: 'middle',
+            wrapText: true,
+          };
         }
       }
 
@@ -1137,7 +1152,6 @@ export class ExcelArnestService {
       // 1. Cargar Template
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(this.templatePath);
-      
 
       // 2. Identificar las hojas
       // Intenta buscarlas por nombre exacto, si no, usa índices (0 = Anverso, 1 = Reverso)
@@ -1145,7 +1159,7 @@ export class ExcelArnestService {
         workbook.getWorksheet('ANVERSO') || workbook.worksheets[0];
       const sheetReverso =
         workbook.getWorksheet('REVERSO') || workbook.worksheets[1];
-const sheets = [sheetAnverso, sheetReverso];
+      const sheets = [sheetAnverso, sheetReverso];
       if (!sheetAnverso || !sheetReverso) {
         throw new Error(
           'No se encontraron las hojas ANVERSO y REVERSO en el template.',
@@ -1164,7 +1178,7 @@ const sheets = [sheetAnverso, sheetReverso];
 
       // Respuestas pueden ir en AMBAS hojas (pasamos el workbook o ambas hojas)
       await this.llenarRespuestas(workbook, inspection);
-await this.llenarEstadoOperativo(sheets, inspection);
+      await this.llenarEstadoOperativo(sheets, inspection);
       // Observaciones y Firmas suelen ir al final (Reverso)
       //await this.llenarObservacionesGenerales(sheetReverso, inspection);
       await this.llenarFirmas([sheetAnverso, sheetReverso], inspection);

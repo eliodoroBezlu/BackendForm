@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelAmoladoraService {
@@ -48,14 +49,14 @@ export class ExcelAmoladoraService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -111,10 +112,10 @@ export class ExcelAmoladoraService {
       worksheet.getCell('H5').value = valores[1] || ''; // superintendencia
       worksheet.getCell('C6').value = valores[2] || ''; // empresa
       worksheet.getCell('H6').value = valores[3] || ''; // fecha
-      worksheet.getCell('C7').value = valores[4] || ''; // ubicacion 
+      worksheet.getCell('C7').value = valores[4] || ''; // ubicacion
       worksheet.getCell('H7').value = valores[5] || ''; // identificacion
       worksheet.getCell('C8').value = valores[6] || ''; // marca
-       worksheet.getCell('H8').value = valores[7] || ''; // DIÁMETRO DE DISCOS
+      worksheet.getCell('H8').value = valores[7] || ''; // DIÁMETRO DE DISCOS
 
       this.logger.log('Campos de verificación completados exitosamente');
     } catch (error) {
@@ -212,56 +213,62 @@ export class ExcelAmoladoraService {
    * Llena las respuestas de las preguntas de inspección
    */
   private async llenarRespuestas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de respuestas');
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de respuestas');
 
-    if (!inspection.responses || Object.keys(inspection.responses).length === 0) {
-      this.logger.warn('No se encontraron respuestas en la inspección');
-      return;
-    }
+      if (
+        !inspection.responses ||
+        Object.keys(inspection.responses).length === 0
+      ) {
+        this.logger.warn('No se encontraron respuestas en la inspección');
+        return;
+      }
 
-    // Configuración de todas las secciones posibles
-    const allSections = [
-      { 
-        id: 'section_0', 
-        startRow: 15, 
-        endRow: 40, 
-        name: 'CONDICIÓN ES ESTÁNDAR',
-        skipRows: [36] // ← Filas a saltar
-      },
-    ];
+      // Configuración de todas las secciones posibles
+      const allSections = [
+        {
+          id: 'section_0',
+          startRow: 15,
+          endRow: 40,
+          name: 'CONDICIÓN ES ESTÁNDAR',
+          skipRows: [36], // ← Filas a saltar
+        },
+      ];
 
-    // Columnas fijas
-    const siCol = 'I';
-    const noCol = 'J';
-    const observacionesCol = 'K';
+      // Columnas fijas
+      const siCol = 'I';
+      const noCol = 'J';
+      const observacionesCol = 'K';
 
-    // Procesar cada sección que exista en las respuestas
-    Object.entries(inspection.responses).forEach(
-      ([sectionId, sectionResponses], index) => {
-        let sectionConfig = allSections.find((s) => s.id === sectionId);
+      // Procesar cada sección que exista en las respuestas
+      Object.entries(inspection.responses).forEach(
+        ([sectionId, sectionResponses], index) => {
+          let sectionConfig = allSections.find((s) => s.id === sectionId);
 
-        if (!sectionConfig && index < allSections.length) {
-          sectionConfig = allSections[index];
-          this.logger.log(`Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`);
-        }
+          if (!sectionConfig && index < allSections.length) {
+            sectionConfig = allSections[index];
+            this.logger.log(
+              `Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`,
+            );
+          }
 
-        if (!sectionConfig) {
-          this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
-          return;
-        }
+          if (!sectionConfig) {
+            this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+            return;
+          }
 
-        this.logger.log(`Procesando: ${sectionConfig.name} (desde ${sectionId})`);
+          this.logger.log(
+            `Procesando: ${sectionConfig.name} (desde ${sectionId})`,
+          );
 
-        let currentRow = sectionConfig.startRow;
-        const skipRows = sectionConfig.skipRows || [];
+          let currentRow = sectionConfig.startRow;
+          const skipRows = sectionConfig.skipRows || [];
 
-        // Procesar preguntas
-        Object.entries(sectionResponses as Record<string, any>).forEach(
-          ([questionId, response]) => {
+          // Procesar preguntas
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
             if (currentRow > sectionConfig.endRow) {
               this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
               return;
@@ -271,7 +278,7 @@ export class ExcelAmoladoraService {
             while (skipRows.includes(currentRow)) {
               this.logger.log(`⏭️ Saltando fila ${currentRow}`);
               currentRow++;
-              
+
               // Verificar si nos pasamos del límite después de saltar
               if (currentRow > sectionConfig.endRow) {
                 this.logger.warn(`Límite excedido después de saltar filas`);
@@ -281,7 +288,7 @@ export class ExcelAmoladoraService {
 
             try {
               this.logger.log(`📝 Llenando fila ${currentRow}`);
-              
+
               // Limpiar celdas
               worksheet.getCell(`${siCol}${currentRow}`).value = '';
               worksheet.getCell(`${noCol}${currentRow}`).value = '';
@@ -290,34 +297,46 @@ export class ExcelAmoladoraService {
               if (response.value !== undefined && response.value !== null) {
                 const valor = String(response.value).toLowerCase().trim();
 
-                if (valor === 'bueno' || valor === 'si' || valor === 'true' || valor === '1') {
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
                   worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-                } else if (valor === 'malo' || valor === 'no' || valor === 'false' || valor === '0') {
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
                   worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
                 }
               }
 
               // Observaciones
               if (response.observacion?.trim()) {
-                worksheet.getCell(`${observacionesCol}${currentRow}`).value = response.observacion;
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
               }
 
               currentRow++;
             } catch (error) {
-              this.logger.error(`Error en fila ${currentRow}: ${error.message}`);
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
               currentRow++;
             }
-          },
-        );
-      },
-    );
+          });
+        },
+      );
 
-    this.logger.log('Respuestas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar respuestas: ${error.message}`);
-    throw error;
+      this.logger.log('Respuestas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar respuestas: ${error.message}`);
+      throw error;
+    }
   }
-}
   /**
    * Llena el diagrama de daños del vehículo
    */

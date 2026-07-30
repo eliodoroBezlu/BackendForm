@@ -8,7 +8,10 @@ import { ConfigFormularioModule } from '../config-formulario/config-formulario.m
 import { UbicacionModule } from '../ubicacion/ubicacion.module';
 import { ClasificacionModule } from '../clasificacion/clasificacion.module';
 import { Area, AreaSchema } from '../area/schema/area.schema';
-import { Superintendencia, SuperintendenciaSchema } from '../superintendencia/schema/superintendencia.schema';
+import {
+  Superintendencia,
+  SuperintendenciaSchema,
+} from '../superintendencia/schema/superintendencia.schema';
 
 @Module({
   imports: [

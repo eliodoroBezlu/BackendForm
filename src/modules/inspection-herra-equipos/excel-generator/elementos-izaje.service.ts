@@ -3,8 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
-
-
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 interface GroupedQuestionData {
   values: {
@@ -60,14 +59,14 @@ export class ExcelElementosIzajeService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -202,156 +201,170 @@ export class ExcelElementosIzajeService {
   /**
    * Llena las respuestas de las preguntas de inspección
    */
-/**
- * Llena las respuestas agrupadas por columnas
- */
-private async llenarRespuestas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('📋 Iniciando llenado de respuestas agrupadas');
+  /**
+   * Llena las respuestas agrupadas por columnas
+   */
+  private async llenarRespuestas(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('📋 Iniciando llenado de respuestas agrupadas');
 
-    // ✅ CORRECCIÓN: Acceder a inspection.responses.responses
-    const responsesData = inspection.responses as any;
-    
-    this.logger.log('🔍 Estructura de responses:', JSON.stringify(responsesData, null, 2));
+      // ✅ CORRECCIÓN: Acceder a inspection.responses.responses
+      const responsesData = inspection.responses as any;
 
-    // Verificar que existe la estructura correcta
-    if (!responsesData || typeof responsesData !== 'object') {
-      this.logger.warn('⚠️ responses no es un objeto válido');
-      return;
-    }
+      this.logger.log(
+        '🔍 Estructura de responses:',
+        JSON.stringify(responsesData, null, 2),
+      );
 
-    // ✅ Acceder a responses.responses (anidado)
-    let responsesArray: any[];
+      // Verificar que existe la estructura correcta
+      if (!responsesData || typeof responsesData !== 'object') {
+        this.logger.warn('⚠️ responses no es un objeto válido');
+        return;
+      }
 
-    if (Array.isArray(responsesData)) {
-      // Si ya es un array directamente
-      responsesArray = responsesData;
-      this.logger.log('✅ responses es un array directo');
-    } else if (responsesData.responses && Array.isArray(responsesData.responses)) {
-      // Si está anidado en responses.responses
-      responsesArray = responsesData.responses;
-      this.logger.log('✅ responses está anidado en responses.responses');
-    } else {
-      this.logger.warn('⚠️ No se encontró un array válido en responses');
-      return;
-    }
+      // ✅ Acceder a responses.responses (anidado)
+      let responsesArray: any[];
 
-    if (responsesArray.length === 0) {
-      this.logger.warn('⚠️ El array de responses está vacío');
-      return;
-    }
+      if (Array.isArray(responsesData)) {
+        // Si ya es un array directamente
+        responsesArray = responsesData;
+        this.logger.log('✅ responses es un array directo');
+      } else if (
+        responsesData.responses &&
+        Array.isArray(responsesData.responses)
+      ) {
+        // Si está anidado en responses.responses
+        responsesArray = responsesData.responses;
+        this.logger.log('✅ responses está anidado en responses.responses');
+      } else {
+        this.logger.warn('⚠️ No se encontró un array válido en responses');
+        return;
+      }
 
-    // Obtener la primera sección
-    const seccion = responsesArray[0];
-    
-    if (!seccion?.questions) {
-      this.logger.warn('⚠️ No se encontraron preguntas en la sección');
-      this.logger.log('📦 Contenido de sección:', JSON.stringify(seccion, null, 2));
-      return;
-    }
+      if (responsesArray.length === 0) {
+        this.logger.warn('⚠️ El array de responses está vacío');
+        return;
+      }
 
-    const questions = seccion.questions;
-    this.logger.log(`✅ Encontradas ${Object.keys(questions).length} preguntas`);
+      // Obtener la primera sección
+      const seccion = responsesArray[0];
 
-    // Configuración de columnas en el Excel (según tu imagen)
-    const columnas = {
-      eslinga_sintetica: 'F',
-      grillete: 'H', 
-      eslinga_cable: 'J',
-      gancho: 'L',
-    };
+      if (!seccion?.questions) {
+        this.logger.warn('⚠️ No se encontraron preguntas en la sección');
+        this.logger.log(
+          '📦 Contenido de sección:',
+          JSON.stringify(seccion, null, 2),
+        );
+        return;
+      }
 
-    const colObservaciones = 'N'; // Columna de comentarios (*)
+      const questions = seccion.questions;
+      this.logger.log(
+        `✅ Encontradas ${Object.keys(questions).length} preguntas`,
+      );
 
-    // Fila inicial de las respuestas (ajusta según tu template)
-    const filaInicial = 14;
+      // Configuración de columnas en el Excel (según tu imagen)
+      const columnas = {
+        eslinga_sintetica: 'F',
+        grillete: 'H',
+        eslinga_cable: 'J',
+        gancho: 'L',
+      };
 
-    // Procesar cada pregunta
-    Object.entries(questions).forEach(([questionId, questionData]) => {
-      const data = questionData as GroupedQuestionData;
-      const questionNumber = parseInt(questionId.replace('q', ''), 10);
-      const currentRow = filaInicial + questionNumber;
+      const colObservaciones = 'N'; // Columna de comentarios (*)
 
-      this.logger.log(`  📝 Procesando ${questionId} en fila ${currentRow}`);
+      // Fila inicial de las respuestas (ajusta según tu template)
+      const filaInicial = 14;
 
-      // Procesar cada columna (accesorio)
-      Object.entries(columnas).forEach(([accesorioKey, colLetra]) => {
-        const valor = data.values?.[accesorioKey];
+      // Procesar cada pregunta
+      Object.entries(questions).forEach(([questionId, questionData]) => {
+        const data = questionData as GroupedQuestionData;
+        const questionNumber = parseInt(questionId.replace('q', ''), 10);
+        const currentRow = filaInicial + questionNumber;
 
-        if (valor) {
-          const valorNormalizado = valor.toLowerCase().trim();
-          let contenido = '';
+        this.logger.log(`  📝 Procesando ${questionId} en fila ${currentRow}`);
 
-          // Mapear valores a contenido del Excel
-          if (valorNormalizado === 'si' || valorNormalizado === 'sí') {
-            contenido = '✓'; // O 'X' según prefieras
-          } else if (valorNormalizado === 'no') {
-            contenido = 'X';
-          } else if (valorNormalizado === 'na' || valorNormalizado === 'n/a') {
-            contenido = 'N/A';
+        // Procesar cada columna (accesorio)
+        Object.entries(columnas).forEach(([accesorioKey, colLetra]) => {
+          const valor = data.values?.[accesorioKey];
+
+          if (valor) {
+            const valorNormalizado = valor.toLowerCase().trim();
+            let contenido = '';
+
+            // Mapear valores a contenido del Excel
+            if (valorNormalizado === 'si' || valorNormalizado === 'sí') {
+              contenido = '✓'; // O 'X' según prefieras
+            } else if (valorNormalizado === 'no') {
+              contenido = 'X';
+            } else if (
+              valorNormalizado === 'na' ||
+              valorNormalizado === 'n/a'
+            ) {
+              contenido = 'N/A';
+            }
+
+            if (contenido) {
+              const cellRef = `${colLetra}${currentRow}`;
+              worksheet.getCell(cellRef).value = contenido;
+              worksheet.getCell(cellRef).alignment = {
+                vertical: 'middle',
+                horizontal: 'center',
+              };
+
+              this.logger.log(
+                `    ✅ ${accesorioKey}: ${contenido} en ${cellRef}`,
+              );
+            }
           }
+        });
 
-          if (contenido) {
-            const cellRef = `${colLetra}${currentRow}`;
-            worksheet.getCell(cellRef).value = contenido;
-            worksheet.getCell(cellRef).alignment = {
-              vertical: 'middle',
-              horizontal: 'center',
-            };
+        // Observaciones
+        if (data.observacion?.trim()) {
+          const cellObservacion = `${colObservaciones}${currentRow}`;
+          worksheet.getCell(cellObservacion).value = data.observacion;
+          worksheet.getCell(cellObservacion).alignment = {
+            vertical: 'top',
+            horizontal: 'left',
+            wrapText: true,
+          };
 
-            this.logger.log(
-              `    ✅ ${accesorioKey}: ${contenido} en ${cellRef}`,
-            );
-          }
+          this.logger.log(
+            `    💬 Observación: "${data.observacion.substring(0, 30)}..." en ${cellObservacion}`,
+          );
         }
       });
 
-      // Observaciones
-      if (data.observacion?.trim()) {
-        const cellObservacion = `${colObservaciones}${currentRow}`;
-        worksheet.getCell(cellObservacion).value = data.observacion;
-        worksheet.getCell(cellObservacion).alignment = {
-          vertical: 'top',
-          horizontal: 'left',
-          wrapText: true,
-        };
-
-        this.logger.log(
-          `    💬 Observación: "${data.observacion.substring(0, 30)}..." en ${cellObservacion}`,
-        );
-      }
-    });
-
-    this.logger.log('✅ Respuestas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`❌ Error al llenar respuestas: ${error.message}`);
-    this.logger.error(error.stack);
-    throw error;
-  }
-}
-  private async llenarObservacionesGenerales(
-      worksheet: ExcelJS.Worksheet,
-      inspection: InspectionHerraEquipos,
-    ) {
-      try {
-        if (
-          inspection.generalObservations &&
-          inspection.generalObservations.trim() !== ''
-        ) {
-          // ⚠️ AJUSTAR POSICIÓN SEGÚN TU TEMPLATE
-          worksheet.getCell('B43').value = inspection.generalObservations;
-          this.logger.log('Observaciones generales completadas');
-        }
-      } catch (error) {
-        this.logger.error(
-          `Error al llenar observaciones generales: ${error.message}`,
-        );
-        throw error;
-      }
+      this.logger.log('✅ Respuestas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`❌ Error al llenar respuestas: ${error.message}`);
+      this.logger.error(error.stack);
+      throw error;
     }
+  }
+  private async llenarObservacionesGenerales(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (
+        inspection.generalObservations &&
+        inspection.generalObservations.trim() !== ''
+      ) {
+        // ⚠️ AJUSTAR POSICIÓN SEGÚN TU TEMPLATE
+        worksheet.getCell('B43').value = inspection.generalObservations;
+        this.logger.log('Observaciones generales completadas');
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error al llenar observaciones generales: ${error.message}`,
+      );
+      throw error;
+    }
+  }
   /**
    * Llena el diagrama de daños del vehículo
    */
@@ -363,7 +376,6 @@ private async llenarRespuestas(
   /**
    * Llena las firmas del inspector y supervisor
    */
-  
 
   /**
    * Genera el archivo Excel completo para inspección de vehículos

@@ -5,5 +5,5 @@ import { IsOptional, IsString } from 'class-validator';
 export class UpdateTemplateDto extends PartialType(CreateTemplateDto) {
   @IsOptional()
   @IsString()
-  updatedBy?: string
+  updatedBy?: string;
 }

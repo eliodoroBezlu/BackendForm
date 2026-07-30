@@ -1,10 +1,13 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   ForbiddenException,
   BadRequestException,
+  OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Trabajador } from './schema/trabajador.schema';
@@ -18,18 +21,95 @@ import {
   DisableUserDto,
 } from './dto/user-management.dto';
 
+interface IamServiceUser {
+  userId: string;
+  username: string;
+  fullName: string | null;
+  email: string | null;
+  globalRoles: string[];
+  serviceRoles: string[];
+  trabajador: {
+    ci: string;
+    nomina: string;
+    puesto: string;
+    area: string | null;
+    areaCodigo: string | null;
+    superintendencia: string;
+    activo: boolean;
+    tieneAccesoSistema: boolean;
+  } | null;
+}
+
+interface IamTrabajadorEntry {
+  ci: string;
+  nomina: string;
+  puesto: string;
+  superintendencia: string;
+  area: string | null;
+  areaCodigo: string | null;
+  jde: string | null;
+  disciplina: string | null;
+  esContratista: boolean;
+  celular: string | null;
+  residencia: string | null;
+  noBloque: string | null;
+  noHabitacion: string | null;
+  fechaIngreso: string | null;
+  tieneAccesoSistema: boolean;
+  activo: boolean;
+  username: string | null;
+}
+
 @Injectable()
-export class TrabajadoresService {
+export class TrabajadoresService implements OnModuleInit {
+  private readonly logger = new Logger(TrabajadoresService.name);
+
   constructor(
     @InjectModel(Trabajador.name) private trabajadorModel: Model<Trabajador>,
     @InjectModel(User.name) private userModel: Model<User>,
+    private readonly configService: ConfigService,
   ) {}
 
-  // ==================== CRUD BÁSICO ====================
+  async onModuleInit() {
+    // Sincronización best-effort al arrancar — si el IAM Core no está
+    // disponible, no debe impedir que BackendForm levante.
+    try {
+      const roster = await this.syncTrabajadoresFromIam();
+      if (roster.error) {
+        this.logger.warn(
+          `Sync de roster de trabajadores omitido al arrancar: ${roster.error}`,
+        );
+      } else {
+        this.logger.log(
+          `Trabajadores sincronizados desde IAM al arrancar: ${roster.creados} creados, ${roster.actualizados} actualizados`,
+        );
+      }
 
-  async create(createDto: CreateTrabajadorDto): Promise<Trabajador> {
-    const trabajador = new this.trabajadorModel(createDto);
-    return trabajador.save();
+      const supervisores = await this.syncRolFromIam('supervisor');
+      if (supervisores.error) {
+        this.logger.warn(
+          `Sync de rol supervisor omitido al arrancar: ${supervisores.error}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Sync con IAM omitido al arrancar: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+    }
+  }
+
+  // ==================== CRUD BÁSICO ====================
+  // ── Creación y edición del perfil delegadas al IAM Core ──────────────
+  // El roster local (nomina, puesto, área, superintendencia, etc.) es un
+  // espejo de solo lectura, refrescado por `syncTrabajadoresFromIam`.
+  // Crear o editar trabajadores se hace en el IAM Portal.
+
+  async create(_createDto: CreateTrabajadorDto): Promise<Trabajador> {
+    throw new BadRequestException(
+      'La creación de trabajadores está centralizada en IAM Core. ' +
+        'Accede al IAM Portal (Admin → Trabajadores) para crear trabajadores; ' +
+        'BackendForm los refleja automáticamente por sincronización.',
+    );
   }
 
   async findAll(): Promise<Trabajador[]> {
@@ -52,16 +132,12 @@ export class TrabajadoresService {
     return trabajador;
   }
 
-  async update(id: string, updateDto: any): Promise<Trabajador> {
-    const trabajador = await this.trabajadorModel
-      .findByIdAndUpdate(id, updateDto, { new: true, runValidators: true })
-      .exec();
-
-    if (!trabajador) {
-      throw new NotFoundException(`Trabajador ${id} no encontrado`);
-    }
-
-    return trabajador;
+  async update(_id: string, _updateDto: any): Promise<Trabajador> {
+    throw new BadRequestException(
+      'La edición del perfil de trabajadores está centralizada en IAM Core. ' +
+        'Accede al IAM Portal (Admin → Trabajadores) para editar; ' +
+        'BackendForm los refleja automáticamente por sincronización.',
+    );
   }
 
   async remove(id: string): Promise<Trabajador> {
@@ -73,9 +149,13 @@ export class TrabajadoresService {
 
     // ⚠️ Si el trabajador tenía un usuario MongoDB legacy, desactivarlo
     if (trabajador.userId) {
-      await this.userModel.findByIdAndUpdate(trabajador.userId, {
-        isActive: false,
-      }).catch(() => {/* ignorar si userId ya no existe en MongoDB */});
+      await this.userModel
+        .findByIdAndUpdate(trabajador.userId, {
+          isActive: false,
+        })
+        .catch(() => {
+          /* ignorar si userId ya no existe en MongoDB */
+        });
     }
 
     return trabajador;
@@ -128,9 +208,7 @@ export class TrabajadoresService {
   }
 
   async findByUsername(username: string): Promise<Trabajador> {
-    const trabajador = await this.trabajadorModel
-      .findOne({ username })
-      .exec();
+    const trabajador = await this.trabajadorModel.findOne({ username }).exec();
 
     if (!trabajador) {
       throw new NotFoundException(
@@ -139,6 +217,208 @@ export class TrabajadoresService {
     }
 
     return trabajador;
+  }
+
+  // ==================== SINCRONIZACIÓN CON IAM CORE ====================
+
+  /**
+   * Trae del IAM Core (fuente de verdad) el roster COMPLETO de trabajadores
+   * activos — tengan o no usuario/acceso al sistema — y lo espeja en Mongo,
+   * emparejando por `ci`. Preserva siempre los campos propios de BackendForm
+   * (`creado_por_usuario`, `user_disabled*`, `user_unlinked*`, `userId` del
+   * sistema legacy de auth local, `roles_iam` — ese lo mantiene aparte
+   * `syncRolFromIam`).
+   */
+  async syncTrabajadoresFromIam(): Promise<{
+    actualizados: number;
+    creados: number;
+    error?: string;
+  }> {
+    const base = (
+      this.configService.get<string>('IAM_CORE_URL') || 'http://localhost:4000'
+    ).replace(/\/+$/, '');
+    const apiKey = this.configService.get<string>('IAM_CORE_API_KEY') || '';
+
+    let trabajadoresIam: IamTrabajadorEntry[];
+    try {
+      const response = await fetch(
+        `${base}/api/rbac/trabajadores?activo=true`,
+        {
+          headers: { 'X-Api-Key': apiKey },
+          cache: 'no-store',
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`IAM respondió con estado ${response.status}`);
+      }
+      const data = (await response.json()) as {
+        trabajadores?: IamTrabajadorEntry[];
+      };
+      trabajadoresIam = data.trabajadores ?? [];
+    } catch (error) {
+      return {
+        actualizados: 0,
+        creados: 0,
+        error: error instanceof Error ? error.message : 'Error desconocido',
+      };
+    }
+
+    let actualizados = 0;
+    let creados = 0;
+    const fallos: string[] = [];
+
+    for (const t of trabajadoresIam) {
+      try {
+        const existente = await this.trabajadorModel.findOne({ ci: t.ci });
+
+        if (existente) {
+          existente.nomina = t.nomina || existente.nomina;
+          existente.puesto = t.puesto || existente.puesto;
+          existente.superintendencia =
+            t.superintendencia || existente.superintendencia;
+          existente.area = t.area || existente.area || 'Sin área';
+          existente.jde = t.jde || existente.jde;
+          existente.no_bloque = t.noBloque || existente.no_bloque;
+          existente.no_habitacion = t.noHabitacion || existente.no_habitacion;
+          existente.residencia = t.residencia || existente.residencia;
+          existente.celular = t.celular || existente.celular;
+          if (t.fechaIngreso)
+            existente.fecha_ingreso = new Date(t.fechaIngreso);
+          if (t.username) existente.username = t.username;
+          existente.tiene_acceso_sistema = t.tieneAccesoSistema;
+          existente.activo = t.activo;
+          await existente.save();
+          actualizados++;
+        } else {
+          await new this.trabajadorModel({
+            ci: t.ci,
+            nomina: t.nomina,
+            puesto: t.puesto,
+            fecha_ingreso: t.fechaIngreso
+              ? new Date(t.fechaIngreso)
+              : new Date(),
+            superintendencia: t.superintendencia,
+            area: t.area || 'Sin área',
+            jde: t.jde || undefined,
+            no_bloque: t.noBloque || undefined,
+            no_habitacion: t.noHabitacion || undefined,
+            residencia: t.residencia || undefined,
+            celular: t.celular || undefined,
+            username: t.username || undefined,
+            tiene_acceso_sistema: t.tieneAccesoSistema,
+            activo: t.activo,
+          }).save();
+          creados++;
+        }
+      } catch (error) {
+        // Un registro con datos incompletos/legado no debe abortar el resto
+        // de la sincronización.
+        this.logger.warn(
+          `No se pudo sincronizar el trabajador ci=${t.ci}: ${error instanceof Error ? error.message : 'error desconocido'}`,
+        );
+        fallos.push(t.ci);
+      }
+    }
+
+    if (fallos.length > 0) {
+      this.logger.warn(
+        `Sync de roster: ${fallos.length} trabajador(es) con error, omitidos: ${fallos.join(', ')}`,
+      );
+    }
+
+    return { actualizados, creados };
+  }
+
+  /**
+   * Trae del IAM Core (fuente de verdad) los usuarios que tienen `role` en
+   * el servicio "forms" y refresca el roster local: actualiza `roles_iam`
+   * en el Trabajador que coincide por `ci` (clave estable en ambos lados),
+   * o lo crea si no existe localmente. Nunca toca los campos propios de
+   * BackendForm (`creado_por_usuario`, `user_disabled*`, `user_unlinked*`,
+   * `userId` del sistema legacy de auth local).
+   */
+  async syncRolFromIam(
+    role: string,
+  ): Promise<{ actualizados: number; creados: number; error?: string }> {
+    const base = (
+      this.configService.get<string>('IAM_CORE_URL') || 'http://localhost:4000'
+    ).replace(/\/+$/, '');
+    const apiKey = this.configService.get<string>('IAM_CORE_API_KEY') || '';
+
+    let usuarios: IamServiceUser[];
+    try {
+      const response = await fetch(
+        `${base}/api/rbac/services/forms/users?role=${encodeURIComponent(role)}`,
+        { headers: { 'X-Api-Key': apiKey }, cache: 'no-store' },
+      );
+      if (!response.ok) {
+        throw new Error(`IAM respondió con estado ${response.status}`);
+      }
+      const data = (await response.json()) as { users?: IamServiceUser[] };
+      usuarios = data.users ?? [];
+    } catch (error) {
+      return {
+        actualizados: 0,
+        creados: 0,
+        error: error instanceof Error ? error.message : 'Error desconocido',
+      };
+    }
+
+    let actualizados = 0;
+    let creados = 0;
+    const fallos: string[] = [];
+
+    for (const iamUser of usuarios) {
+      if (!iamUser.trabajador) continue; // sin ficha de Trabajador en IAM, nada que espejar
+
+      const t = iamUser.trabajador;
+      try {
+        const existente = await this.trabajadorModel.findOne({ ci: t.ci });
+
+        if (existente) {
+          existente.nomina = t.nomina || existente.nomina;
+          existente.puesto = t.puesto || existente.puesto;
+          existente.superintendencia =
+            t.superintendencia || existente.superintendencia;
+          existente.area = t.area || existente.area || 'Sin área';
+          existente.username = iamUser.username;
+          existente.tiene_acceso_sistema = t.tieneAccesoSistema;
+          existente.activo = t.activo;
+          existente.roles_iam = Array.from(
+            new Set([...(existente.roles_iam || []), role]),
+          );
+          await existente.save();
+          actualizados++;
+        } else {
+          await new this.trabajadorModel({
+            ci: t.ci,
+            nomina: t.nomina,
+            puesto: t.puesto,
+            fecha_ingreso: new Date(),
+            superintendencia: t.superintendencia,
+            area: t.area || 'Sin área',
+            username: iamUser.username,
+            tiene_acceso_sistema: t.tieneAccesoSistema,
+            activo: t.activo,
+            roles_iam: [role],
+          }).save();
+          creados++;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo sincronizar el rol '${role}' para ci=${t.ci}: ${error instanceof Error ? error.message : 'error desconocido'}`,
+        );
+        fallos.push(t.ci);
+      }
+    }
+
+    if (fallos.length > 0) {
+      this.logger.warn(
+        `Sync de rol '${role}': ${fallos.length} trabajador(es) con error, omitidos: ${fallos.join(', ')}`,
+      );
+    }
+
+    return { actualizados, creados };
   }
 
   // ==================== CREAR TRABAJADOR CON USUARIO ====================
@@ -152,7 +432,7 @@ export class TrabajadoresService {
   ) {
     throw new BadRequestException(
       'La creación de usuarios está centralizada en IAM Core. ' +
-      'Accede al IAM Portal (Admin → Trabajadores) para crear y vincular usuarios.',
+        'Accede al IAM Portal (Admin → Trabajadores) para crear y vincular usuarios.',
     );
   }
 
@@ -165,7 +445,7 @@ export class TrabajadoresService {
   ) {
     throw new BadRequestException(
       'La creación de usuarios está centralizada en IAM Core. ' +
-      'Accede al IAM Portal (Admin → Trabajadores) para vincular usuarios a trabajadores.',
+        'Accede al IAM Portal (Admin → Trabajadores) para vincular usuarios a trabajadores.',
     );
   }
 

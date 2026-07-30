@@ -1,5 +1,11 @@
-
-import { IsString, IsNumber, IsBoolean, IsOptional, IsEnum, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsBoolean,
+  IsOptional,
+  IsEnum,
+  IsObject,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class MLFeedbackDto {
@@ -23,7 +29,10 @@ export class MLFeedbackDto {
   @IsBoolean()
   fue_recomendacion_ml: boolean;
 
-  @ApiProperty({ description: 'Índice de la recomendación (0-2)', required: false })
+  @ApiProperty({
+    description: 'Índice de la recomendación (0-2)',
+    required: false,
+  })
   @IsOptional()
   @IsNumber()
   indice_recomendacion?: number;
@@ -37,9 +46,9 @@ export class MLFeedbackDto {
     empresa?: string;
   };
 
-  @ApiProperty({ 
-    description: 'Tipo de feedback', 
-    enum: ['guardado', 'cerrado', 'aprobado', 'rechazado'] 
+  @ApiProperty({
+    description: 'Tipo de feedback',
+    enum: ['guardado', 'cerrado', 'aprobado', 'rechazado'],
   })
   @IsEnum(['guardado', 'cerrado', 'aprobado', 'rechazado'])
   feedback_type: string;

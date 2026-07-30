@@ -1,126 +1,133 @@
-import { IsNotEmpty, IsString, IsDate, IsArray, ValidateNested, IsEnum } from "class-validator"
-import { Type } from "class-transformer"
+import {
+  IsNotEmpty,
+  IsString,
+  IsDate,
+  IsArray,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 class InformacionGeneralDto {
   @IsNotEmpty()
   @IsString()
-  superintendencia: string
+  superintendencia: string;
 
   @IsNotEmpty()
   @IsString()
-  trabajador: string
+  trabajador: string;
 
   @IsNotEmpty()
   @IsString()
-  supervisor: string
+  supervisor: string;
 
   @IsNotEmpty()
   @IsString()
-  area: string
+  area: string;
 
   @IsNotEmpty()
   @IsString()
-  numInspeccion: string
+  numInspeccion: string;
 
   @IsNotEmpty()
   @IsString()
-  codConector: string
+  codConector: string;
 
   @IsNotEmpty()
   @IsString()
-  codArnes: string
+  codArnes: string;
 
   @IsNotEmpty()
   @IsDate()
   @Type(() => Date)
-  fecha: Date
+  fecha: Date;
 }
 
 class InspectionItemDto {
   @IsNotEmpty()
   @IsString()
-  id: string
+  id: string;
 
   @IsNotEmpty()
   @IsString()
-  description: string
+  description: string;
 
-  @IsEnum(["si", "no", "na", null])
-  response: "si" | "no" | "na" | null
+  @IsEnum(['si', 'no', 'na', null])
+  response: 'si' | 'no' | 'na' | null;
 
   @IsString()
-  observation: string
+  observation: string;
 }
 
 class InspectionSectionDto {
   @IsNotEmpty()
   @IsString()
-  id: string
+  id: string;
 
   @IsNotEmpty()
   @IsString()
-  category: string
+  category: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => InspectionItemDto)
-  items: InspectionItemDto[]
+  items: InspectionItemDto[];
 }
 
 class InspectionTitleDto {
   @IsNotEmpty()
   @IsString()
-  id: string
+  id: string;
 
   @IsNotEmpty()
   @IsString()
-  title: string
+  title: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => InspectionSectionDto)
-  items: InspectionSectionDto[]
+  items: InspectionSectionDto[];
 }
 
 export class CreateInspeccionDto {
   @IsNotEmpty()
   @IsString()
-  documentCode: string
+  documentCode: string;
 
   @IsNotEmpty()
   @Type(() => Number)
-  revisionNumber: number
+  revisionNumber: number;
 
   @ValidateNested()
   @Type(() => InformacionGeneralDto)
-  informacionGeneral: InformacionGeneralDto
+  informacionGeneral: InformacionGeneralDto;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => InspectionTitleDto)
-  resultados: InspectionTitleDto[]
+  resultados: InspectionTitleDto[];
 
-  @IsEnum(["SI", "NO", null])
-  operativo: "SI" | "NO" | null
+  @IsEnum(['SI', 'NO', null])
+  operativo: 'SI' | 'NO' | null;
 
   @IsString()
-  observacionesComplementarias: string
+  observacionesComplementarias: string;
 
   @IsNotEmpty()
   @IsString()
-  inspectionConductedBy: string
+  inspectionConductedBy: string;
 
   @IsString()
-  firmaInspector: string
+  firmaInspector: string;
 
   @IsNotEmpty()
   @IsString()
-  inspectionApprovedBy: string
+  inspectionApprovedBy: string;
 
   @IsString()
-  firmaSupervisor: string
+  firmaSupervisor: string;
 
   @IsDate()
   @Type(() => Date)
-  reviewDate: Date
+  reviewDate: Date;
 }

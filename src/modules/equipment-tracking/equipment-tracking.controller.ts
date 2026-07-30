@@ -1,27 +1,28 @@
 // src/equipment-tracking/equipment-tracking.controller.ts
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Body, 
-  Patch, 
-  Param, 
-  Delete, 
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
   Query,
   HttpCode,
-  HttpStatus, 
-  UseGuards
+  HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { EquipmentTrackingService } from './equipment-tracking.service';
 import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
-
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('equipment-tracking')
 export class EquipmentTrackingController {
-  constructor(private readonly equipmentTrackingService: EquipmentTrackingService) {}
+  constructor(
+    private readonly equipmentTrackingService: EquipmentTrackingService,
+  ) {}
 
   /**
    * 🔥 ÚNICO ENDPOINT NECESARIO: Verificar TAG
@@ -45,7 +46,27 @@ export class EquipmentTrackingController {
     @Param('equipmentId') equipmentId: string,
     @Body('templateCode') templateCode: string,
   ) {
-    return this.equipmentTrackingService.resetPreUsoCounter(equipmentId, templateCode);
+    return this.equipmentTrackingService.resetPreUsoCounter(
+      equipmentId,
+      templateCode,
+    );
+  }
+
+  /**
+   * 🆕 Disponibilidad de códigos de equipo para un template, según la
+   * frecuencia configurada en ese template (si no tiene frecuencia activa,
+   * devuelve todos los códigos como disponibles — sin restricción).
+   * GET /equipment-tracking/disponibilidad?templateCode=1.02.P06.F33&area=Producción
+   */
+  @Get('disponibilidad')
+  listarDisponibilidad(
+    @Query('templateCode') templateCode: string,
+    @Query('area') area?: string,
+  ) {
+    return this.equipmentTrackingService.listarDisponibilidad(
+      templateCode,
+      area,
+    );
   }
 
   @Get('dashboard')

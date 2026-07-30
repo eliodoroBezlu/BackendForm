@@ -16,6 +16,4 @@ export class TrainModelDto {
   @IsOptional()
   @IsDateString()
   dateTo?: string;
-
-  
 }

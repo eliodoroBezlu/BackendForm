@@ -43,6 +43,12 @@ export class Trabajador extends Document {
   @Prop({ required: false })
   username?: string; // Para búsqueda rápida
 
+  // Roles que este trabajador tiene en el servicio "forms" según el IAM Core
+  // (fuente de verdad), ej. ["supervisor"]. Se refresca por sincronización,
+  // nunca se edita a mano — para eso está IAM Portal.
+  @Prop({ type: [String], default: [] })
+  roles_iam: string[];
+
   @Prop({ default: false })
   tiene_acceso_sistema: boolean;
 

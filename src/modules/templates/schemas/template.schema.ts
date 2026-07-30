@@ -1,5 +1,5 @@
-import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import  { Document, Types } from "mongoose";
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
 
 export type TemplateDocument = Template & Document;
 
@@ -10,7 +10,7 @@ export class VerificationField {
 
   @Prop({
     required: true,
-    enum: ["text", "date", "number", "select", "autocomplete"],
+    enum: ['text', 'date', 'number', 'select', 'autocomplete'],
   })
   type: string;
 
@@ -35,9 +35,8 @@ export class Question {
 
 @Schema()
 export class Section {
-
   _id?: Types.ObjectId;
-  
+
   @Prop({ required: true })
   title: string;
 
@@ -116,7 +115,7 @@ export class Template {
 
   @Prop({
     required: true,
-    enum: ["interna", "externa"],
+    enum: ['interna', 'externa'],
   })
   type: string;
 

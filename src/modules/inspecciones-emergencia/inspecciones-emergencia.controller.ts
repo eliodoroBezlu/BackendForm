@@ -17,27 +17,24 @@ import { Response } from 'express';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
 import { CreateFormularioInspeccionDto } from './dto/create-inspecciones-emergencia.dto';
 import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emergencia.dto';
-import { InspeccionesEmergenciaExcelService } from './inspecciones-emergencia-excel/inspecciones-emergencia-excel.service';
+import { InspeccionesEmergenciaDocumentService } from './inspecciones-emergencia-document.service';
 import { ExtintorService } from '../extintor/extintor.service';
-import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
-import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
   buildInspectionFilename,
   buildContentDispositionHeader,
-  dedupeFilename,
 } from '../../common/utils/download-filename.util';
-import archiver = require('archiver');
+import { BulkDownloadService } from '../../common/services/bulk-download.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspecciones-emergencia')
 export class InspeccionesEmergenciaController {
   constructor(
     private readonly inspeccionesEmergenciaService: InspeccionesEmergenciaService,
-    private readonly formularioInspeccionEmergencia: InspeccionesEmergenciaExcelService,
+    private readonly documentService: InspeccionesEmergenciaDocumentService,
     private readonly extintorService: ExtintorService,
-    private readonly excelToPdfService: ExcelToPdfService,
+    private readonly bulkDownloadService: BulkDownloadService,
   ) {}
 
   @Post('crear-formulario')
@@ -78,40 +75,6 @@ export class InspeccionesEmergenciaController {
     );
   }
 
-  /** Genera el documento final (Excel o PDF) para una inspección ya cargada. */
-  private async generarDocumento(
-    inspeccion: any,
-    formato: 'excel' | 'pdf',
-  ): Promise<Buffer | null> {
-    const excelBuffer =
-      await this.formularioInspeccionEmergencia.generateExcelSingle(inspeccion);
-    if (!excelBuffer) return null;
-    if (formato === 'excel') return excelBuffer;
-    return this.excelToPdfService.convertExcelToPdf(excelBuffer, {
-      quality: 'high',
-    });
-  }
-
-  /** Extrae nombre/área/inspector/fecha de la inspección para el nombre de archivo. */
-  private resolverDatosArchivo(inspeccion: any): {
-    nombre: string;
-    area: string;
-    inspector: string;
-    fecha: Date | string | undefined;
-  } {
-    const meses = inspeccion.meses;
-    const mesData =
-      meses instanceof Map
-        ? meses.get(inspeccion.mesActual)
-        : meses?.[inspeccion.mesActual];
-    return {
-      nombre: 'Sistemas de Emergencia',
-      area: String(inspeccion.area || ''),
-      inspector: String(mesData?.inspector?.nombre || ''),
-      fecha: inspeccion.fechaUltimaModificacion || inspeccion.fechaCreacion,
-    };
-  }
-
   @Post('bulk-download')
   async bulkDownload(
     @Body() body: { ids: string[]; format: 'pdf' | 'excel' },
@@ -131,50 +94,33 @@ export class InspeccionesEmergenciaController {
       });
     }
 
-    const zipFilename = `Inspecciones_${new Date().toISOString().slice(0, 10)}.zip`;
-    res.set({
-      'Content-Type': 'application/zip',
-      'Content-Disposition': buildContentDispositionHeader(zipFilename),
-    });
-
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.on('error', (err) => {
-      console.error('❌ Error generando ZIP (emergencia):', err);
-      if (!res.headersSent) {
-        res
-          .status(500)
-          .json({ success: false, message: 'Error al generar el ZIP' });
-      }
-    });
-    archive.pipe(res);
-
-    const usados = new Map<string, number>();
-    const extension = format === 'excel' ? 'xlsx' : 'pdf';
-
-    for (const id of ids) {
-      try {
+    await this.bulkDownloadService.streamZip(
+      res,
+      ids,
+      format,
+      async (id, fmt) => {
         const inspeccion = await this.inspeccionesEmergenciaService.findOne(id);
-        if (!inspeccion) continue;
+        if (!inspeccion) return null;
 
-        const buffer = await this.generarDocumento(inspeccion, format);
-        if (!buffer) continue;
+        const contenido =
+          fmt === 'pdf'
+            ? await this.documentService.generarPdfStream(inspeccion)
+            : await this.documentService.generarDocumento(inspeccion);
+        if (!contenido) return null;
 
         const { nombre, area, inspector, fecha } =
-          this.resolverDatosArchivo(inspeccion);
+          this.documentService.resolverDatosArchivo(inspeccion);
         const filename = buildInspectionFilename(
           nombre,
           area,
           inspector,
           fecha,
-          extension,
+          fmt === 'excel' ? 'xlsx' : 'pdf',
         );
-        archive.append(buffer, { name: dedupeFilename(filename, usados) });
-      } catch (err) {
-        console.error(`Error procesando inspección ${id} para el ZIP:`, err);
-      }
-    }
 
-    await archive.finalize();
+        return { content: contenido, filename };
+      },
+    );
   }
 
   @Get(':id/excel')
@@ -185,7 +131,7 @@ export class InspeccionesEmergenciaController {
         return res.status(404).json({ message: 'Inspección no encontrada' });
       }
 
-      const buffer = await this.generarDocumento(inspeccion, 'excel');
+      const buffer = await this.documentService.generarDocumento(inspeccion);
       if (!buffer) {
         return res
           .status(400)
@@ -193,7 +139,7 @@ export class InspeccionesEmergenciaController {
       }
 
       const { nombre, area, inspector, fecha } =
-        this.resolverDatosArchivo(inspeccion);
+        this.documentService.resolverDatosArchivo(inspeccion);
       const filename = buildInspectionFilename(
         nombre,
         area,
@@ -330,8 +276,8 @@ export class InspeccionesEmergenciaController {
         });
       }
 
-      const pdfBuffer = await this.generarDocumento(inspeccion, 'pdf');
-      if (!pdfBuffer) {
+      const pdfStream = await this.documentService.generarPdfStream(inspeccion);
+      if (!pdfStream) {
         return res.status(400).json({
           success: false,
           message: 'No se pudo generar el archivo PDF',
@@ -339,7 +285,7 @@ export class InspeccionesEmergenciaController {
       }
 
       const { nombre, area, inspector, fecha } =
-        this.resolverDatosArchivo(inspeccion);
+        this.documentService.resolverDatosArchivo(inspeccion);
       const filename = buildInspectionFilename(
         nombre,
         area,
@@ -351,11 +297,22 @@ export class InspeccionesEmergenciaController {
       res.set({
         'Content-Type': 'application/pdf',
         'Content-Disposition': buildContentDispositionHeader(filename),
-        'Content-Length': pdfBuffer.length.toString(),
         'Cache-Control': 'no-cache',
       });
 
-      res.send(pdfBuffer);
+      pdfStream.on('error', (err) => {
+        console.error('❌ Error en el stream de PDF (emergencia):', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            message: 'Error al generar el archivo PDF',
+          });
+        } else {
+          res.destroy();
+        }
+      });
+
+      pdfStream.pipe(res);
     } catch (error) {
       console.error('❌ Error al generar PDF (emergencia):', error);
       res.status(500).json({

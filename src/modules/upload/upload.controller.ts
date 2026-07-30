@@ -16,7 +16,6 @@ import { existsSync, mkdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
-
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('upload')
 @Controller('upload')
@@ -50,7 +49,8 @@ export class UploadController implements OnModuleInit {
       storage: diskStorage({
         destination: './uploads/evidencias-tareas',
         filename: (_req, file, callback) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);
           const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
           callback(null, filename);

@@ -20,32 +20,16 @@ import {
   RejectInspectionDto,
 } from './dto/update-inspection-herra-equipo.dto';
 import { InspectionsHerraEquiposService } from './inspection-herra-equipos.service';
-import { ExcelVehicleService } from './excel-generator/vehicle.service';
+import { InspectionHerraEquiposDocumentService } from './inspection-herra-equipos-document.service';
 import { Response } from 'express';
-import { ExcelManLiftService } from './excel-generator/man-lift.service';
-import { ExcelEscaleraService } from './excel-generator/escaleras.service';
-import { ExcelGruaRemotoService } from './excel-generator/grua-remoto.service';
-import { ExcelGruaCabinaService } from './excel-generator/grua-cabina.service';
-import { ExcelTaladroService } from './excel-generator/taladro.service';
-import { ExcelEquipoSoldarService } from './excel-generator/equipo-soldar.service';
-import { ExcelEsmerilService } from './excel-generator/esmeril.service';
-import { ExcelAmoladoraService } from './excel-generator/amoladora.service';
-import { ExcelCilindrosService } from './excel-generator/cilindros.service';
-import { ExcelAndamiosService } from './excel-generator/andamio.service';
-import { ExcelFrecuenteTecleService } from './excel-generator/frecuente-tecles.service';
-import { ExcelPreUsoTecleService } from './excel-generator/preuso-tecle.service';
-import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.service';
-import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
-import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { ExcelArnestService } from './excel-generator/arnes.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   buildInspectionFilename,
   buildContentDispositionHeader,
-  dedupeFilename,
 } from '../../common/utils/download-filename.util';
-import archiver = require('archiver');
+import { BulkDownloadService } from '../../common/services/bulk-download.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspections-herra-equipos')
@@ -54,22 +38,8 @@ export class InspectionsHerraEquiposController {
 
   constructor(
     private readonly inspectionsService: InspectionsHerraEquiposService,
-    private readonly excelVehicleService: ExcelVehicleService,
-    private readonly excelManLiftService: ExcelManLiftService,
-    private readonly excelEscaleraService: ExcelEscaleraService,
-    private readonly excelGruaRemotoService: ExcelGruaRemotoService,
-    private readonly excelGruaCabinaService: ExcelGruaCabinaService,
-    private readonly excelTaladroService: ExcelTaladroService,
-    private readonly excelEquipoSoldarService: ExcelEquipoSoldarService,
-    private readonly excelEsmerilService: ExcelEsmerilService,
-    private readonly excelAmoladoraService: ExcelAmoladoraService,
-    private readonly excelCilindrosService: ExcelCilindrosService,
-    private readonly excelAndamiosService: ExcelAndamiosService,
-    private readonly excelFrecuenteTecleService: ExcelFrecuenteTecleService,
-    private readonly excelPreUsoTecleService: ExcelPreUsoTecleService,
-    private readonly excelElementosIzajeService: ExcelElementosIzajeService,
-    private readonly excelToPdfService: ExcelToPdfService,
-    private readonly excelArnestService: ExcelArnestService,
+    private readonly documentService: InspectionHerraEquiposDocumentService,
+    private readonly bulkDownloadService: BulkDownloadService,
   ) {}
 
   // ============================================
@@ -172,21 +142,31 @@ export class InspectionsHerraEquiposController {
   // ENDPOINTS EXISTENTES
   // ============================================
 
+  /**
+   * Los roles restringidos solo reciben inspecciones de las plantillas
+   * asignadas a su rol (de cualquier usuario, no solo las propias).
+   * El filtro se aplica en el service: es la barrera que no se puede
+   * saltar desde el cliente.
+   */
   @Get()
   async findAll(
+    @CurrentUser('roles') roles?: string[],
     @Query('status') status?: string,
     @Query('templateCode') templateCode?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('submittedBy') submittedBy?: string,
   ) {
-    const inspections = await this.inspectionsService.findAll({
-      status,
-      templateCode,
-      startDate,
-      endDate,
-      submittedBy,
-    });
+    const inspections = await this.inspectionsService.findAll(
+      {
+        status,
+        templateCode,
+        startDate,
+        endDate,
+        submittedBy,
+      },
+      roles,
+    );
 
     return {
       success: true,
@@ -293,96 +273,6 @@ export class InspectionsHerraEquiposController {
     };
   }
 
-  /**
-   * Resuelve el buffer de Excel correspondiente al templateCode de la
-   * inspección, probando cada generador especializado. Reutilizado por
-   * downloadExcel, downloadPdf y el endpoint de descarga masiva (ZIP).
-   */
-  private async generarExcelBuffer(
-    inspection: any,
-    templateCode: string,
-  ): Promise<Buffer | null> {
-    if (templateCode.includes('1.02.P06.F37')) {
-      return this.excelManLiftService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P48.F03')) {
-      return this.excelVehicleService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F33')) {
-      return this.excelEscaleraService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P04.F35')) {
-      return this.excelGruaRemotoService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P04.F23')) {
-      return this.excelGruaCabinaService.generateExcel(inspection);
-    } else if (templateCode.includes('2.03.P10.F05')) {
-      return this.excelTaladroService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F42')) {
-      return this.excelEquipoSoldarService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F40')) {
-      return this.excelEsmerilService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F39')) {
-      return this.excelAmoladoraService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F20')) {
-      return this.excelCilindrosService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F30')) {
-      return this.excelAndamiosService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P37.F25')) {
-      return this.excelFrecuenteTecleService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P37.F24')) {
-      return this.excelPreUsoTecleService.generateExcel(inspection);
-    } else if (templateCode.includes('3.04.P37.F19')) {
-      return this.excelElementosIzajeService.generateExcel(inspection);
-    } else if (templateCode.includes('1.02.P06.F19')) {
-      return this.excelArnestService.generateExcel(inspection);
-    }
-    return null;
-  }
-
-  /** Genera el documento final (Excel o PDF) para una inspección ya cargada. */
-  private async generarDocumento(
-    inspection: any,
-    formato: 'excel' | 'pdf',
-  ): Promise<Buffer | null> {
-    const excelBuffer = await this.generarExcelBuffer(
-      inspection,
-      inspection.templateCode,
-    );
-    if (!excelBuffer) return null;
-    if (formato === 'excel') return excelBuffer;
-    return this.excelToPdfService.convertExcelToPdf(excelBuffer, {
-      quality: 'high',
-    });
-  }
-
-  /** Extrae nombre/área/inspector/fecha de la inspección para el nombre de archivo. */
-  private resolverDatosArchivo(inspection: any): {
-    nombre: string;
-    area: string;
-    inspector: string;
-    fecha: Date | string | undefined;
-  } {
-    const verification = inspection.verification || {};
-    const area =
-      inspection.area ||
-      verification['AREA'] ||
-      verification['ÁREA'] ||
-      verification['Area'] ||
-      verification['Área'] ||
-      '';
-    // El campo real que guardan los form-configs es "inspectorName" (ver
-    // src/components/features/herra-equipos/config/form-configs/*.ts en el
-    // frontend); "name" nunca se usa salvo en un fallback que ningún
-    // template real invoca.
-    const inspectorSignature = inspection.inspectorSignature || {};
-    const inspector =
-      inspectorSignature.inspectorName || inspectorSignature.name || '';
-
-    return {
-      nombre: inspection.templateName || inspection.templateCode,
-      area: String(area || ''),
-      inspector: String(inspector || ''),
-      fecha: inspection.submittedAt,
-    };
-  }
-
   @Post('bulk-download')
   async bulkDownload(
     @Body() body: { ids: string[]; format: 'pdf' | 'excel' },
@@ -402,50 +292,33 @@ export class InspectionsHerraEquiposController {
       });
     }
 
-    const zipFilename = `Inspecciones_${new Date().toISOString().slice(0, 10)}.zip`;
-    res.set({
-      'Content-Type': 'application/zip',
-      'Content-Disposition': buildContentDispositionHeader(zipFilename),
-    });
-
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    archive.on('error', (err) => {
-      console.error('❌ Error generando ZIP (herra-equipos):', err);
-      if (!res.headersSent) {
-        res
-          .status(500)
-          .json({ success: false, message: 'Error al generar el ZIP' });
-      }
-    });
-    archive.pipe(res);
-
-    const usados = new Map<string, number>();
-    const extension = format === 'excel' ? 'xlsx' : 'pdf';
-
-    for (const id of ids) {
-      try {
+    await this.bulkDownloadService.streamZip(
+      res,
+      ids,
+      format,
+      async (id, fmt) => {
         const inspection = await this.inspectionsService.findOne(id);
-        if (!inspection) continue;
+        if (!inspection) return null;
 
-        const buffer = await this.generarDocumento(inspection, format);
-        if (!buffer) continue;
+        const contenido =
+          fmt === 'pdf'
+            ? await this.documentService.generarPdfStream(inspection)
+            : await this.documentService.generarDocumento(inspection);
+        if (!contenido) return null;
 
         const { nombre, area, inspector, fecha } =
-          this.resolverDatosArchivo(inspection);
+          this.documentService.resolverDatosArchivo(inspection);
         const filename = buildInspectionFilename(
           nombre,
           area,
           inspector,
           fecha,
-          extension,
+          fmt === 'excel' ? 'xlsx' : 'pdf',
         );
-        archive.append(buffer, { name: dedupeFilename(filename, usados) });
-      } catch (err) {
-        console.error(`Error procesando inspección ${id} para el ZIP:`, err);
-      }
-    }
 
-    await archive.finalize();
+        return { content: contenido, filename };
+      },
+    );
   }
 
   @Get(':id/excel')
@@ -463,7 +336,7 @@ export class InspectionsHerraEquiposController {
       }
 
       const templateCode = inspection.templateCode;
-      const buffer = await this.generarDocumento(inspection, 'excel');
+      const buffer = await this.documentService.generarDocumento(inspection);
 
       if (!buffer) {
         return res.status(400).json({
@@ -473,7 +346,7 @@ export class InspectionsHerraEquiposController {
       }
 
       const { nombre, area, inspector, fecha } =
-        this.resolverDatosArchivo(inspection);
+        this.documentService.resolverDatosArchivo(inspection);
       const filename = buildInspectionFilename(
         nombre,
         area,
@@ -520,9 +393,9 @@ export class InspectionsHerraEquiposController {
       }
 
       const templateCode = inspection.templateCode;
-      const pdfBuffer = await this.generarDocumento(inspection, 'pdf');
+      const pdfStream = await this.documentService.generarPdfStream(inspection);
 
-      if (!pdfBuffer) {
+      if (!pdfStream) {
         return res.status(400).json({
           success: false,
           message: `No se pudo generar el archivo PDF para el template: ${templateCode}`,
@@ -530,7 +403,7 @@ export class InspectionsHerraEquiposController {
       }
 
       const { nombre, area, inspector, fecha } =
-        this.resolverDatosArchivo(inspection);
+        this.documentService.resolverDatosArchivo(inspection);
       const filename = buildInspectionFilename(
         nombre,
         area,
@@ -544,11 +417,22 @@ export class InspectionsHerraEquiposController {
       res.set({
         'Content-Type': 'application/pdf',
         'Content-Disposition': buildContentDispositionHeader(filename),
-        'Content-Length': pdfBuffer.length.toString(),
         'Cache-Control': 'no-cache',
       });
 
-      res.send(pdfBuffer);
+      pdfStream.on('error', (err) => {
+        console.error('❌ Error en el stream de PDF:', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            success: false,
+            message: 'Error al generar el archivo PDF',
+          });
+        } else {
+          res.destroy();
+        }
+      });
+
+      pdfStream.pipe(res);
     } catch (error) {
       console.error('❌ Error al generar PDF:', error);
 

@@ -1,10 +1,15 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PgrService } from './pgr.service';
+import { PgrImportService } from './pgr-import.service';
+import { PgrExcelService } from './pgr-excel.service';
 import { PgrController } from './pgr.controller';
 import { Pgr, PgrSchema } from './schemas/pgr.schema';
 import { Area, AreaSchema } from '../area/schema/area.schema';
-import { Superintendencia, SuperintendenciaSchema } from '../superintendencia/schema/superintendencia.schema';
+import {
+  Superintendencia,
+  SuperintendenciaSchema,
+} from '../superintendencia/schema/superintendencia.schema';
 
 @Module({
   imports: [
@@ -15,7 +20,7 @@ import { Superintendencia, SuperintendenciaSchema } from '../superintendencia/sc
     ]),
   ],
   controllers: [PgrController],
-  providers: [PgrService],
+  providers: [PgrService, PgrImportService, PgrExcelService],
   exports: [PgrService],
 })
 export class PgrModule {}

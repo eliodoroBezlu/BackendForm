@@ -60,6 +60,25 @@ export const RolePermissions: Record<Role, Permission[]> = {
     Permission.VIEW_REPORTS,
   ],
   [Role.USER]: [Permission.READ_WORKER, Permission.READ_FORM],
+
+  /**
+   * Rol de visibilidad acotada.
+   *
+   * `CREATE_FORM` habilita **llenar** una inspección, no crear la estructura
+   * de un formulario: eso se controla aparte con `@Roles(Role.ADMIN)` en el
+   * controller de plantillas.
+   *
+   * `VIEW_REPORTS` le da acceso a la pantalla de reportes, pero el backend
+   * solo le devuelve las inspecciones de las plantillas asignadas a su rol.
+   *
+   * Deliberadamente sin `UPDATE_FORM`, `DELETE_FORM`, `APPROVE_FORM` ni
+   * ningún `MANAGE_*`.
+   */
+  [Role.INSPECTOR_ASIGNADO]: [
+    Permission.READ_FORM,
+    Permission.CREATE_FORM,
+    Permission.VIEW_REPORTS,
+  ],
 };
 
 export function getPermissionsForRoles(roles: Role[]): Permission[] {

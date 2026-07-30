@@ -6,7 +6,9 @@ import { Extintor, ExtintorSchema } from './schema/extintor.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Extintor.name, schema: ExtintorSchema }]),
+    MongooseModule.forFeature([
+      { name: Extintor.name, schema: ExtintorSchema },
+    ]),
   ],
   controllers: [ExtintorController],
   providers: [ExtintorService],

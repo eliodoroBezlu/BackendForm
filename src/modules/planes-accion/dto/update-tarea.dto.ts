@@ -1,5 +1,11 @@
 import { ApiProperty, PartialType } from '@nestjs/swagger';
-import { IsEnum, IsBoolean, IsOptional, IsArray, ValidateNested } from 'class-validator';
+import {
+  IsEnum,
+  IsBoolean,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
 import { AddTareaDto, EvidenciaDto } from './add-tarea.dto';
 import { Type } from 'class-transformer';
 
@@ -14,10 +20,10 @@ export class UpdateTareaDto extends PartialType(AddTareaDto) {
   @IsBoolean()
   aprobado?: boolean;
 
-  @ApiProperty({ 
-    required: false, 
+  @ApiProperty({
+    required: false,
     type: [EvidenciaDto],
-    description: 'Archivos adjuntos como evidencia'
+    description: 'Archivos adjuntos como evidencia',
   })
   @IsOptional()
   @IsArray()

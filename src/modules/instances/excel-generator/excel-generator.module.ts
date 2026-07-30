@@ -23,7 +23,7 @@ import { ExcelIsopV7Service } from './excel-generator-isop.service';
     ExcelConfinadoService,
     ExcelElectricoCondicionesService,
     ExcelAlturav4Service,
-    ExcelIsopV7Service
+    ExcelIsopV7Service,
   ],
   exports: [
     ExcelCalienteService,
@@ -35,7 +35,7 @@ import { ExcelIsopV7Service } from './excel-generator-isop.service';
     ExcelConfinadoService,
     ExcelElectricoCondicionesService,
     ExcelAlturav4Service,
-    ExcelIsopV7Service
+    ExcelIsopV7Service,
   ],
 })
 export class ExcelIsoIroModule {}

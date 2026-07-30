@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelIzajeService {
@@ -33,14 +34,14 @@ export class ExcelIzajeService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -76,7 +77,7 @@ export class ExcelIzajeService {
     try {
       const verificationList = instance.verificationList;
       // Fallback: usar los valores por posición
-      
+
       const valores = Array.from(verificationList.values());
 
       // Mapeo basado en la estructura real de datos
@@ -135,14 +136,12 @@ export class ExcelIzajeService {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-           
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -154,7 +153,6 @@ export class ExcelIzajeService {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -196,18 +194,23 @@ export class ExcelIzajeService {
     instance: Instance,
   ) {
     try {
-      
       if (!instance.sections || instance.sections.length === 0) {
         this.logger.warn('No se encontraron secciones en la instancia');
         return;
       }
 
       const sectionPositions = [
-        { startRow: 32, name: 'A.  REQUISITOS PARA LA OPERACIÓN DE EQUIPOS DE IZAJE Y DE CARGA' },
+        {
+          startRow: 32,
+          name: 'A.  REQUISITOS PARA LA OPERACIÓN DE EQUIPOS DE IZAJE Y DE CARGA',
+        },
         { startRow: 39, name: 'B. CONDICIONES GENERALES DE SEGURIDAD' }, // Ajustar según la plantilla
         { startRow: 56, name: 'C. IZAJE O LEVANTE DE CARGAS / PERSONAS' },
         { startRow: 93, name: 'D. MANEJO DE ELEMENTOS Y ACCESORIOS DE IZAJE' }, // Ajustar según la plantilla
-        { startRow: 103, name: 'E. APARATOS MENORES DE IZAJE – TECLES MANUALES' },
+        {
+          startRow: 103,
+          name: 'E. APARATOS MENORES DE IZAJE – TECLES MANUALES',
+        },
         { startRow: 124, name: 'F. ELEMENTOS Y ACCESORIOS DE IZAJE' }, // Ajustar según la plantilla
       ];
 
@@ -230,8 +233,6 @@ export class ExcelIzajeService {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 

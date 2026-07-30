@@ -1,9 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreateClasificacionDto } from './dto/create-clasificacion.dto';
 import { UpdateClasificacionDto } from './dto/update-clasificacion.dto';
-import { Clasificacion, ClasificacionDocument } from './schemas/clasificacion.schema';
+import {
+  Clasificacion,
+  ClasificacionDocument,
+} from './schemas/clasificacion.schema';
 
 @Injectable()
 export class ClasificacionService {
@@ -14,14 +21,20 @@ export class ClasificacionService {
 
   async create(createDto: CreateClasificacionDto): Promise<Clasificacion> {
     const nombreClean = createDto.nombre.trim();
-    
+
     // Check duplication case-insensitive
-    const exists = await this.clasificacionModel.findOne({
-      nombre: { $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i') }
-    }).exec();
+    const exists = await this.clasificacionModel
+      .findOne({
+        nombre: {
+          $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i'),
+        },
+      })
+      .exec();
 
     if (exists) {
-      throw new ConflictException(`La clasificación '${nombreClean}' ya existe`);
+      throw new ConflictException(
+        `La clasificación '${nombreClean}' ya existe`,
+      );
     }
 
     const created = new this.clasificacionModel({
@@ -46,9 +59,11 @@ export class ClasificacionService {
 
   async findByNameOrCreate(name: string): Promise<Clasificacion> {
     const nameClean = name.trim();
-    let item = await this.clasificacionModel.findOne({
-      nombre: { $regex: new RegExp(`^${this.escapeRegex(nameClean)}$`, 'i') }
-    }).exec();
+    let item = await this.clasificacionModel
+      .findOne({
+        nombre: { $regex: new RegExp(`^${this.escapeRegex(nameClean)}$`, 'i') },
+      })
+      .exec();
 
     if (!item) {
       item = new this.clasificacionModel({
@@ -60,21 +75,32 @@ export class ClasificacionService {
     return item;
   }
 
-  async update(id: string, updateDto: UpdateClasificacionDto): Promise<Clasificacion> {
+  async update(
+    id: string,
+    updateDto: UpdateClasificacionDto,
+  ): Promise<Clasificacion> {
     if (updateDto.nombre) {
       const nombreClean = updateDto.nombre.trim();
-      const exists = await this.clasificacionModel.findOne({
-        nombre: { $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i') },
-        _id: { $ne: id }
-      }).exec();
+      const exists = await this.clasificacionModel
+        .findOne({
+          nombre: {
+            $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i'),
+          },
+          _id: { $ne: id },
+        })
+        .exec();
 
       if (exists) {
-        throw new ConflictException(`La clasificación '${nombreClean}' ya existe`);
+        throw new ConflictException(
+          `La clasificación '${nombreClean}' ya existe`,
+        );
       }
       updateDto.nombre = nombreClean;
     }
 
-    const updated = await this.clasificacionModel.findByIdAndUpdate(id, updateDto, { new: true }).exec();
+    const updated = await this.clasificacionModel
+      .findByIdAndUpdate(id, updateDto, { new: true })
+      .exec();
     if (!updated) {
       throw new NotFoundException(`Clasificación con ID ${id} no encontrada`);
     }

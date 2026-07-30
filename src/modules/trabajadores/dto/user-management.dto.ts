@@ -1,4 +1,11 @@
-import { IsString, IsEmail, IsOptional, IsArray, IsBoolean, MinLength } from 'class-validator';
+import {
+  IsString,
+  IsEmail,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserForWorkerDto {
@@ -12,7 +19,10 @@ export class CreateUserForWorkerDto {
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ description: 'Contraseña inicial (opcional, se genera automática si no se proporciona)' })
+  @ApiPropertyOptional({
+    description:
+      'Contraseña inicial (opcional, se genera automática si no se proporciona)',
+  })
   @IsOptional()
   @IsString()
   @MinLength(8)
@@ -23,7 +33,10 @@ export class CreateUserForWorkerDto {
   @IsArray()
   roles?: string[];
 
-  @ApiPropertyOptional({ description: 'Si la contraseña es temporal', default: true })
+  @ApiPropertyOptional({
+    description: 'Si la contraseña es temporal',
+    default: true,
+  })
   @IsOptional()
   @IsBoolean()
   temporary_password?: boolean;

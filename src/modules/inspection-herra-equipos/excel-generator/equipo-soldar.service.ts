@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelEquipoSoldarService {
@@ -48,14 +49,14 @@ export class ExcelEquipoSoldarService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -111,10 +112,10 @@ export class ExcelEquipoSoldarService {
       worksheet.getCell('G6').value = valores[1] || ''; // superintendencia
       worksheet.getCell('C7').value = valores[2] || ''; // empresa
       worksheet.getCell('G7').value = valores[3] || ''; // fecha
-      worksheet.getCell('C8').value = valores[4] || ''; // ubicacion 
+      worksheet.getCell('C8').value = valores[4] || ''; // ubicacion
       worksheet.getCell('G8').value = valores[5] || ''; // identificacion
       worksheet.getCell('C9').value = valores[6] || ''; // marca
-       worksheet.getCell('G9').value = valores[7] || ''; // serial
+      worksheet.getCell('G9').value = valores[7] || ''; // serial
 
       this.logger.log('Campos de verificación completados exitosamente');
     } catch (error) {
@@ -228,7 +229,12 @@ export class ExcelEquipoSoldarService {
 
       // Configuración de todas las secciones posibles
       const allSections = [
-        { id: 'section_0', startRow: 15, endRow: 28, name: 'Máquina de Soldar' },
+        {
+          id: 'section_0',
+          startRow: 15,
+          endRow: 28,
+          name: 'Máquina de Soldar',
+        },
         { id: 'section_1', startRow: 30, endRow: 34, name: 'Cables' },
       ];
 
@@ -264,57 +270,55 @@ export class ExcelEquipoSoldarService {
           let currentRow = sectionConfig.startRow;
 
           // Procesar preguntas
-          Object.entries(sectionResponses as Record<string, any>).forEach(
-            ([questionId, response]) => {
-              if (currentRow > sectionConfig.endRow) {
-                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-                return;
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
+            if (currentRow > sectionConfig.endRow) {
+              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+              return;
+            }
+
+            try {
+              // Limpiar celdas
+              worksheet.getCell(`${siCol}${currentRow}`).value = '';
+              worksheet.getCell(`${noCol}${currentRow}`).value = '';
+              worksheet.getCell(`${naCol}${currentRow}`).value = '';
+
+              // Procesar respuesta
+              if (response.value !== undefined && response.value !== null) {
+                const valor = String(response.value).toLowerCase().trim();
+
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
+                  worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
+                  worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                } else if (valor === 'na' || valor === 'n/a') {
+                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                }
               }
 
-              try {
-                // Limpiar celdas
-                worksheet.getCell(`${siCol}${currentRow}`).value = '';
-                worksheet.getCell(`${noCol}${currentRow}`).value = '';
-                worksheet.getCell(`${naCol}${currentRow}`).value = '';
-
-                // Procesar respuesta
-                if (response.value !== undefined && response.value !== null) {
-                  const valor = String(response.value).toLowerCase().trim();
-
-                  if (
-                    valor === 'bueno' ||
-                    valor === 'si' ||
-                    valor === 'true' ||
-                    valor === '1'
-                  ) {
-                    worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-                  } else if (
-                    valor === 'malo' ||
-                    valor === 'no' ||
-                    valor === 'false' ||
-                    valor === '0'
-                  ) {
-                    worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
-                  } else if (valor === 'na' || valor === 'n/a') {
-                    worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
-                  }
-                }
-
-                // Observaciones
-                if (response.observacion?.trim()) {
-                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                    response.observacion;
-                }
-
-                currentRow++;
-              } catch (error) {
-                this.logger.error(
-                  `Error en fila ${currentRow}: ${error.message}`,
-                );
-                currentRow++;
+              // Observaciones
+              if (response.observacion?.trim()) {
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
               }
-            },
-          );
+
+              currentRow++;
+            } catch (error) {
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
+              currentRow++;
+            }
+          });
         },
       );
 

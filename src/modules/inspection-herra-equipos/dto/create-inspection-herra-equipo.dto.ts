@@ -1,15 +1,14 @@
-
 // dto/create-inspection-herra-equipo.dto.ts
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsObject, 
-  IsOptional, 
-  IsEnum, 
+import {
+  IsString,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsEnum,
   IsDateString,
   IsArray,
   IsBoolean,
-  IsMongoId
+  IsMongoId,
 } from 'class-validator';
 import { InspectionStatus } from '../types/IProps';
 

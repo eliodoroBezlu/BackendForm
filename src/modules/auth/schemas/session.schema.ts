@@ -4,8 +4,6 @@ import { Document, Types } from 'mongoose';
 
 @Schema({ timestamps: true }) // ← Agrega createdAt y updatedAt automáticamente
 export class Session extends Document {
-
-  
   _id: Types.ObjectId;
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;

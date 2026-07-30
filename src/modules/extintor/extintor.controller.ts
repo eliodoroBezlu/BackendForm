@@ -62,7 +62,8 @@ export class ExtintorController {
         tag,
         codigo,
         activo: activo !== undefined ? activo === 'true' : undefined,
-        inspeccionado: inspeccionado !== undefined ? inspeccionado === 'true' : undefined,
+        inspeccionado:
+          inspeccionado !== undefined ? inspeccionado === 'true' : undefined,
       };
 
       return await this.extintorService.findWithFilters(filtros);
@@ -185,9 +186,10 @@ export class ExtintorController {
     @Body('codigosExtintores') codigosExtintores: string[],
   ) {
     try {
-      const resultado = await this.extintorService.marcarExtintoresComoInspeccionados(
-        codigosExtintores,
-      );
+      const resultado =
+        await this.extintorService.marcarExtintoresComoInspeccionados(
+          codigosExtintores,
+        );
       return resultado;
     } catch (error) {
       throw new HttpException(
@@ -203,9 +205,10 @@ export class ExtintorController {
     @Body('codigosExtintores') codigosExtintores?: string[],
   ) {
     try {
-      const resultado = await this.extintorService.resetearEstadoInspeccionado(
-        codigosExtintores,
-      );
+      const resultado =
+        await this.extintorService.resetearEstadoInspeccionado(
+          codigosExtintores,
+        );
       return resultado;
     } catch (error) {
       throw new HttpException(

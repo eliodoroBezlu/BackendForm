@@ -5,6 +5,12 @@ import { Superintendencia } from '../../superintendencia/schema/superintendencia
 
 @Schema() // Define que esta clase es un esquema de Mongoose
 export class Area extends Document {
+  // Código JDE del área — clave de sincronización con el catálogo del IAM
+  // Core. Opcional/sparse porque las áreas creadas antes de la sincronización
+  // no lo tienen hasta que el sync las empareja por nombre.
+  @Prop({ unique: true, sparse: true })
+  codigo?: string;
+
   @Prop({ required: true }) // Define una propiedad con validación "required"
   nombre: string;
 

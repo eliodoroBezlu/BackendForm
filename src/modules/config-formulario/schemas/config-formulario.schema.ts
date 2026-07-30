@@ -34,4 +34,5 @@ export class ConfigFormulario extends Document {
 }
 
 export type ConfigFormularioDocument = ConfigFormulario & Document;
-export const ConfigFormularioSchema = SchemaFactory.createForClass(ConfigFormulario);
+export const ConfigFormularioSchema =
+  SchemaFactory.createForClass(ConfigFormulario);

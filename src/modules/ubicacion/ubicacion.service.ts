@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreateUbicacionDto } from './dto/create-ubicacion.dto';
@@ -14,11 +18,15 @@ export class UbicacionService {
 
   async create(createDto: CreateUbicacionDto): Promise<Ubicacion> {
     const nombreClean = createDto.nombre.trim();
-    
+
     // Check duplication case-insensitive
-    const exists = await this.ubicacionModel.findOne({
-      nombre: { $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i') }
-    }).exec();
+    const exists = await this.ubicacionModel
+      .findOne({
+        nombre: {
+          $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i'),
+        },
+      })
+      .exec();
 
     if (exists) {
       throw new ConflictException(`La ubicación '${nombreClean}' ya existe`);
@@ -46,9 +54,11 @@ export class UbicacionService {
 
   async findByNameOrCreate(name: string): Promise<Ubicacion> {
     const nameClean = name.trim();
-    let item = await this.ubicacionModel.findOne({
-      nombre: { $regex: new RegExp(`^${this.escapeRegex(nameClean)}$`, 'i') }
-    }).exec();
+    let item = await this.ubicacionModel
+      .findOne({
+        nombre: { $regex: new RegExp(`^${this.escapeRegex(nameClean)}$`, 'i') },
+      })
+      .exec();
 
     if (!item) {
       item = new this.ubicacionModel({
@@ -63,10 +73,14 @@ export class UbicacionService {
   async update(id: string, updateDto: UpdateUbicacionDto): Promise<Ubicacion> {
     if (updateDto.nombre) {
       const nombreClean = updateDto.nombre.trim();
-      const exists = await this.ubicacionModel.findOne({
-        nombre: { $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i') },
-        _id: { $ne: id }
-      }).exec();
+      const exists = await this.ubicacionModel
+        .findOne({
+          nombre: {
+            $regex: new RegExp(`^${this.escapeRegex(nombreClean)}$`, 'i'),
+          },
+          _id: { $ne: id },
+        })
+        .exec();
 
       if (exists) {
         throw new ConflictException(`La ubicación '${nombreClean}' ya existe`);
@@ -74,7 +88,9 @@ export class UbicacionService {
       updateDto.nombre = nombreClean;
     }
 
-    const updated = await this.ubicacionModel.findByIdAndUpdate(id, updateDto, { new: true }).exec();
+    const updated = await this.ubicacionModel
+      .findByIdAndUpdate(id, updateDto, { new: true })
+      .exec();
     if (!updated) {
       throw new NotFoundException(`Ubicación con ID ${id} no encontrada`);
     }

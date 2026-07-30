@@ -1,4 +1,11 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsMongoId, IsObject } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsMongoId,
+  IsObject,
+} from 'class-validator';
 
 export class CreateEquipoDto {
   @IsString()

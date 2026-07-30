@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsBoolean, IsOptional, IsMongoId } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsBoolean,
+  IsOptional,
+  IsMongoId,
+} from 'class-validator';
 
 export class CreateAreaDto {
   @IsString()

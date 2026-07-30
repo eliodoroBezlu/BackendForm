@@ -6,6 +6,7 @@ import type {
   FormularioInspeccionEmergencia,
   InspeccionExtintor,
 } from '../schemas/inspeccion-emergencia.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 @Injectable()
 export class InspeccionesEmergenciaExcelService {
   private readonly templatePath: string;
@@ -41,11 +42,14 @@ export class InspeccionesEmergenciaExcelService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(base64Data, "base64") as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const [startCellRef, endCellRef] = cellRange.split(':');

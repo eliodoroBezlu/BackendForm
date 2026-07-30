@@ -1,24 +1,23 @@
-import { IsOptional, IsString, IsDateString, IsEnum } from "class-validator"
+import { IsOptional, IsString, IsDateString, IsEnum } from 'class-validator';
 
 export class FilterInspeccionesDto {
   @IsOptional()
   @IsDateString()
-  startDate?: string
+  startDate?: string;
 
   @IsOptional()
   @IsDateString()
-  endDate?: string
+  endDate?: string;
 
   @IsOptional()
   @IsString()
-  superintendencia?: string
+  superintendencia?: string;
 
   @IsOptional()
-  @IsEnum(["SI", "NO"])
-  operativo?: "SI" | "NO"
+  @IsEnum(['SI', 'NO'])
+  operativo?: 'SI' | 'NO';
 
   @IsOptional()
   @IsString()
-  numInspeccion?: string
+  numInspeccion?: string;
 }
-

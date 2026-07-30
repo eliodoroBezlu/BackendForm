@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { Instance } from '../schemas/instance.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelElectricoCondicionesService {
@@ -33,14 +34,14 @@ export class ExcelElectricoCondicionesService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -135,14 +136,12 @@ export class ExcelElectricoCondicionesService {
           if (member.nombre) {
             worksheet.getCell(`${nameColumn}${currentRow}`).value =
               member.nombre;
-            
           }
 
           // Cargo del miembro
           if (member.cargo) {
             worksheet.getCell(`${cargoColumn}${currentRow}`).value =
               member.cargo;
-            
           }
 
           // Firma del miembro (si es base64, insertar como imagen)
@@ -154,7 +153,6 @@ export class ExcelElectricoCondicionesService {
                 member.firma,
                 `${firmaColumn}${currentRow}`,
               );
-              
             }
           }
 
@@ -196,7 +194,6 @@ export class ExcelElectricoCondicionesService {
     instance: Instance,
   ) {
     try {
-      
       if (!instance.sections || instance.sections.length === 0) {
         this.logger.warn('No se encontraron secciones en la instancia');
         return;
@@ -204,7 +201,10 @@ export class ExcelElectricoCondicionesService {
 
       const sectionPositions = [
         { startRow: 33, name: 'A. INSTALACIÓN ELÉCTRICA GENERAL' },
-        { startRow: 45, name: 'B. TABLEROS ELÉCTRICOS   (Aplicar I.T. eléctrico y asegurarse que esté bloqueado antes de abrir el tablero)' }, // Ajustar según la plantilla
+        {
+          startRow: 45,
+          name: 'B. TABLEROS ELÉCTRICOS   (Aplicar I.T. eléctrico y asegurarse que esté bloqueado antes de abrir el tablero)',
+        }, // Ajustar según la plantilla
         { startRow: 64, name: 'C. CANALIZACIÓN' },
         { startRow: 72, name: 'D. EXTENSIONES' }, // Ajustar según la plantilla
         { startRow: 80, name: 'E. LÁMPARAS, ARTEFACTOS Y EQUIPOS ELÉCTRICOS' },
@@ -231,8 +231,6 @@ export class ExcelElectricoCondicionesService {
           );
           continue;
         }
-
-        
 
         let currentRow = sectionInfo.startRow;
 

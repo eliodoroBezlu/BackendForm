@@ -17,7 +17,7 @@ interface FiltrosExtintor {
 @Injectable()
 export class ExtintorService {
   private readonly logger = new Logger(ExtintorService.name);
-  
+
   constructor(
     @InjectModel(Extintor.name)
     private readonly extintorModel: Model<Extintor>,
@@ -50,7 +50,7 @@ export class ExtintorService {
       }
 
       const extintor = await this.extintorModel.findById(id).exec();
-      
+
       if (!extintor) {
         throw new NotFoundException('Extintor no encontrado');
       }
@@ -63,7 +63,7 @@ export class ExtintorService {
 
   async findWithFilters(filtros: FiltrosExtintor) {
     try {
-      let query: any = {};
+      const query: any = {};
 
       if (filtros.area) {
         query.area = new RegExp(filtros.area, 'i');
@@ -83,14 +83,16 @@ export class ExtintorService {
 
       return await this.extintorModel.find(query).exec();
     } catch (error) {
-      throw new Error(`Error al buscar extintores con filtros: ${error.message}`);
+      throw new Error(
+        `Error al buscar extintores con filtros: ${error.message}`,
+      );
     }
   }
 
   async findByTag(tag: string) {
     try {
       console.log('Servicio - Buscando tag:', tag);
-      
+
       const result = await this.extintorModel
         .find({
           tag: new RegExp(`^${tag}$`, 'i'),
@@ -101,34 +103,34 @@ export class ExtintorService {
         .lean()
         .exec();
 
-      const uniqueTags = [...new Set(result.map(extintor => extintor.tag))];
+      const uniqueTags = [...new Set(result.map((extintor) => extintor.tag))];
       const tagCountMap = {};
-      
+
       for (const tagItem of uniqueTags) {
         const count = await this.extintorModel
-          .countDocuments({ 
+          .countDocuments({
             tag: tagItem,
-            activo: true 
+            activo: true,
           })
           .exec();
         tagCountMap[tagItem] = count;
       }
 
-      const extintoresConTotal = result.map(extintor => ({
+      const extintoresConTotal = result.map((extintor) => ({
         ...extintor,
-        totalActivos: tagCountMap[extintor.tag]
+        totalActivos: tagCountMap[extintor.tag],
       }));
 
       const totalExtintoresActivosArea = await this.extintorModel
-        .countDocuments({ 
+        .countDocuments({
           tag: new RegExp(`^${tag}$`, 'i'),
-          activo: true 
+          activo: true,
         })
         .exec();
 
       return {
         extintores: extintoresConTotal,
-        totalActivosArea: totalExtintoresActivosArea
+        totalActivosArea: totalExtintoresActivosArea,
       };
     } catch (error) {
       console.error('Error en findByTag service:', error);
@@ -139,7 +141,7 @@ export class ExtintorService {
   async findByArea(area: string) {
     try {
       console.log('Servicio - Buscando área:', area);
-      
+
       const result = await this.extintorModel
         .find({
           area: new RegExp(area, 'i'),
@@ -149,34 +151,34 @@ export class ExtintorService {
         .lean()
         .exec();
 
-      const uniqueAreas = [...new Set(result.map(extintor => extintor.area))];
+      const uniqueAreas = [...new Set(result.map((extintor) => extintor.area))];
       const areaCountMap = {};
-      
+
       for (const areaItem of uniqueAreas) {
         const count = await this.extintorModel
-          .countDocuments({ 
+          .countDocuments({
             area: areaItem,
-            activo: true 
+            activo: true,
           })
           .exec();
         areaCountMap[areaItem] = count;
       }
 
-      const extintoresConTotal = result.map(extintor => ({
+      const extintoresConTotal = result.map((extintor) => ({
         ...extintor,
-        totalActivos: areaCountMap[extintor.area]
+        totalActivos: areaCountMap[extintor.area],
       }));
 
       const totalExtintoresActivosArea = await this.extintorModel
-        .countDocuments({ 
+        .countDocuments({
           area: new RegExp(area, 'i'),
-          activo: true 
+          activo: true,
         })
         .exec();
 
       return {
         extintores: extintoresConTotal,
-        totalActivosArea: totalExtintoresActivosArea
+        totalActivosArea: totalExtintoresActivosArea,
       };
     } catch (error) {
       console.error('Error en findByArea service:', error);
@@ -233,7 +235,7 @@ export class ExtintorService {
       }
 
       const result = await this.extintorModel.findByIdAndDelete(id).exec();
-      
+
       if (!result) {
         throw new NotFoundException('Extintor no encontrado');
       }
@@ -276,9 +278,9 @@ export class ExtintorService {
         };
       }
 
-      return { 
-        exito: true, 
-        mensaje: 'Extintor desactivado correctamente' 
+      return {
+        exito: true,
+        mensaje: 'Extintor desactivado correctamente',
       };
     } catch (error) {
       console.error('Error al desactivar el extintor:', error);
@@ -367,7 +369,7 @@ export class ExtintorService {
     return { creados, actualizados };
   }
 
-   @Cron('59 23 * * *', {
+  @Cron('59 23 * * *', {
     name: 'reseteo-extintores-fin-mes',
     timeZone: 'America/La_Paz', // ← Ajusta tu zona horaria
   })
@@ -382,14 +384,14 @@ export class ExtintorService {
     if (!esFinDeMes) {
       // No logear nada para evitar spam, o usar debug
       this.logger.debug(
-        `⏭️ Hoy no es fin de mes (${ahora.getDate()}/${ahora.getMonth() + 1}). Saltando.`
+        `⏭️ Hoy no es fin de mes (${ahora.getDate()}/${ahora.getMonth() + 1}). Saltando.`,
       );
       return { executed: false, reason: 'No es fin de mes' };
     }
 
     try {
       this.logger.log(
-        `🔥 ÚLTIMO DÍA DEL MES (${ahora.getDate()}/${ahora.getMonth() + 1}/${ahora.getFullYear()}) - Reseteando extintores...`
+        `🔥 ÚLTIMO DÍA DEL MES (${ahora.getDate()}/${ahora.getMonth() + 1}/${ahora.getFullYear()}) - Reseteando extintores...`,
       );
 
       const resultado = await this.extintorModel.updateMany(
@@ -398,7 +400,7 @@ export class ExtintorService {
       );
 
       this.logger.log(
-        `✅ Reseteo fin de mes completado exitosamente. ${resultado.modifiedCount} extintores actualizados.`
+        `✅ Reseteo fin de mes completado exitosamente. ${resultado.modifiedCount} extintores actualizados.`,
       );
 
       // Opcional: Guardar log en BD para auditoría
@@ -415,7 +417,6 @@ export class ExtintorService {
         mes: ahora.getMonth() + 1,
         año: ahora.getFullYear(),
       };
-
     } catch (error) {
       this.logger.error(
         `❌ Error en reseteo automático fin de mes: ${error.message}`,

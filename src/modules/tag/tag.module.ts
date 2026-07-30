@@ -7,7 +7,7 @@ import { OrdenTrabajo, OrdenTrabajoSchema } from './schema/tag.schema';
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: OrdenTrabajo.name, schema: OrdenTrabajoSchema }
+      { name: OrdenTrabajo.name, schema: OrdenTrabajoSchema },
     ]),
   ],
   controllers: [TagController],

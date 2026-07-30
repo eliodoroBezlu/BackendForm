@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schema/tag.schema';
@@ -19,9 +24,11 @@ export class TagService {
     }
 
     // Verificar si el tag ya existe
-    const exists = await this.ordenTrabajoModel.findOne({
-      tag: createDto.tag
-    }).exec();
+    const exists = await this.ordenTrabajoModel
+      .findOne({
+        tag: createDto.tag,
+      })
+      .exec();
 
     if (exists) {
       throw new ConflictException(`El tag ${createDto.tag} ya existe`);
@@ -31,7 +38,7 @@ export class TagService {
       const created = new this.ordenTrabajoModel({
         tag: createDto.tag.trim(), // Limpiar espacios
         area: createDto.area.trim(),
-        activo: createDto.activo !== undefined ? createDto.activo : true
+        activo: createDto.activo !== undefined ? createDto.activo : true,
       });
 
       return await created.save();
@@ -50,7 +57,7 @@ export class TagService {
       const areaTrimmed = area.trim();
 
       // Primero intentar búsqueda exacta
-      let resultados = await this.ordenTrabajoModel
+      const resultados = await this.ordenTrabajoModel
         .find({
           area: areaTrimmed,
           activo: true,
@@ -60,7 +67,6 @@ export class TagService {
         .exec();
 
       const tags = resultados.map((doc) => doc.tag);
-      
 
       return tags;
     } catch (error) {
@@ -83,25 +89,29 @@ export class TagService {
   async update(id: string, updateTagDto: UpdateTagDto): Promise<OrdenTrabajo> {
     // Si se está actualizando el tag, verificar que no exista otro con el mismo nombre
     if (updateTagDto.tag) {
-      const exists = await this.ordenTrabajoModel.findOne({
-        tag: updateTagDto.tag,
-        _id: { $ne: id } // Excluir el documento actual
-      }).exec();
+      const exists = await this.ordenTrabajoModel
+        .findOne({
+          tag: updateTagDto.tag,
+          _id: { $ne: id }, // Excluir el documento actual
+        })
+        .exec();
 
       if (exists) {
         throw new ConflictException(`El tag ${updateTagDto.tag} ya existe`);
       }
     }
 
-    const updated = await this.ordenTrabajoModel.findByIdAndUpdate(
-      id,
-      { 
-        ...updateTagDto,
-        tag: updateTagDto.tag?.trim(),
-        area: updateTagDto.area?.trim()
-      },
-      { new: true, runValidators: true }
-    ).exec();
+    const updated = await this.ordenTrabajoModel
+      .findByIdAndUpdate(
+        id,
+        {
+          ...updateTagDto,
+          tag: updateTagDto.tag?.trim(),
+          area: updateTagDto.area?.trim(),
+        },
+        { new: true, runValidators: true },
+      )
+      .exec();
 
     if (!updated) {
       throw new NotFoundException(`Tag con ID ${id} no encontrado`);
@@ -119,11 +129,9 @@ export class TagService {
   }
 
   async desactivar(id: string): Promise<OrdenTrabajo> {
-    const updated = await this.ordenTrabajoModel.findByIdAndUpdate(
-      id,
-      { activo: false },
-      { new: true }
-    ).exec();
+    const updated = await this.ordenTrabajoModel
+      .findByIdAndUpdate(id, { activo: false }, { new: true })
+      .exec();
 
     if (!updated) {
       throw new NotFoundException(`Tag con ID ${id} no encontrado`);
@@ -133,11 +141,9 @@ export class TagService {
   }
 
   async activar(id: string): Promise<OrdenTrabajo> {
-    const updated = await this.ordenTrabajoModel.findByIdAndUpdate(
-      id,
-      { activo: true },
-      { new: true }
-    ).exec();
+    const updated = await this.ordenTrabajoModel
+      .findByIdAndUpdate(id, { activo: true }, { new: true })
+      .exec();
 
     if (!updated) {
       throw new NotFoundException(`Tag con ID ${id} no encontrado`);

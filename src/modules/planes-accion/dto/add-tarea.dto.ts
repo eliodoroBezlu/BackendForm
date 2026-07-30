@@ -1,6 +1,14 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from "class-validator";
+import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 
 export class EvidenciaDto {
   @ApiProperty({ description: 'Nombre del archivo' })
@@ -68,6 +76,14 @@ export class AddTareaDto {
   @IsString()
   responsableAreaCierre: string;
 
+  @ApiProperty({
+    required: false,
+    description: 'Username del trabajador asignado como responsable de cierre',
+  })
+  @IsOptional()
+  @IsString()
+  responsableAreaCierreUsername?: string;
+
   @ApiProperty()
   @IsString()
   fechaCumplimientoAcordada: string;
@@ -77,10 +93,10 @@ export class AddTareaDto {
   @IsString()
   fechaCumplimientoEfectiva?: string;
 
-  @ApiProperty({ 
-    required: false, 
+  @ApiProperty({
+    required: false,
     type: [EvidenciaDto],
-    description: 'Archivos adjuntos como evidencia'
+    description: 'Archivos adjuntos como evidencia',
   })
   @IsOptional()
   @IsArray()

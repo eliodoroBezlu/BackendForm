@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
+import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
 
 @Injectable()
 export class ExcelVehicleService {
@@ -48,14 +49,14 @@ export class ExcelVehicleService {
   ) {
     try {
       const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const imageBuffer: ExcelJS.Buffer = Buffer.from(
-        base64Data,
-        'base64',
-      ) as unknown as ExcelJS.Buffer;
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
       const imageId = worksheet.workbook.addImage({
         buffer: imageBuffer,
-        extension: 'png',
+        extension: 'jpeg',
       });
 
       const { row, col } = this.getCellCoordinates(cellRef);
@@ -129,242 +130,301 @@ export class ExcelVehicleService {
   }
 
   private async marcarCasilla(
-  worksheet: ExcelJS.Worksheet,
-  cellRef: string,
-  marcado: boolean
-) {
-  const CASILLA_MARCADA = '☒';
-  const CASILLA_VACIA = '☐';
-  
-  const cell = worksheet.getCell(cellRef);
-  cell.value = marcado ? CASILLA_MARCADA : CASILLA_VACIA;
-  
-  // Aplicar formato centrado
-  cell.alignment = {
-    vertical: 'middle',
-    horizontal: 'center'
-  };
-}
+    worksheet: ExcelJS.Worksheet,
+    cellRef: string,
+    marcado: boolean,
+  ) {
+    const CASILLA_MARCADA = '☒';
+    const CASILLA_VACIA = '☐';
+
+    const cell = worksheet.getCell(cellRef);
+    cell.value = marcado ? CASILLA_MARCADA : CASILLA_VACIA;
+
+    // Aplicar formato centrado
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
+  }
 
   /**
    * Llena los datos específicos del vehículo (tipo inspección, certificación, etc.)
    */
   private async llenarDatosVehiculo(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    if (!inspection.vehicle) {
-      this.logger.warn('No se encontraron datos específicos del vehículo');
-      return;
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (!inspection.vehicle) {
+        this.logger.warn('No se encontraron datos específicos del vehículo');
+        return;
+      }
+
+      this.logger.log('Iniciando llenado de datos específicos del vehículo');
+
+      // Tipo de inspección
+      if (inspection.vehicle.tipoInspeccion) {
+        const tipoInspeccion = inspection.vehicle.tipoInspeccion.toLowerCase();
+
+        await this.marcarCasilla(
+          worksheet,
+          'D4',
+          tipoInspeccion.includes('inicial'),
+        );
+        await this.marcarCasilla(
+          worksheet,
+          'F4',
+          tipoInspeccion.includes('periódica') ||
+            tipoInspeccion.includes('periodica'),
+        );
+      }
+
+      // Certificación MSC
+      if (inspection.vehicle.certificacionMSC) {
+        const certificacion = inspection.vehicle.certificacionMSC.toLowerCase();
+
+        const siCertificado =
+          certificacion.includes('si') ||
+          certificacion.includes('sí') ||
+          certificacion === 'true';
+        const noCertificado =
+          certificacion.includes('no') || certificacion === 'false';
+
+        await this.marcarCasilla(worksheet, 'K4', siCertificado);
+        await this.marcarCasilla(worksheet, 'M4', noCertificado);
+      }
+
+      // Fecha próxima inspección
+      if (inspection.vehicle.fechaProximaInspeccion) {
+        worksheet.getCell('D81').value =
+          inspection.vehicle.fechaProximaInspeccion;
+      }
+
+      // Responsable próxima inspección
+      if (inspection.vehicle.responsableProximaInspeccion) {
+        worksheet.getCell('D82').value =
+          inspection.vehicle.responsableProximaInspeccion;
+      }
+
+      this.logger.log('Datos específicos del vehículo completados');
+    } catch (error) {
+      this.logger.error(`Error al llenar datos del vehículo: ${error.message}`);
+      throw error;
     }
-
-    this.logger.log('Iniciando llenado de datos específicos del vehículo');
-
-    // Tipo de inspección
-    if (inspection.vehicle.tipoInspeccion) {
-      const tipoInspeccion = inspection.vehicle.tipoInspeccion.toLowerCase();
-      
-      await this.marcarCasilla(worksheet, 'D4', tipoInspeccion.includes('inicial'));
-      await this.marcarCasilla(worksheet, 'F4', tipoInspeccion.includes('periódica') || tipoInspeccion.includes('periodica'));
-    }
-
-    // Certificación MSC
-    if (inspection.vehicle.certificacionMSC) {
-      const certificacion = inspection.vehicle.certificacionMSC.toLowerCase();
-      
-      const siCertificado = certificacion.includes('si') || certificacion.includes('sí') || certificacion === 'true';
-      const noCertificado = certificacion.includes('no') || certificacion === 'false';
-      
-      await this.marcarCasilla(worksheet, 'K4', siCertificado);
-      await this.marcarCasilla(worksheet, 'M4', noCertificado);
-    }
-
-    // Fecha próxima inspección
-    if (inspection.vehicle.fechaProximaInspeccion) {
-      worksheet.getCell('D81').value = inspection.vehicle.fechaProximaInspeccion;
-    }
-
-    // Responsable próxima inspección
-    if (inspection.vehicle.responsableProximaInspeccion) {
-      worksheet.getCell('D82').value = inspection.vehicle.responsableProximaInspeccion;
-    }
-
-    this.logger.log('Datos específicos del vehículo completados');
-  } catch (error) {
-    this.logger.error(`Error al llenar datos del vehículo: ${error.message}`);
-    throw error;
   }
-}
 
   /**
    * Llena las respuestas de las preguntas de inspección
    */
   private async llenarRespuestas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de respuestas');
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de respuestas');
 
-    if (!inspection.responses || Object.keys(inspection.responses).length === 0) {
-      this.logger.warn('No se encontraron respuestas en la inspección');
-      return;
-    }
-
-    // Configuración de todas las secciones posibles
-    const allSections = [
-      { id: 'section_0', startRow: 17, endRow: 27, name: 'COMPARTIMIENTO MOTOR' },
-      { id: 'section_1', startRow: 29, endRow: 37, name: 'LUCES' },
-      { id: 'section_2', startRow: 39, endRow: 63, name: 'DOCUMENTOS Y ACCESORIOS' },
-      { id: 'section_3', startRow: 65, endRow: 68, name: 'NEUMÁTICOS' },
-      { id: 'compartimientoMotor', startRow: 17, endRow: 27, name: 'COMPARTIMIENTO MOTOR' },
-      { id: 'luces', startRow: 29, endRow: 37, name: 'LUCES' },
-      { id: 'documentosAccesorios', startRow: 39, endRow: 63, name: 'DOCUMENTOS Y ACCESORIOS' },
-      { id: 'neumaticos', startRow: 65, endRow: 68, name: 'NEUMÁTICOS' },
-    ];
-
-    // Columnas fijas
-    const buenoCol = 'F';
-    const maloCol = 'G';
-    const naCol = 'H';
-    const observacionesCol = 'I';
-
-    // Procesar cada sección que exista en las respuestas
-    Object.entries(inspection.responses).forEach(([sectionId, sectionResponses], index) => {
-      
-      // Encontrar configuración para esta sección
-      let sectionConfig = allSections.find(s => s.id === sectionId);
-      
-      // Si no se encuentra por ID exacto, usar por índice
-      if (!sectionConfig && index < allSections.length) {
-        sectionConfig = allSections[index];
-        this.logger.log(`Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`);
-      }
-
-      if (!sectionConfig) {
-        this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+      if (
+        !inspection.responses ||
+        Object.keys(inspection.responses).length === 0
+      ) {
+        this.logger.warn('No se encontraron respuestas en la inspección');
         return;
       }
 
-      this.logger.log(`Procesando: ${sectionConfig.name} (desde ${sectionId})`);
-      
-      let currentRow = sectionConfig.startRow;
+      // Configuración de todas las secciones posibles
+      const allSections = [
+        {
+          id: 'section_0',
+          startRow: 17,
+          endRow: 27,
+          name: 'COMPARTIMIENTO MOTOR',
+        },
+        { id: 'section_1', startRow: 29, endRow: 37, name: 'LUCES' },
+        {
+          id: 'section_2',
+          startRow: 39,
+          endRow: 63,
+          name: 'DOCUMENTOS Y ACCESORIOS',
+        },
+        { id: 'section_3', startRow: 65, endRow: 68, name: 'NEUMÁTICOS' },
+        {
+          id: 'compartimientoMotor',
+          startRow: 17,
+          endRow: 27,
+          name: 'COMPARTIMIENTO MOTOR',
+        },
+        { id: 'luces', startRow: 29, endRow: 37, name: 'LUCES' },
+        {
+          id: 'documentosAccesorios',
+          startRow: 39,
+          endRow: 63,
+          name: 'DOCUMENTOS Y ACCESORIOS',
+        },
+        { id: 'neumaticos', startRow: 65, endRow: 68, name: 'NEUMÁTICOS' },
+      ];
 
-      // Procesar preguntas
-      Object.entries(sectionResponses as Record<string, any>).forEach(([questionId, response]) => {
-        if (currentRow > sectionConfig.endRow) {
-          this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-          return;
-        }
+      // Columnas fijas
+      const buenoCol = 'F';
+      const maloCol = 'G';
+      const naCol = 'H';
+      const observacionesCol = 'I';
 
-        try {
-          // Limpiar celdas
-          worksheet.getCell(`${buenoCol}${currentRow}`).value = '';
-          worksheet.getCell(`${maloCol}${currentRow}`).value = '';
-          worksheet.getCell(`${naCol}${currentRow}`).value = '';
+      // Procesar cada sección que exista en las respuestas
+      Object.entries(inspection.responses).forEach(
+        ([sectionId, sectionResponses], index) => {
+          // Encontrar configuración para esta sección
+          let sectionConfig = allSections.find((s) => s.id === sectionId);
 
-          // Procesar respuesta
-          if (response.value !== undefined && response.value !== null) {
-            const valor = String(response.value).toLowerCase().trim();
-            
-            if (valor === 'bueno' || valor === 'si' || valor === 'true' || valor === '1') {
-              worksheet.getCell(`${buenoCol}${currentRow}`).value = 'X';
-            } else if (valor === 'malo' || valor === 'no' || valor === 'false' || valor === '0') {
-              worksheet.getCell(`${maloCol}${currentRow}`).value = 'X';
-            } else if (valor === 'na' || valor === 'n/a') {
-              worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+          // Si no se encuentra por ID exacto, usar por índice
+          if (!sectionConfig && index < allSections.length) {
+            sectionConfig = allSections[index];
+            this.logger.log(
+              `Sección ${sectionId} mapeada por índice a: ${sectionConfig.name}`,
+            );
+          }
+
+          if (!sectionConfig) {
+            this.logger.warn(`No se puede mapear la sección: ${sectionId}`);
+            return;
+          }
+
+          this.logger.log(
+            `Procesando: ${sectionConfig.name} (desde ${sectionId})`,
+          );
+
+          let currentRow = sectionConfig.startRow;
+
+          // Procesar preguntas
+          Object.entries(sectionResponses).forEach(([questionId, response]) => {
+            if (currentRow > sectionConfig.endRow) {
+              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+              return;
             }
-          }
 
-          // Observaciones
-          if (response.observacion?.trim()) {
-            worksheet.getCell(`${observacionesCol}${currentRow}`).value = response.observacion;
-          }
+            try {
+              // Limpiar celdas
+              worksheet.getCell(`${buenoCol}${currentRow}`).value = '';
+              worksheet.getCell(`${maloCol}${currentRow}`).value = '';
+              worksheet.getCell(`${naCol}${currentRow}`).value = '';
 
-          currentRow++;
-        } catch (error) {
-          this.logger.error(`Error en fila ${currentRow}: ${error.message}`);
-          currentRow++;
-        }
-      });
-    });
+              // Procesar respuesta
+              if (response.value !== undefined && response.value !== null) {
+                const valor = String(response.value).toLowerCase().trim();
 
-    this.logger.log('Respuestas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar respuestas: ${error.message}`);
-    throw error;
+                if (
+                  valor === 'bueno' ||
+                  valor === 'si' ||
+                  valor === 'true' ||
+                  valor === '1'
+                ) {
+                  worksheet.getCell(`${buenoCol}${currentRow}`).value = 'X';
+                } else if (
+                  valor === 'malo' ||
+                  valor === 'no' ||
+                  valor === 'false' ||
+                  valor === '0'
+                ) {
+                  worksheet.getCell(`${maloCol}${currentRow}`).value = 'X';
+                } else if (valor === 'na' || valor === 'n/a') {
+                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                }
+              }
+
+              // Observaciones
+              if (response.observacion?.trim()) {
+                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                  response.observacion;
+              }
+
+              currentRow++;
+            } catch (error) {
+              this.logger.error(
+                `Error en fila ${currentRow}: ${error.message}`,
+              );
+              currentRow++;
+            }
+          });
+        },
+      );
+
+      this.logger.log('Respuestas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar respuestas: ${error.message}`);
+      throw error;
+    }
   }
-}
   /**
    * Llena el diagrama de daños del vehículo
    */
   private async llenarDiagramaDanios(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    if (!inspection.vehicle) {
-      return;
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      if (!inspection.vehicle) {
+        return;
+      }
+
+      this.logger.log('Procesando diagrama de daños');
+
+      // Insertar imagen del diagrama de daños expandida en H71 hasta L85
+      if (inspection.vehicle.damageImageBase64) {
+        await this.insertarImagenExpandida(
+          worksheet,
+          inspection.vehicle.damageImageBase64,
+          'H69', // Celda inicial
+          'N86', // Celda final
+        );
+      }
+
+      this.logger.log('Diagrama de daños completado');
+    } catch (error) {
+      this.logger.error(`Error al llenar diagrama de daños: ${error.message}`);
+      throw error;
     }
+  }
 
-    this.logger.log('Procesando diagrama de daños');
+  private async insertarImagenExpandida(
+    worksheet: ExcelJS.Worksheet,
+    base64Image: string,
+    startCell: string,
+    endCell: string,
+  ) {
+    try {
+      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
+        rawBuffer,
+      )) as unknown as ExcelJS.Buffer;
 
-    // Insertar imagen del diagrama de daños expandida en H71 hasta L85
-    if (inspection.vehicle.damageImageBase64) {
-      await this.insertarImagenExpandida(
-        worksheet,
-        inspection.vehicle.damageImageBase64,
-        'H69', // Celda inicial
-        'N86'  // Celda final
+      const imageId = worksheet.workbook.addImage({
+        buffer: imageBuffer,
+        extension: 'jpeg',
+      });
+
+      const startCoords = this.getCellCoordinates(startCell);
+      const endCoords = this.getCellCoordinates(endCell);
+
+      // Insertar imagen que cubra desde H71 hasta L85
+      worksheet.addImage(imageId, {
+        tl: {
+          col: startCoords.col - 1,
+          row: startCoords.row - 1,
+        } as ExcelJS.Anchor,
+        br: { col: endCoords.col, row: endCoords.row } as ExcelJS.Anchor,
+        editAs: 'oneCell',
+      });
+
+      // Ajustar alturas de las filas del rango para mejor visualización
+
+      this.logger.log(
+        `Imagen expandida insertada desde ${startCell} hasta ${endCell}`,
       );
+    } catch (error) {
+      this.logger.error(`Error al insertar imagen expandida: ${error.message}`);
+      throw error;
     }
-
-    this.logger.log('Diagrama de daños completado');
-  } catch (error) {
-    this.logger.error(`Error al llenar diagrama de daños: ${error.message}`);
-    throw error;
   }
-}
-
-private async insertarImagenExpandida(
-  worksheet: ExcelJS.Worksheet,
-  base64Image: string,
-  startCell: string,
-  endCell: string,
-) {
-  try {
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-    const imageBuffer: ExcelJS.Buffer = Buffer.from(
-      base64Data,
-      'base64',
-    ) as unknown as ExcelJS.Buffer;
-
-    const imageId = worksheet.workbook.addImage({
-      buffer: imageBuffer,
-      extension: 'png',
-    });
-
-    const startCoords = this.getCellCoordinates(startCell);
-    const endCoords = this.getCellCoordinates(endCell);
-    
-    // Insertar imagen que cubra desde H71 hasta L85
-    worksheet.addImage(imageId, {
-      tl: { col: startCoords.col - 1, row: startCoords.row - 1 } as ExcelJS.Anchor,
-      br: { col: endCoords.col, row: endCoords.row } as ExcelJS.Anchor,
-      editAs: 'oneCell',
-    });
-
-    // Ajustar alturas de las filas del rango para mejor visualización
-    
-
-    this.logger.log(`Imagen expandida insertada desde ${startCell} hasta ${endCell}`);
-  } catch (error) {
-    this.logger.error(`Error al insertar imagen expandida: ${error.message}`);
-    throw error;
-  }
-}
-
 
   /**
    * Llena las observaciones generales
@@ -393,120 +453,136 @@ private async insertarImagenExpandida(
   /**
    * Llena las firmas del inspector y supervisor
    */
-private async llenarFirmas(
-  worksheet: ExcelJS.Worksheet,
-  inspection: InspectionHerraEquipos,
-) {
-  try {
-    this.logger.log('Iniciando llenado de firmas');
+  private async llenarFirmas(
+    worksheet: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    try {
+      this.logger.log('Iniciando llenado de firmas');
 
-    // Configuración de posiciones exactas
-    const posiciones = {
-      inspector: {
-        nombre: 'A85',
-        firma: 'A83',
-        fecha: 'B85', 
-        cargo: 'A70'
-      },
-      supervisor: {
-        nombre: 'E85',
-        firma: 'E83',
-        fecha: 'J85',
-        cargo: 'I70'
-      }
-    };
+      // Configuración de posiciones exactas
+      const posiciones = {
+        inspector: {
+          nombre: 'A85',
+          firma: 'A83',
+          fecha: 'B85',
+          cargo: 'A70',
+        },
+        supervisor: {
+          nombre: 'E85',
+          firma: 'E83',
+          fecha: 'J85',
+          cargo: 'I70',
+        },
+      };
 
-    // INSPECTOR
-    if (inspection.inspectorSignature) {
-      const insp = inspection.inspectorSignature;
-      
-      if (insp.inspectorName) worksheet.getCell(posiciones.inspector.nombre).value = insp.inspectorName;
-      
-      if (insp.inspectorSignature && typeof insp.inspectorSignature === 'string' && insp.inspectorSignature.startsWith('data:image/')) {
-        await this.insertarImagen(worksheet, insp.inspectorSignature, posiciones.inspector.firma);
+      // INSPECTOR
+      if (inspection.inspectorSignature) {
+        const insp = inspection.inspectorSignature;
+
+        if (insp.inspectorName)
+          worksheet.getCell(posiciones.inspector.nombre).value =
+            insp.inspectorName;
+
+        if (
+          insp.inspectorSignature &&
+          typeof insp.inspectorSignature === 'string' &&
+          insp.inspectorSignature.startsWith('data:image/')
+        ) {
+          await this.insertarImagen(
+            worksheet,
+            insp.inspectorSignature,
+            posiciones.inspector.firma,
+          );
+        }
+
+        //if (insp.inspectionDate) worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
+        // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
       }
-      
-//if (insp.inspectionDate) worksheet.getCell(posiciones.inspector.fecha).value = insp.inspectionDate;
-     // if (insp.cargo) worksheet.getCell(posiciones.inspector.cargo).value = insp.cargo;
+
+      // SUPERVISOR
+      if (inspection.supervisorSignature) {
+        const sup = inspection.supervisorSignature;
+
+        if (sup.supervisorName)
+          worksheet.getCell(posiciones.supervisor.nombre).value =
+            sup.supervisorName;
+
+        if (
+          sup.supervisorSignature &&
+          typeof sup.supervisorSignature === 'string' &&
+          sup.supervisorSignature.startsWith('data:image/')
+        ) {
+          await this.insertarImagen(
+            worksheet,
+            sup.supervisorSignature,
+            posiciones.supervisor.firma,
+          );
+        }
+
+        //  if (sup.supervisorDate) worksheet.getCell(posiciones.supervisor.fecha).value = sup.supervisorDate;
+        //  if (sup.cargo) worksheet.getCell(posiciones.supervisor.cargo).value = sup.cargo;
+      }
+
+      // Ajustar altura de filas para las imágenes de firma
+      worksheet.getRow(69).height = 40;
+
+      this.logger.log('Firmas completadas exitosamente');
+    } catch (error) {
+      this.logger.error(`Error al llenar firmas: ${error.message}`);
+      throw error;
     }
+  }
 
-    // SUPERVISOR
-    if (inspection.supervisorSignature) {
-      const sup = inspection.supervisorSignature;
-      
-      if (sup.supervisorName) worksheet.getCell(posiciones.supervisor.nombre).value = sup.supervisorName;
-      
-      if (sup.supervisorSignature && typeof sup.supervisorSignature === 'string' && sup.supervisorSignature.startsWith('data:image/')) {
-        await this.insertarImagen(worksheet, sup.supervisorSignature, posiciones.supervisor.firma);
-      }
-      
-    //  if (sup.supervisorDate) worksheet.getCell(posiciones.supervisor.fecha).value = sup.supervisorDate;
-    //  if (sup.cargo) worksheet.getCell(posiciones.supervisor.cargo).value = sup.cargo;
+  private async agregarFormasGeometricas(worksheet: ExcelJS.Worksheet) {
+    try {
+      this.logger.log('Agregando formas geométricas - enfoque conservador');
+
+      // Solo estos 3 ajustes básicos:
+      const COLOR_PLOMO = 'FF808080'; // Color plomo para las formas
+      const TAMANIO_FUENTE = 8; // Tamaño fijo
+      const FUENTE_SIMBOLOS = 'Segoe UI Symbol'; // Fuente para símbolos
+
+      // Solo estas 3 celdas específicas
+      const celdasFormas = [
+        { celda: 'B71', caracter: '▲', nombre: 'Triángulo' },
+        { celda: 'D71', caracter: '●', nombre: 'Círculo' },
+        { celda: 'F71', caracter: '◆', nombre: 'Rombo' },
+      ];
+
+      // Procesar CADA CELDA individualmente
+      celdasFormas.forEach((config) => {
+        try {
+          const cell = worksheet.getCell(config.celda);
+
+          // ⚠️ SOLO 3 CAMBIOS POR CELDA:
+          // 1. Valor (el carácter)
+          cell.value = config.caracter;
+
+          // 2. Fuente (solo tamaño y color)
+          cell.font = {
+            size: TAMANIO_FUENTE,
+            color: { argb: COLOR_PLOMO },
+            name: FUENTE_SIMBOLOS,
+            // ❌ NO modificar bold, italic, etc.
+          };
+
+          // 3. Alineación (solo centrado)
+          cell.alignment = {
+            horizontal: 'center',
+            vertical: 'middle',
+            // ❌ NO modificar wrapText, rotation, etc.
+          };
+
+          this.logger.log(`✅ ${config.nombre} agregado en ${config.celda}`);
+        } catch (error) {
+          this.logger.error(`Error en ${config.celda}: ${error.message}`);
+        }
+      });
+    } catch (error) {
+      this.logger.error('Error en método conservador: ' + error.message);
     }
-
-    // Ajustar altura de filas para las imágenes de firma
-    worksheet.getRow(69).height = 40;
-
-    this.logger.log('Firmas completadas exitosamente');
-  } catch (error) {
-    this.logger.error(`Error al llenar firmas: ${error.message}`);
-    throw error;
   }
-}
-
-private async agregarFormasGeometricas(worksheet: ExcelJS.Worksheet) {
-  try {
-    this.logger.log('Agregando formas geométricas - enfoque conservador');
-
-    // Solo estos 3 ajustes básicos:
-    const COLOR_PLOMO = 'FF808080';  // Color plomo para las formas
-    const TAMANIO_FUENTE = 8;       // Tamaño fijo
-    const FUENTE_SIMBOLOS = 'Segoe UI Symbol'; // Fuente para símbolos
-
-    // Solo estas 3 celdas específicas
-    const celdasFormas = [
-      { celda: 'B71', caracter: '▲', nombre: 'Triángulo' },
-      { celda: 'D71', caracter: '●', nombre: 'Círculo' },
-      { celda: 'F71', caracter: '◆', nombre: 'Rombo' }
-    ];
-
-    // Procesar CADA CELDA individualmente
-    celdasFormas.forEach(config => {
-      try {
-        const cell = worksheet.getCell(config.celda);
-        
-        // ⚠️ SOLO 3 CAMBIOS POR CELDA:
-        // 1. Valor (el carácter)
-        cell.value = config.caracter;
-        
-        // 2. Fuente (solo tamaño y color)
-        cell.font = { 
-          size: TAMANIO_FUENTE, 
-          color: { argb: COLOR_PLOMO },
-          name: FUENTE_SIMBOLOS
-          // ❌ NO modificar bold, italic, etc.
-        };
-        
-        // 3. Alineación (solo centrado)
-        cell.alignment = { 
-          horizontal: 'center', 
-          vertical: 'middle' 
-          // ❌ NO modificar wrapText, rotation, etc.
-        };
-
-        this.logger.log(`✅ ${config.nombre} agregado en ${config.celda}`);
-
-      } catch (error) {
-        this.logger.error(`Error en ${config.celda}: ${error.message}`);
-      }
-    });
-
-  } catch (error) {
-    this.logger.error('Error en método conservador: ' + error.message);
-  }
-}
-
-
 
   /**
    * Genera el archivo Excel completo para inspección de vehículos

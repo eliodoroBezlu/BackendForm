@@ -52,6 +52,7 @@
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "sharp": "^0.35.3",
     "speakeasy": "^2.0.0",
     "swagger-ui-express": "^5.0.1",
     "xlsx-populate": "^1.21.0"
