@@ -20,6 +20,7 @@ import {
 } from '../schemas/inspection-herra-equipos.schema';
 import { ExcelElementosIzajeService } from './elementos-izaje.service';
 import { ExcelArnestService } from './arnes.service';
+import { ExcelInspeccionFrecuenteService } from './inspeccion-frecuente-equipos.service';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ExcelArnestService } from './arnes.service';
     ExcelPreUsoTecleService,
     ExcelElementosIzajeService,
     ExcelArnestService,
+    ExcelInspeccionFrecuenteService,
   ],
   exports: [
     ExcelVehicleService,
@@ -64,6 +66,7 @@ import { ExcelArnestService } from './arnes.service';
     ExcelPreUsoTecleService,
     ExcelElementosIzajeService,
     ExcelArnestService,
+    ExcelInspeccionFrecuenteService,
   ],
 })
 export class ExcelHerraEquipoModule {}
