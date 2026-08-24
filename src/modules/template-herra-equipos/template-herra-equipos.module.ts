@@ -5,7 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import {
   TemplateHerraEquipos,
   TemplateHerraEquiposSchema,
-} from './schema/template-herra-equipo.schema';
+} from './schemas/template-herra-equipo.schema';
 
 @Module({
   imports: [

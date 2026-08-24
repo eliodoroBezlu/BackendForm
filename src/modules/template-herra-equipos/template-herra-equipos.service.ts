@@ -6,7 +6,7 @@ import {
 import { CreateTemplateHerraEquipoDto } from './dto/create-template-herra-equipo.dto';
 import { UpdateTemplateHerraEquipoDto } from './dto/update-template-herra-equipo.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { TemplateHerraEquipos } from './schema/template-herra-equipo.schema';
+import { TemplateHerraEquipos } from './schemas/template-herra-equipo.schema';
 import { Model } from 'mongoose';
 import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
 

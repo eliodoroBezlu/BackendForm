@@ -5,7 +5,6 @@ import {
   Body,
   Param,
   Delete,
-  Patch,
   Query,
   UseGuards,
   Res,
@@ -18,7 +17,6 @@ import { InspeccionesService } from './inspecciones.service';
 import type { CreateInspeccionDto } from './dto/create-inspeccion.dto';
 import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto';
 import { ExcelService } from '../excel/excel.service';
-import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 

@@ -7,6 +7,7 @@ import type {
   InspeccionExtintor,
 } from '../schemas/inspeccion-emergencia.schema';
 import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { entradasDe } from '../../../common/tipos/registro.util';
 @Injectable()
 export class InspeccionesEmergenciaExcelService {
   private readonly templatePath: string;
@@ -102,7 +103,7 @@ export class InspeccionesEmergenciaExcelService {
   ) {
     try {
       // Mapeo de meses a columnas (basado en la imagen)
-      const columnasPorMes = {
+      const columnasPorMes: Record<string, string> = {
         ENERO: 'L', // Enero va en columna L
         FEBRERO: 'N', // Febrero va en columna N
         MARZO: 'P', // Marzo va en columna P
@@ -194,7 +195,10 @@ export class InspeccionesEmergenciaExcelService {
   ) {
     try {
       // Mapeo de meses a sus columnas respectivas para cantidad y estado
-      const columnasMesCantidadEstado = {
+      const columnasMesCantidadEstado: Record<
+        string,
+        { cantidad: string; estado: string }
+      > = {
         ENERO: { cantidad: 'E', estado: 'F' },
         FEBRERO: { cantidad: 'G', estado: 'H' },
         MARZO: { cantidad: 'I', estado: 'J' },
@@ -247,8 +251,8 @@ export class InspeccionesEmergenciaExcelService {
         'NOVIEMBRE',
         'DICIEMBRE',
       ];
-      const observacionesSistemasPasivos = {};
-      const observacionesSistemasActivos = {};
+      const observacionesSistemasPasivos: Record<string, string[]> = {};
+      const observacionesSistemasActivos: Record<string, string[]> = {};
 
       Object.keys(filasSistemasPasivos).forEach((sistema) => {
         observacionesSistemasPasivos[sistema] = [];
@@ -282,9 +286,7 @@ export class InspeccionesEmergenciaExcelService {
                 dataMes.inspeccionesActivos.sistemasPasivos;
 
               // Para cada sistema pasivo, llenar cantidad y estado
-              for (const [sistema, fila] of Object.entries(
-                filasSistemasPasivos,
-              )) {
+              for (const [sistema, fila] of entradasDe(filasSistemasPasivos)) {
                 if (sistemasPasivos[sistema]) {
                   // Llenar cantidad
                   worksheet.getCell(`${columnasCE.cantidad}${fila}`).value =
@@ -315,9 +317,7 @@ export class InspeccionesEmergenciaExcelService {
                 dataMes.inspeccionesActivos.sistemasActivos;
 
               // Para cada sistema activo, llenar cantidad y estado
-              for (const [sistema, fila] of Object.entries(
-                filasSistemasActivos,
-              )) {
+              for (const [sistema, fila] of entradasDe(filasSistemasActivos)) {
                 if (sistemasActivos[sistema]) {
                   // Llenar cantidad
                   worksheet.getCell(`${columnasCE.cantidad}${fila}`).value =
@@ -353,7 +353,7 @@ export class InspeccionesEmergenciaExcelService {
       }
 
       // Ahora, llena las observaciones combinadas en la columna Q
-      for (const [sistema, fila] of Object.entries(filasSistemasPasivos)) {
+      for (const [sistema, fila] of entradasDe(filasSistemasPasivos)) {
         if (observacionesSistemasPasivos[sistema].length > 0) {
           worksheet.getCell(`Q${fila}`).value =
             observacionesSistemasPasivos[sistema].join('; ');
@@ -361,7 +361,7 @@ export class InspeccionesEmergenciaExcelService {
         }
       }
 
-      for (const [sistema, fila] of Object.entries(filasSistemasActivos)) {
+      for (const [sistema, fila] of entradasDe(filasSistemasActivos)) {
         if (observacionesSistemasActivos[sistema].length > 0) {
           worksheet.getCell(`Q${fila}`).value =
             observacionesSistemasActivos[sistema].join('; ');
@@ -435,9 +435,6 @@ export class InspeccionesEmergenciaExcelService {
         // Crear el encabezado "INSPECCIÓN DE EXTINTORES"
         const headerRow = worksheet.getRow(filaHeader);
 
-        // Copiar el formato del encabezado desde la tabla anterior
-        const headerOriginal = worksheet.getRow(43); // Usamos el segundo encabezado como referencia
-
         const headerCell = worksheet.getCell(`A${filaHeader}`);
         headerCell.value = 'I N S P E C C I Ó N  D E  E X T I N T O R E S';
         headerCell.font = { bold: true, size: 12 };
@@ -456,7 +453,6 @@ export class InspeccionesEmergenciaExcelService {
 
         // Crear la fila de títulos de columna
         const titulosRow = worksheet.getRow(filaHeader + 1);
-        const titulosOriginal = worksheet.getRow(44); // Usamos la segunda fila de títulos como referencia
 
         // Copiar los títulos y formato de las columnas
         const columnasConTitulos = [
@@ -566,7 +562,9 @@ export class InspeccionesEmergenciaExcelService {
         if (tablaActual >= tablas.length) {
           // Obtener la última fila de la última tabla
           const ultimaTabla = tablas[tablas.length - 1];
-          const nuevaTabla = agregarNuevaTabla(ultimaTabla.filaFin);
+          // Se llama por su efecto: crea la tabla en la hoja. El valor que
+          // devuelve no se usa aqui.
+          agregarNuevaTabla(ultimaTabla.filaFin);
           tablaActual = tablas.length - 1;
         }
 

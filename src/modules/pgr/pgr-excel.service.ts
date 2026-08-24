@@ -199,12 +199,28 @@ export class PgrExcelService {
       const programacion = (act.programacion ?? []) as ProgramacionMesLike[];
 
       // Los campos de texto abarcan ambas filas, como en el original.
+      // Responsables, recursos y entregables son opcionales: una actividad
+      // recién consolidada desde la matriz todavía no los tiene. Se exportan
+      // vacíos en vez de romper la generación del documento.
+      //
+      // Son listas en el modelo y una sola celda en el formulario, así que se
+      // juntan con salto de línea — el alto de fila del original ya lo tolera.
+      // El **alcance por área no se exporta**: el formulario oficial no tiene
+      // esa columna y el área se sigue leyendo del texto de la actividad.
       const textos: Array<[number, string]> = [
         [COL.verificador, act.verificador],
         [COL.actividad, act.descripcion],
-        [COL.responsable, act.responsable],
-        [COL.recursos, act.recurso],
-        [COL.entregable, act.entregable],
+        [
+          COL.responsable,
+          (act.responsables ?? []).map((r) => r.nombre).join('\n'),
+        ],
+        [
+          COL.recursos,
+          (act.recursos ?? [])
+            .map((r) => `${r.cantidad} ${r.unidad}`)
+            .join('\n'),
+        ],
+        [COL.entregable, (act.entregables ?? []).join('\n')],
       ];
       for (const [col, valor] of textos) {
         ws.mergeCells(filaProg, col, filaReal, col);

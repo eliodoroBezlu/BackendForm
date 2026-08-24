@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Res,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 
 import { Response } from 'express';
@@ -31,6 +32,8 @@ import { BulkDownloadService } from '../../common/services/bulk-download.service
 @ApiTags('instances')
 @Controller('instances')
 export class InstancesController {
+  private readonly logger = new Logger(InstancesController.name);
+
   constructor(
     private readonly instancesService: InstancesService,
     private readonly documentService: InstancesDocumentService,
@@ -99,14 +102,8 @@ export class InstancesController {
     return await this.instancesService.getStats(templateId);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Obtener una instancia por ID' })
-  @ApiResponse({ status: 200, description: 'Instancia encontrada' })
-  @ApiResponse({ status: 404, description: 'Instancia no encontrada' })
-  async findOne(@Param('id') id: string) {
-    return await this.instancesService.findOne(id);
-  }
-
+  // Debe ir ANTES de @Get(':id'): esa ruta captura cualquier cadena de un
+  // segmento, asi que aqui abajo «compliance-report» era inalcanzable.
   @Get('compliance-report')
   @ApiOperation({
     summary: 'Obtener reporte detallado de cumplimiento',
@@ -115,6 +112,14 @@ export class InstancesController {
   })
   async getComplianceReport(@Query('templateId') templateId?: string) {
     return await this.instancesService.getComplianceReport(templateId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener una instancia por ID' })
+  @ApiResponse({ status: 200, description: 'Instancia encontrada' })
+  @ApiResponse({ status: 404, description: 'Instancia no encontrada' })
+  async findOne(@Param('id') id: string) {
+    return await this.instancesService.findOne(id);
   }
 
   @Patch(':id')
@@ -229,7 +234,7 @@ export class InstancesController {
         'xlsx',
       );
 
-      console.log(`Excel generado exitosamente: ${filename}`);
+      this.logger.log(`Excel generado: ${filename}`);
 
       res.set({
         'Content-Type':
@@ -240,7 +245,7 @@ export class InstancesController {
 
       res.send(buffer);
     } catch (error) {
-      console.error('Error al generar Excel:', error);
+      this.logger.error(`Error al generar Excel: ${error}`);
 
       res.status(500).json({
         message: 'Error al generar el archivo Excel',
@@ -253,7 +258,7 @@ export class InstancesController {
   @Get(':id/pdf')
   async downloadPdf(@Param('id') id: string, @Res() res: Response) {
     try {
-      console.log(`📄 Generando PDF para instancia ID: ${id}`);
+      this.logger.debug(`Generando PDF de la instancia ${id}`);
 
       const inspeccion = await this.instancesService.findOne(id);
       if (!inspeccion) {
@@ -292,7 +297,7 @@ export class InstancesController {
       });
 
       pdfStream.on('error', (err) => {
-        console.error('❌ Error en el stream de PDF (instancia):', err);
+        this.logger.error(`❌ Error en el stream de PDF (instancia): ${err}`);
         if (!res.headersSent) {
           res.status(500).json({
             success: false,
@@ -305,7 +310,7 @@ export class InstancesController {
 
       pdfStream.pipe(res);
     } catch (error) {
-      console.error('❌ Error al generar PDF (instancia):', error);
+      this.logger.error(`❌ Error al generar PDF (instancia): ${error}`);
       res.status(500).json({
         success: false,
         message: 'Error al generar el archivo PDF',

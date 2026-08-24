@@ -250,6 +250,19 @@ export class InspectionHerraEquipos {
   // template.campoCodigoEquipo, al momento de crear (mismo patrón que area).
   @Prop({ required: false })
   codigoEquipo?: string;
+
+  /**
+   * RFID del equipo inspeccionado, cuando lo tiene.
+   *
+   * Va junto a `codigoEquipo` porque el código **por sí solo dejó de
+   * identificar la unidad**: en los SPCC hay pares de equipos distintos con el
+   * mismo ID interno. La identidad es el par `(codigo, rfid)`, igual que en
+   * `Equipo`, y sin esto no se podría saber cuál de los dos se inspeccionó.
+   *
+   * Vacío en herramientas y vehículos, que no llevan tag.
+   */
+  @Prop({ required: false, index: true })
+  rfidEquipo?: string;
 }
 
 export type InspectionHerraEquiposDocument = InspectionHerraEquipos & Document;

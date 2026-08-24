@@ -6,8 +6,9 @@ import {
 import { CreateSuperintendenciaDto } from './dto/create-superintendencia.dto';
 import { UpdateSuperintendenciaDto } from './dto/update-superintendencia.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Superintendencia } from './schema/superintendencia.schema';
+import { Superintendencia } from './schemas/superintendencia.schema';
 import { Model } from 'mongoose';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 @Injectable()
 export class SuperintendenciaService {
@@ -23,7 +24,10 @@ export class SuperintendenciaService {
     // Verificar si ya existe una superintendencia con ese nombre
     const existe = await this.superintendenciaModel.findOne({
       nombre: {
-        $regex: new RegExp(`^${createSuperintendenciaDto.nombre}$`, 'i'),
+        $regex: new RegExp(
+          `^${escaparRegex(createSuperintendenciaDto.nombre)}$`,
+          'i',
+        ),
       },
     });
 
@@ -55,7 +59,9 @@ export class SuperintendenciaService {
     // Si query es válido, realizar búsqueda con regex
     const superintendencias = await this.superintendenciaModel
       .find({
-        nombre: { $regex: query, $options: 'i' },
+        // Escapado: sin esto un «(» escrito en el autocompletado
+        // devuelve un error de Mongo (ver escapar-regex.util).
+        nombre: { $regex: escaparRegex(query.trim()), $options: 'i' },
         activo: true,
       })
       .limit(20)

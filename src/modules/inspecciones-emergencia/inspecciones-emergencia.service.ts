@@ -4,13 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateFormularioInspeccionDto } from './dto/create-inspecciones-emergencia.dto';
+import {
+  CreateFormularioInspeccionDto,
+  InspeccionMensualDto,
+} from './dto/create-inspecciones-emergencia.dto';
 import { UpdateInspeccionesEmergenciaDto } from './dto/update-inspecciones-emergencia.dto';
 import { FormularioInspeccionEmergencia } from './schemas/inspeccion-emergencia.schema';
 import { isValidObjectId, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { ExtintorService } from '../extintor/extintor.service';
-import { Area } from '../area/schema/area.schema';
+import { Area } from '../area/schemas/area.schema';
 
 interface FiltrosInspeccion {
   area?: string;
@@ -174,7 +177,7 @@ export class InspeccionesEmergenciaService {
   async actualizarMesPorTag(
     tag: string,
     mes: string,
-    datosMes: any,
+    datosMes: InspeccionMensualDto,
     area: string,
   ) {
     // Autocompletar vencidos
@@ -293,7 +296,7 @@ export class InspeccionesEmergenciaService {
 
   update(
     id: number,
-    updateInspeccionesEmergenciaDto: UpdateInspeccionesEmergenciaDto,
+    _updateInspeccionesEmergenciaDto: UpdateInspeccionesEmergenciaDto,
   ) {
     return `This action updates a #${id} inspeccionesEmergencia`;
   }
@@ -306,7 +309,7 @@ export class InspeccionesEmergenciaService {
   async actualizarExtintoresPorTag(
     tag: string,
     extintores: any[],
-    area: string,
+    _area: string,
   ) {
     // Autocompletar vencidos
     await this.autoCompletarFormulariosVencidos();

@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   OnModuleInit,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -14,6 +15,8 @@ import {
 
 @Injectable()
 export class ConfigFormularioService implements OnModuleInit {
+  private readonly logger = new Logger(ConfigFormularioService.name);
+
   constructor(
     @InjectModel(ConfigFormulario.name)
     private readonly configModel: Model<ConfigFormularioDocument>,
@@ -24,7 +27,7 @@ export class ConfigFormularioService implements OnModuleInit {
     try {
       const count = await this.configModel.countDocuments().exec();
       if (count === 0) {
-        console.log('Seeding initial dynamic form configurations...');
+        this.logger.log('Sembrando configuraciones de formulario iniciales');
 
         await this.createOrUpdateDirect({
           tipo_equipo: 'Escalera',
@@ -107,10 +110,10 @@ export class ConfigFormularioService implements OnModuleInit {
           ],
         });
 
-        console.log('Dynamic form configurations seeded successfully.');
+        this.logger.log('Configuraciones de formulario sembradas');
       }
     } catch (e) {
-      console.error('Error seeding configurations:', e);
+      this.logger.error(`Error seeding configurations: ${e}`);
     }
   }
 

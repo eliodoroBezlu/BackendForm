@@ -4,6 +4,8 @@ import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
 import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { buscarEn } from '../../../common/tipos/registro.util';
+import { coordenadasDeCelda } from './comun/celdas.util';
 
 @Injectable()
 export class ExcelArnestService {
@@ -87,7 +89,7 @@ export class ExcelArnestService {
         extension: 'jpeg',
       });
 
-      const { row, col } = this.getCellCoordinates(cellRef);
+      const { row, col } = coordenadasDeCelda(cellRef);
 
       // Calcular el borde inferior (bottom-right)
       // Si row es 40, el top es 39. El bottom normal es 40.
@@ -112,17 +114,6 @@ export class ExcelArnestService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -474,14 +465,14 @@ export class ExcelArnestService {
 
           // --- Función auxiliar para procesar seleccionando la hoja correcta ---
           const procesarItem = (id: string, responses: any) => {
-            const config = sectionConfig[id];
+            const config = buscarEn(sectionConfig, id);
 
             if (config) {
               // 🔥 SELECCIÓN DINÁMICA DE HOJA
               const targetSheet =
                 config.sheet === 'REVERSO' ? sheetReverso : sheetAnverso;
 
-              if (config.hasSubsections) {
+              if ('hasSubsections' in config && config.hasSubsections) {
                 this.logger.log(`⏭️ Contenedor ${id} - Hoja: ${config.sheet}`);
                 return;
               }
@@ -549,7 +540,7 @@ export class ExcelArnestService {
     let currentRow = sectionConfig.startRow;
 
     Object.entries(sectionResponses as Record<string, any>).forEach(
-      ([questionId, response], index) => {
+      ([_questionId, response], _index) => {
         if (currentRow > sectionConfig.endRow) {
           this.logger.warn(
             `  ⚠️ Límite de filas excedido en ${sectionConfig.name}`,
@@ -1035,8 +1026,9 @@ export class ExcelArnestService {
       };
 
       // 4. PROCESAMIENTO
-      for (const key in configuracion) {
-        const item = configuracion[key];
+      // `for...in` daba una clave `string` que perdia el tipo del valor. El
+      // bucle nunca usaba la clave, solo el elemento.
+      for (const item of Object.values(configuracion)) {
         const hoja = item.hoja;
 
         if (!hoja) continue;
@@ -1116,7 +1108,7 @@ export class ExcelArnestService {
     if (esSi) {
       // Reemplaza "SI ☐" por "SI ☑" o simplemente agrega la marca al lado de SI
       // La Regex busca la palabra SI (borde de palabra) y opcionalmente un cuadro
-      text = text.replace(/\bSI\s*[☐\[\(]?\s*[\]\)]?/g, `SI ${CHECK}`);
+      text = text.replace(/\bSI\s*[☐[(]?\s*[\])]?/g, `SI ${CHECK}`);
     } else {
       // Asegurarse de limpiar marcas previas si existen (reset)
       text = text.replace(/\bSI\s*☑/g, `SI ${UNCHECK}`);
@@ -1124,7 +1116,7 @@ export class ExcelArnestService {
 
     // 2. MARCAR "NO"
     if (esNo) {
-      text = text.replace(/\bNO\s*[☐\[\(]?\s*[\]\)]?/g, `NO ${CHECK}`);
+      text = text.replace(/\bNO\s*[☐[(]?\s*[\])]?/g, `NO ${CHECK}`);
     } else {
       text = text.replace(/\bNO\s*☑/g, `NO ${UNCHECK}`);
     }
@@ -1134,7 +1126,7 @@ export class ExcelArnestService {
     if (codigo) {
       // Regex: Busca "COD.:" o "COD:" ignorando mayúsculas, seguido de cualquier cosa hasta el final o puntos
       // Reemplaza los puntos suspensivos "......" con el código real
-      text = text.replace(/(COD\.?[:\s]*)([\._]*)/i, `$1 ${codigo}`);
+      text = text.replace(/(COD\.?[:\s]*)([._]*)/i, `$1 ${codigo}`);
     }
 
     // 4. GUARDAR Y DAR FORMATO

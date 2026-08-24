@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
-import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { entradasDe } from '../../../common/tipos/registro.util';
+import { insertarImagenEnCelda } from './comun/imagen-excel.util';
 
 interface GroupedQuestionData {
   values: {
@@ -58,25 +59,9 @@ export class ExcelElementosIzajeService {
     cellRef: string,
   ) {
     try {
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const rawBuffer = Buffer.from(base64Data, 'base64');
-      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
-        rawBuffer,
-      )) as unknown as ExcelJS.Buffer;
-
-      const imageId = worksheet.workbook.addImage({
-        buffer: imageBuffer,
-        extension: 'jpeg',
+      await insertarImagenEnCelda(worksheet, base64Image, cellRef, {
+        altoDeFila: 25,
       });
-
-      const { row, col } = this.getCellCoordinates(cellRef);
-      worksheet.addImage(imageId, {
-        tl: { col: col - 1, row: row - 1 } as ExcelJS.Anchor,
-        br: { col: col, row: row } as ExcelJS.Anchor,
-        editAs: 'oneCell',
-      });
-
-      worksheet.getRow(row).height = 25;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       throw error;
@@ -86,17 +71,6 @@ export class ExcelElementosIzajeService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -288,7 +262,7 @@ export class ExcelElementosIzajeService {
         this.logger.log(`  📝 Procesando ${questionId} en fila ${currentRow}`);
 
         // Procesar cada columna (accesorio)
-        Object.entries(columnas).forEach(([accesorioKey, colLetra]) => {
+        entradasDe(columnas).forEach(([accesorioKey, colLetra]) => {
           const valor = data.values?.[accesorioKey];
 
           if (valor) {

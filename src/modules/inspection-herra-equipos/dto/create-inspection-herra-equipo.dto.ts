@@ -8,7 +8,6 @@ import {
   IsDateString,
   IsArray,
   IsBoolean,
-  IsMongoId,
 } from 'class-validator';
 import { InspectionStatus } from '../types/IProps';
 
@@ -51,6 +50,18 @@ export class CreateInspectionHerraEquipoDto {
   @IsObject()
   @IsNotEmpty()
   verification: Record<string, string | number>;
+
+  /**
+   * RFID del equipo inspeccionado, cuando lo tiene.
+   *
+   * Lo manda el frontend porque **no se puede deducir**: no viaja en
+   * `verification` y buscar el equipo por su código sería ambiguo justamente
+   * en el caso que este campo viene a resolver — hay SPCC distintos con el
+   * mismo ID interno. El selector sabe cuál se eligió; el servidor no.
+   */
+  @IsString()
+  @IsOptional()
+  rfidEquipo?: string;
 
   @IsObject()
   @IsNotEmpty()

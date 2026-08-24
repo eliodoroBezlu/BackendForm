@@ -4,14 +4,10 @@ import { MigracionService } from './migracion.service';
 import { Equipo } from './schemas/equipo.schema';
 import { UbicacionService } from '../ubicacion/ubicacion.service';
 import { ClasificacionService } from '../clasificacion/clasificacion.service';
+import { ResolucionOrganizacionalService } from './importacion/resolucion-organizacional.service';
 
 describe('MigracionService', () => {
   let service: MigracionService;
-  let equipoModel: any;
-  let areaModel: any;
-  let superModel: any;
-  let ubicacionService: any;
-  let clasificacionService: any;
 
   const mockUbicacionService = {
     findByNameOrCreate: jest
@@ -26,25 +22,13 @@ describe('MigracionService', () => {
     }),
   };
 
-  const mockAreaModel = {
-    findOne: jest.fn().mockReturnValue({
-      exec: jest
-        .fn()
-        .mockResolvedValue({ _id: 'mock-area-id', nombre: 'CHANCADO' }),
-    }),
-  };
-
-  const mockSuperModel = {
-    findOne: jest.fn().mockReturnValue({
-      exec: jest.fn().mockResolvedValue({
-        _id: 'mock-super-id',
-        nombre: 'Superintendencia',
-      }),
-    }),
+  const mockResolucion = {
+    precargar: jest.fn().mockResolvedValue(undefined),
+    resolver: jest.fn().mockReturnValue({ ambito: 'area', area_id: 'a1' }),
   };
 
   class MockEquipoModel {
-    constructor(private data: any) {
+    constructor(data: any) {
       Object.assign(this, data);
     }
     save = jest.fn().mockResolvedValue(this);
@@ -60,36 +44,17 @@ describe('MigracionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MigracionService,
+        { provide: getModelToken(Equipo.name), useValue: MockEquipoModel },
+        { provide: UbicacionService, useValue: mockUbicacionService },
+        { provide: ClasificacionService, useValue: mockClasificacionService },
         {
-          provide: getModelToken(Equipo.name),
-          useValue: MockEquipoModel,
-        },
-        {
-          provide: getModelToken('Area'),
-          useValue: mockAreaModel,
-        },
-        {
-          provide: getModelToken('Superintendencia'),
-          useValue: mockSuperModel,
-        },
-        {
-          provide: UbicacionService,
-          useValue: mockUbicacionService,
-        },
-        {
-          provide: ClasificacionService,
-          useValue: mockClasificacionService,
+          provide: ResolucionOrganizacionalService,
+          useValue: mockResolucion,
         },
       ],
     }).compile();
 
     service = module.get<MigracionService>(MigracionService);
-    equipoModel = module.get(getModelToken(Equipo.name));
-    areaModel = module.get(getModelToken('Area'));
-    superModel = module.get(getModelToken('Superintendencia'));
-    ubicacionService = module.get<UbicacionService>(UbicacionService);
-    clasificacionService =
-      module.get<ClasificacionService>(ClasificacionService);
   });
 
   afterEach(() => {
@@ -155,44 +120,73 @@ describe('MigracionService', () => {
     });
   });
 
-  describe('getCellValue', () => {
-    it('should return cell string value if found', () => {
+  describe('valor', () => {
+    const cabeceras = (mapa: Record<string, number>) => ({
+      mapa,
+      original: {},
+    });
+
+    it('devuelve el valor de la columna encontrada', () => {
       const row = {
         getCell: jest.fn().mockReturnValue({ value: 'Test Value' }),
       } as any;
-      const headerMap = { test: 3 };
 
-      const res = service['getCellValue'](row, headerMap, ['test']);
-      expect(res).toBe('Test Value');
+      expect(service['valor'](row, cabeceras({ test: 3 }), ['test'])).toBe(
+        'Test Value',
+      );
       expect(row.getCell).toHaveBeenCalledWith(3);
     });
 
-    it('should fallback to subsequent keys if first key is missing in headerMap', () => {
+    it('prueba las claves siguientes cuando la primera no está', () => {
       const row = {
         getCell: jest.fn().mockReturnValue({ value: 'Alternative Value' }),
       } as any;
-      const headerMap = { alternative: 4 };
 
-      const res = service['getCellValue'](row, headerMap, [
-        'missing',
-        'alternative',
-      ]);
-      expect(res).toBe('Alternative Value');
+      expect(
+        service['valor'](row, cabeceras({ alternative: 4 }), [
+          'missing',
+          'alternative',
+        ]),
+      ).toBe('Alternative Value');
       expect(row.getCell).toHaveBeenCalledWith(4);
     });
 
-    it('should return undefined if no matching keys in headerMap', () => {
-      const row = {
-        getCell: jest.fn(),
-      } as any;
-      const headerMap = { alternative: 4 };
+    it('devuelve undefined si ninguna clave está en las cabeceras', () => {
+      const row = { getCell: jest.fn() } as any;
 
-      const res = service['getCellValue'](row, headerMap, [
-        'missing1',
-        'missing2',
-      ]);
-      expect(res).toBeUndefined();
+      expect(
+        service['valor'](row, cabeceras({ alternative: 4 }), [
+          'missing1',
+          'missing2',
+        ]),
+      ).toBeUndefined();
       expect(row.getCell).not.toHaveBeenCalled();
+    });
+
+    it('sigue buscando cuando la columna existe pero está vacía', () => {
+      const row = {
+        getCell: jest
+          .fn()
+          .mockReturnValueOnce({ value: '' })
+          .mockReturnValueOnce({ value: 'Segunda' }),
+      } as any;
+
+      expect(service['valor'](row, cabeceras({ a: 1, b: 2 }), ['a', 'b'])).toBe(
+        'Segunda',
+      );
+    });
+  });
+
+  describe('esCodigoInvalido', () => {
+    it.each(['', 'SinItem-01', '-SinArea-0000', '#VALUE!', 'PL-#NAME?'])(
+      'descarta "%s"',
+      (codigo) => {
+        expect(service['esCodigoInvalido'](codigo)).toBe(true);
+      },
+    );
+
+    it('acepta un código real', () => {
+      expect(service['esCodigoInvalido']('519-A-0001')).toBe(false);
     });
   });
 });

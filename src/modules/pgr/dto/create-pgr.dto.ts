@@ -5,11 +5,14 @@ import {
   IsOptional,
   IsEnum,
   IsBoolean,
+  IsIn,
   IsInt,
+  IsMongoId,
   Min,
   Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 import { PgrEstado } from '../schemas/pgr.schema';
 
 export class ProgramacionMesDto {
@@ -39,21 +42,81 @@ export class ProgramacionMesDto {
   realMesAdelantado?: number;
 }
 
+export class ResponsableActividadDto {
+  @ApiProperty({ enum: ['grupo', 'trabajador'] })
+  @IsIn(['grupo', 'trabajador'])
+  tipo: 'grupo' | 'trabajador';
+
+  /** `_id` del grupo, o `ci` del trabajador. */
+  @ApiProperty()
+  @IsString()
+  referencia: string;
+
+  @ApiProperty()
+  @IsString()
+  nombre: string;
+}
+
+export class RecursoActividadDto {
+  @ApiProperty({ example: 2 })
+  @IsInt()
+  @Min(0)
+  cantidad: number;
+
+  @ApiProperty({
+    example: 'HH',
+    description: 'Código del catálogo de unidades',
+  })
+  @IsString()
+  unidad: string;
+}
+
 export class CreateActividadDto {
+  /**
+   * Id de la actividad, presente solo al **editar**.
+   *
+   * Es lo que permite que `PgrService.update` fusione en vez de reemplazar.
+   * Sin declararlo acá el `ValidationPipe({ whitelist: true })` lo descartaba,
+   * así que cada guardado del formulario de configuración regeneraba los
+   * subdocumentos y se llevaba puestos `origenMatriz`, la aprobación y todo el
+   * seguimiento de la actividad.
+   */
+  @IsOptional()
+  @IsMongoId()
+  _id?: string;
+
   @IsString()
   descripcion: string;
 
-  @IsString()
-  responsable: string;
+  /**
+   * Áreas de la superintendencia a las que aplica. **Vacío = todas.**
+   * No viaja al Excel: es un dato interno para acotar, filtrar y editar.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  areas?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ResponsableActividadDto)
+  responsables?: ResponsableActividadDto[];
 
   @IsString()
   verificador: string;
 
-  @IsString()
-  recurso: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RecursoActividadDto)
+  recursos?: RecursoActividadDto[];
 
-  @IsString()
-  entregable: string;
+  /** Normalmente uno, pero se admiten varios. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  entregables?: string[];
 
   @IsOptional()
   @IsArray()
@@ -99,13 +162,9 @@ export class CreatePgrDto {
   @IsString()
   gestion: string;
 
-  @IsOptional()
-  @IsString()
-  supervisor?: string;
-
-  @IsOptional()
-  @IsString()
-  responsable?: string;
+  // `supervisor` y `responsable` se retiraron de la cabecera: no pertenecen al
+  // PGR —la responsabilidad se declara por actividad— y en los 17 planes
+  // cargados ninguno los tenía.
 
   @IsOptional()
   @IsString()

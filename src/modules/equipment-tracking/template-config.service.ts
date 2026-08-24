@@ -1,9 +1,6 @@
 // src/equipment-tracking/template-config.service.ts
 import { Injectable } from '@nestjs/common';
-import {
-  FrequencyConfig,
-  InspectionFrequencyType,
-} from './types/inspection-frequency.type';
+import { FrequencyConfig } from './types/inspection-frequency.type';
 
 @Injectable()
 export class TemplateConfigService {

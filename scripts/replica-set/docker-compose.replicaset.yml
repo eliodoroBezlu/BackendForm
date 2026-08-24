@@ -1,0 +1,44 @@
+# Sobrecarga que convierte el Mongo actual en un replica set de un solo miembro.
+#
+# NO sustituye al docker-compose.yml original: se aplica ENCIMA con `-f`.
+# Ver el README de esta carpeta para el procedimiento completo.
+#
+# Por qué hace falta el keyfile
+# ─────────────────────────────
+# El contenedor tiene autenticación activada (MONGO_INITDB_ROOT_*). En cuanto
+# se añade `--replSet`, MongoDB exige además **autenticación interna** entre
+# miembros, aunque el conjunto tenga un solo miembro. Sin keyfile el proceso
+# ni siquiera arranca:
+#
+#   BadValue: security.keyFile is required when authorization is enabled
+#   with replica sets
+#
+# Por qué el keyfile se copia dentro y no se monta directo
+# ────────────────────────────────────────────────────────
+# MongoDB exige que el keyfile tenga permisos 400 y pertenezca al usuario
+# `mongodb`. Un bind mount desde Windows llega con permisos abiertos (0777) y
+# MongoDB lo rechaza. Por eso el `command` lo copia a un punto interno, le
+# ajusta permisos y dueño, y recién entonces arranca el servidor.
+
+services:
+  mongodb:
+    volumes:
+      # El volumen de datos original se hereda del compose base.
+      # Aquí solo se añade el keyfile, en solo lectura.
+      #
+      # La ruta va ABSOLUTA a propósito. Docker Compose resuelve las rutas
+      # relativas contra el directorio del PRIMER archivo `-f` —que es el
+      # compose original, en proyects\docker\mongo— así que un `./keyfile`
+      # buscaría el archivo allí y no aquí.
+      - D:/tesisSanCristobal/forms/BackendForm/BackendForm/scripts/replica-set/keyfile:/tmp/mongo-keyfile:ro
+    command:
+      - bash
+      - -c
+      - |
+        cp /tmp/mongo-keyfile /data/keyfile
+        chmod 400 /data/keyfile
+        chown mongodb:mongodb /data/keyfile
+        exec docker-entrypoint.sh mongod \
+          --replSet rs0 \
+          --keyFile /data/keyfile \
+          --bind_ip_all

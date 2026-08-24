@@ -1,4 +1,7 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext, Logger } from '@nestjs/common';
+
+// Un decorador de parametro no es una clase, asi que el logger es de modulo.
+const logger = new Logger('CurrentUser');
 
 /**
  * Decorador para extraer el usuario autenticado del request.
@@ -16,7 +19,7 @@ export const CurrentUser = createParamDecorator(
     const user = request.user;
 
     if (!user) {
-      console.warn('⚠️ [CurrentUser] No hay usuario en el request');
+      logger.warn('No hay usuario en el request');
       return null;
     }
 

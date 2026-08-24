@@ -1,4 +1,4 @@
-import { FrecuenciaInspeccion } from '../schema/template-herra-equipo.schema';
+import { FrecuenciaInspeccion } from '../schemas/template-herra-equipo.schema';
 
 const DIAS_POR_UNIDAD: Record<string, number> = {
   diaria: 1,

@@ -4,6 +4,8 @@ import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
 import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { coordenadasDeCelda } from './comun/celdas.util';
+import { insertarImagenEnCelda } from './comun/imagen-excel.util';
 
 @Injectable()
 export class ExcelVehicleService {
@@ -48,25 +50,9 @@ export class ExcelVehicleService {
     cellRef: string,
   ) {
     try {
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const rawBuffer = Buffer.from(base64Data, 'base64');
-      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
-        rawBuffer,
-      )) as unknown as ExcelJS.Buffer;
-
-      const imageId = worksheet.workbook.addImage({
-        buffer: imageBuffer,
-        extension: 'jpeg',
+      await insertarImagenEnCelda(worksheet, base64Image, cellRef, {
+        altoDeFila: 25,
       });
-
-      const { row, col } = this.getCellCoordinates(cellRef);
-      worksheet.addImage(imageId, {
-        tl: { col: col - 1, row: row - 1 } as ExcelJS.Anchor,
-        br: { col: col, row: row } as ExcelJS.Anchor,
-        editAs: 'oneCell',
-      });
-
-      worksheet.getRow(row).height = 25;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       throw error;
@@ -76,17 +62,6 @@ export class ExcelVehicleService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -295,55 +270,57 @@ export class ExcelVehicleService {
           let currentRow = sectionConfig.startRow;
 
           // Procesar preguntas
-          Object.entries(sectionResponses).forEach(([questionId, response]) => {
-            if (currentRow > sectionConfig.endRow) {
-              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-              return;
-            }
+          Object.entries(sectionResponses).forEach(
+            ([_questionId, response]) => {
+              if (currentRow > sectionConfig.endRow) {
+                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
+                return;
+              }
 
-            try {
-              // Limpiar celdas
-              worksheet.getCell(`${buenoCol}${currentRow}`).value = '';
-              worksheet.getCell(`${maloCol}${currentRow}`).value = '';
-              worksheet.getCell(`${naCol}${currentRow}`).value = '';
+              try {
+                // Limpiar celdas
+                worksheet.getCell(`${buenoCol}${currentRow}`).value = '';
+                worksheet.getCell(`${maloCol}${currentRow}`).value = '';
+                worksheet.getCell(`${naCol}${currentRow}`).value = '';
 
-              // Procesar respuesta
-              if (response.value !== undefined && response.value !== null) {
-                const valor = String(response.value).toLowerCase().trim();
+                // Procesar respuesta
+                if (response.value !== undefined && response.value !== null) {
+                  const valor = String(response.value).toLowerCase().trim();
 
-                if (
-                  valor === 'bueno' ||
-                  valor === 'si' ||
-                  valor === 'true' ||
-                  valor === '1'
-                ) {
-                  worksheet.getCell(`${buenoCol}${currentRow}`).value = 'X';
-                } else if (
-                  valor === 'malo' ||
-                  valor === 'no' ||
-                  valor === 'false' ||
-                  valor === '0'
-                ) {
-                  worksheet.getCell(`${maloCol}${currentRow}`).value = 'X';
-                } else if (valor === 'na' || valor === 'n/a') {
-                  worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                  if (
+                    valor === 'bueno' ||
+                    valor === 'si' ||
+                    valor === 'true' ||
+                    valor === '1'
+                  ) {
+                    worksheet.getCell(`${buenoCol}${currentRow}`).value = 'X';
+                  } else if (
+                    valor === 'malo' ||
+                    valor === 'no' ||
+                    valor === 'false' ||
+                    valor === '0'
+                  ) {
+                    worksheet.getCell(`${maloCol}${currentRow}`).value = 'X';
+                  } else if (valor === 'na' || valor === 'n/a') {
+                    worksheet.getCell(`${naCol}${currentRow}`).value = 'X';
+                  }
                 }
-              }
 
-              // Observaciones
-              if (response.observacion?.trim()) {
-                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                  response.observacion;
-              }
+                // Observaciones
+                if (response.observacion?.trim()) {
+                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                    response.observacion;
+                }
 
-              currentRow++;
-            } catch (error) {
-              this.logger.error(
-                `Error en fila ${currentRow}: ${error.message}`,
-              );
-              currentRow++;
-            }
-          });
+                currentRow++;
+              } catch (error) {
+                this.logger.error(
+                  `Error en fila ${currentRow}: ${error.message}`,
+                );
+                currentRow++;
+              }
+            },
+          );
         },
       );
 
@@ -402,8 +379,8 @@ export class ExcelVehicleService {
         extension: 'jpeg',
       });
 
-      const startCoords = this.getCellCoordinates(startCell);
-      const endCoords = this.getCellCoordinates(endCell);
+      const startCoords = coordenadasDeCelda(startCell);
+      const endCoords = coordenadasDeCelda(endCell);
 
       // Insertar imagen que cubra desde H71 hasta L85
       worksheet.addImage(imageId, {

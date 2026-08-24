@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
-import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { insertarImagenEnCelda } from './comun/imagen-excel.util';
 
 @Injectable()
 export class ExcelGruaCabinaService {
@@ -48,25 +48,9 @@ export class ExcelGruaCabinaService {
     cellRef: string,
   ) {
     try {
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const rawBuffer = Buffer.from(base64Data, 'base64');
-      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
-        rawBuffer,
-      )) as unknown as ExcelJS.Buffer;
-
-      const imageId = worksheet.workbook.addImage({
-        buffer: imageBuffer,
-        extension: 'jpeg',
+      await insertarImagenEnCelda(worksheet, base64Image, cellRef, {
+        altoDeFila: 25,
       });
-
-      const { row, col } = this.getCellCoordinates(cellRef);
-      worksheet.addImage(imageId, {
-        tl: { col: col - 1, row: row - 1 } as ExcelJS.Anchor,
-        br: { col: col, row: row } as ExcelJS.Anchor,
-        editAs: 'oneCell',
-      });
-
-      worksheet.getRow(row).height = 25;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       throw error;
@@ -76,17 +60,6 @@ export class ExcelGruaCabinaService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -172,7 +145,18 @@ export class ExcelGruaCabinaService {
       }
 
       // Configuración de secciones y subsecciones FIJAS
-      const sectionConfig = {
+      const sectionConfig: Record<
+        string,
+        {
+          startRow: number;
+          endRow: number;
+          name: string;
+          // Ninguna entrada de este mapa lo define hoy, asi que la rama que
+          // lo consulta (~linea 255) nunca se cumple. Se declara opcional para
+          // no alterar el comportamiento; ver ANALISIS_BACKEND.md.
+          hasSubsections?: boolean;
+        }
+      > = {
         // Sección 0 y sus subsecciones
         section_0: {
           startRow: 12,
@@ -297,7 +281,7 @@ export class ExcelGruaCabinaService {
     let currentRow = sectionConfig.startRow;
 
     Object.entries(sectionResponses as Record<string, any>).forEach(
-      ([questionId, response], index) => {
+      ([questionId, response], _index) => {
         if (currentRow > sectionConfig.endRow) {
           this.logger.warn(
             `  ⚠️ Límite de filas excedido en ${sectionConfig.name}`,

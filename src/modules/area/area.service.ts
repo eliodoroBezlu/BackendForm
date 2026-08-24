@@ -9,14 +9,23 @@ import { ConfigService } from '@nestjs/config';
 import { CreateAreaDto } from './dto/create-area.dto';
 import { UpdateAreaDto } from './dto/update-area.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Area } from './schema/area.schema';
+import { Area } from './schemas/area.schema';
 import { Model } from 'mongoose';
-import { Superintendencia } from '../superintendencia/schema/superintendencia.schema';
+import { Superintendencia } from '../superintendencia/schemas/superintendencia.schema';
+import {
+  mismoNombreOrganizacion,
+  normalizarNombre,
+} from '../../common/utils/nombres-organizacion.util';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 interface IamAreaCatalogEntry {
   codigo: string;
   nombre: string;
+  /** Nombre denormalizado. Solo para mostrar: **no** se empareja por acá. */
   superintendencia: string;
+  /** Clave estable de la superintendencia en el IAM. */
+  superintendenciaId?: string;
+  superintendenciaNombre?: string;
 }
 
 @Injectable()
@@ -44,6 +53,14 @@ export class AreaService implements OnModuleInit {
         this.logger.log(
           `Áreas sincronizadas desde IAM al arrancar: ${resultado.creadas} creadas, ${resultado.actualizadas} actualizadas`,
         );
+        // Solo se avisa: dar de baja un área es una decisión de negocio (puede
+        // tener inspecciones en curso), así que se hace a mano desde el panel.
+        for (const baja of resultado.candidatasBaja) {
+          this.logger.warn(
+            `Área "${baja.nombre}" (código ${baja.codigo}) ya no está activa en el IAM ` +
+              `y sigue activa acá. Revisar si corresponde darla de baja.`,
+          );
+        }
       }
     } catch (error) {
       this.logger.warn(
@@ -53,16 +70,100 @@ export class AreaService implements OnModuleInit {
   }
 
   /**
+   * Empareja una superintendencia del IAM con la local, **sin crear duplicados**.
+   *
+   * Orden de búsqueda:
+   *   1. `idIam` — la clave estable. Es la única que no se rompe si alguien
+   *      renombra la superintendencia en cualquiera de los dos lados.
+   *   2. Nombre idéntico ignorando tildes y mayúsculas.
+   *   3. Crear, **avisando** si se parece a alguna que ya existe.
+   *
+   * Deliberadamente **no** se adopta por parecido. Emparejar «Plta.» con
+   * «Planta» requiere criterio humano y equivocarse fusiona dos áreas
+   * distintas: un nombre corto como «Superintendencia de Mantenimiento» se
+   * reduce a un solo token significativo y termina pareciéndose a todas. Ese
+   * emparejamiento se hace una sola vez, revisado, con el script
+   * `scripts/migrar-catalogo-iam.cjs`, que deja el `idIam` estampado. De ahí
+   * en adelante el sync solo sigue la clave.
+   *
+   * El `nombre` local nunca se pisa: es el que referencian por texto los PGR,
+   * las matrices y el roster ya cargados. El del IAM va a `nombreIam`.
+   */
+  private async resolverSuperintendencia(
+    iamArea: IamAreaCatalogEntry,
+    locales: Superintendencia[],
+  ): Promise<Superintendencia> {
+    const idIam = iamArea.superintendenciaId;
+    const nombreIam =
+      iamArea.superintendenciaNombre ?? iamArea.superintendencia;
+
+    if (idIam) {
+      const porId = locales.find(
+        (s) => (s as { idIam?: string }).idIam === idIam,
+      );
+      if (porId) return porId;
+    }
+
+    const adoptable = locales.find(
+      (s) =>
+        !(s as { idIam?: string }).idIam &&
+        normalizarNombre(s.nombre) === normalizarNombre(nombreIam),
+    );
+    if (adoptable) {
+      await this.superintendenciaModel.updateOne(
+        { _id: adoptable._id },
+        { $set: { idIam, nombreIam } },
+      );
+      (adoptable as { idIam?: string }).idIam = idIam;
+      this.logger.log(
+        `Superintendencia "${adoptable.nombre}" emparejada con el IAM (${idIam})`,
+      );
+      return adoptable;
+    }
+
+    // Se crea, pero si hay una parecida se avisa: casi siempre significa que
+    // falta correr la migración y que esto va a quedar duplicado.
+    const parecida = locales.find((s) =>
+      mismoNombreOrganizacion(s.nombre, nombreIam),
+    );
+    if (parecida) {
+      this.logger.warn(
+        `Se creará "${nombreIam}" y ya existe "${parecida.nombre}". ` +
+          `Si son la misma, corré scripts/migrar-catalogo-iam.cjs para fusionarlas.`,
+      );
+    }
+
+    const creada = await new this.superintendenciaModel({
+      nombre: nombreIam,
+      nombreIam,
+      idIam,
+      activo: true,
+      creadoPor: 'iam-sync',
+    }).save();
+    locales.push(creada);
+    this.logger.log(`Superintendencia creada desde el IAM: "${nombreIam}"`);
+    return creada;
+  }
+
+  /**
    * Trae el catálogo maestro de Áreas/Superintendencias desde el IAM Core
-   * (fuente de verdad) y lo espeja en Mongo. Empareja primero por `codigo`
-   * (clave del IAM); si no existe, intenta por nombre para no duplicar áreas
-   * creadas manualmente antes de la sincronización. Nunca toca `activo`,
-   * `creadoPor` ni `actualizadoPor` de áreas ya existentes — son propias de
-   * BackendForm.
+   * (fuente de verdad) y lo espeja en Mongo.
+   *
+   * Empareja por **clave**: el área por `codigo`, la superintendencia por
+   * `idIam`. Emparejar por nombre era lo que duplicaba el catálogo: el IAM
+   * escribe «Generación» y «Mec. Plta. Chancado…» donde BackendForm tenía
+   * «Generacion» y «Mec. Planta Chancado…», y cada arranque creaba un registro
+   * nuevo y repuntaba las áreas hacia él.
+   *
+   * Nunca toca `activo`, `creadoPor` ni `actualizadoPor` — son propios de
+   * BackendForm — ni pisa `nombre`. Las áreas que el IAM deja de mandar se
+   * reportan como candidatas a baja, pero no se desactivan solas: pueden tener
+   * inspecciones en curso.
    */
   async syncAreasFromIam(): Promise<{
     creadas: number;
     actualizadas: number;
+    candidatasBaja: { codigo: string; nombre: string }[];
     error?: string;
   }> {
     const base = (
@@ -83,52 +184,71 @@ export class AreaService implements OnModuleInit {
       return {
         creadas: 0,
         actualizadas: 0,
+        candidatasBaja: [],
         error: error instanceof Error ? error.message : 'Error desconocido',
       };
     }
+
+    // Se cargan una vez y se comparan en memoria. Antes cada área hacía dos
+    // consultas con un `RegExp` construido a partir del nombre que mandaba el
+    // IAM, sin escapar: los `.` de «Mec. Plta.» actuaban como comodín y un
+    // nombre con paréntesis habría roto la consulta.
+    const superintendencias = await this.superintendenciaModel.find().exec();
+    const areasLocales = await this.areaModel.find().exec();
 
     let creadas = 0;
     let actualizadas = 0;
 
     for (const iamArea of areas) {
-      let superintendencia = await this.superintendenciaModel.findOne({
-        nombre: { $regex: new RegExp(`^${iamArea.superintendencia}$`, 'i') },
-      });
+      const superintendencia = await this.resolverSuperintendencia(
+        iamArea,
+        superintendencias,
+      );
 
-      if (!superintendencia) {
-        superintendencia = await new this.superintendenciaModel({
-          nombre: iamArea.superintendencia,
-          activo: true,
-          creadoPor: 'iam-sync',
-        }).save();
-      }
-
-      let area = await this.areaModel.findOne({ codigo: iamArea.codigo });
+      // Por código; si todavía no lo tiene, se adopta la que ya existía con el
+      // mismo nombre —ignorando tildes y mayúsculas— y se le estampa el código.
+      let area = areasLocales.find((a) => a.codigo === iamArea.codigo);
       if (!area) {
-        area = await this.areaModel.findOne({
-          nombre: { $regex: new RegExp(`^${iamArea.nombre}$`, 'i') },
-        });
+        area = areasLocales.find(
+          (a) =>
+            !a.codigo &&
+            normalizarNombre(a.nombre) === normalizarNombre(iamArea.nombre),
+        );
+        if (area) {
+          this.logger.log(
+            `Área "${area.nombre}" emparejada con el código ${iamArea.codigo} del IAM`,
+          );
+        }
       }
 
       if (area) {
         area.codigo = iamArea.codigo;
-        area.nombre = iamArea.nombre;
+        // `nombre` no se pisa a propósito: es el que usan los datos ya
+        // cargados. La diferencia queda registrada en `nombreIam`.
+        area.nombreIam =
+          iamArea.nombre === area.nombre ? undefined : iamArea.nombre;
         area.superintendencia = superintendencia._id as Superintendencia;
         await area.save();
         actualizadas++;
       } else {
-        await new this.areaModel({
+        const nueva = await new this.areaModel({
           codigo: iamArea.codigo,
           nombre: iamArea.nombre,
           superintendencia: superintendencia._id,
           activo: true,
           creadoPor: 'iam-sync',
         }).save();
+        areasLocales.push(nueva);
         creadas++;
       }
     }
 
-    return { creadas, actualizadas };
+    const codigosIam = new Set(areas.map((a) => a.codigo));
+    const candidatasBaja = areasLocales
+      .filter((a) => a.codigo && a.activo && !codigosIam.has(a.codigo))
+      .map((a) => ({ codigo: a.codigo as string, nombre: a.nombre }));
+
+    return { creadas, actualizadas, candidatasBaja };
   }
 
   async create(createAreaDto: CreateAreaDto, usuario: string) {
@@ -152,7 +272,11 @@ export class AreaService implements OnModuleInit {
 
     // Verificar si ya existe un área con ese nombre en la misma superintendencia
     const existe = await this.areaModel.findOne({
-      nombre: { $regex: new RegExp(`^${createAreaDto.nombre}$`, 'i') },
+      // Nombre exacto sin distinguir mayusculas. Se escapa porque un nombre
+      // con parentesis romperia la expresion.
+      nombre: {
+        $regex: new RegExp(`^${escaparRegex(createAreaDto.nombre)}$`, 'i'),
+      },
       superintendencia: superintendencia._id,
     });
 
@@ -182,7 +306,9 @@ export class AreaService implements OnModuleInit {
     // Búsqueda con regex
     const areas = await this.areaModel
       .find({
-        nombre: { $regex: query, $options: 'i' },
+        // Escapado: sin esto un «(» escrito en el autocompletado
+        // devuelve un error de Mongo (ver escapar-regex.util).
+        nombre: { $regex: escaparRegex(query.trim()), $options: 'i' },
         activo: true,
       })
       .limit(20)

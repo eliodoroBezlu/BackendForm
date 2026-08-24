@@ -3,11 +3,12 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import type { Model } from 'mongoose';
+import type { FilterQuery, Model } from 'mongoose';
 import { Template, TemplateDocument } from './schemas/template.schema';
 import type { CreateTemplateDto } from './dto/create-template.dto';
 import type { UpdateTemplateDto } from './dto/update-template.dto';
 import { InjectModel } from '@nestjs/mongoose';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 @Injectable()
 export class TemplatesService {
@@ -33,7 +34,7 @@ export class TemplatesService {
     isActive?: boolean;
     search?: string;
   }): Promise<Template[]> {
-    const query: any = {};
+    const query: FilterQuery<Template> = {};
 
     if (filters?.type) {
       query.type = filters.type;
@@ -44,9 +45,11 @@ export class TemplatesService {
     }
 
     if (filters?.search) {
+      // Escapado: el texto lo escribe el usuario en el buscador de plantillas.
+      const termino = escaparRegex(filters.search.trim());
       query.$or = [
-        { name: { $regex: filters.search, $options: 'i' } },
-        { code: { $regex: filters.search, $options: 'i' } },
+        { name: { $regex: termino, $options: 'i' } },
+        { code: { $regex: termino, $options: 'i' } },
       ];
     }
 

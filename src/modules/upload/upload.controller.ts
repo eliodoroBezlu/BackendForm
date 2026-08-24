@@ -1,12 +1,13 @@
 import {
   Controller,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
   BadRequestException,
   OnModuleInit,
-  Res,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -15,18 +16,20 @@ import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { existsSync, mkdirSync } from 'fs';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CARPETAS_SUBIDA, rutaDeCarpeta } from './carpetas-permitidas';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('upload')
 @Controller('upload')
 export class UploadController implements OnModuleInit {
-  private readonly uploadPath = './uploads/evidencias-tareas';
+  private readonly logger = new Logger(UploadController.name);
 
-  // 🔥 Crear carpeta automáticamente al iniciar el módulo
   onModuleInit() {
-    if (!existsSync(this.uploadPath)) {
-      mkdirSync(this.uploadPath, { recursive: true });
-      console.log(`📁 Carpeta creada: ${this.uploadPath}`);
+    for (const ruta of Object.values(CARPETAS_SUBIDA)) {
+      if (!existsSync(ruta)) {
+        mkdirSync(ruta, { recursive: true });
+        this.logger.log(`Carpeta creada: ${ruta}`);
+      }
     }
   }
 
@@ -47,7 +50,11 @@ export class UploadController implements OnModuleInit {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/evidencias-tareas',
+        // El destino sale de la lista blanca, nunca del texto que llega.
+        destination: (req, _file, callback) => {
+          const clave = (req.query as { carpeta?: string })?.carpeta;
+          callback(null, rutaDeCarpeta(clave));
+        },
         filename: (_req, file, callback) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -82,13 +89,20 @@ export class UploadController implements OnModuleInit {
       },
     }),
   )
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  uploadFile(
+    @UploadedFile() file: Express.Multer.File,
+    @Query('carpeta') carpeta?: string,
+  ) {
     if (!file) {
       throw new BadRequestException('No se proporcionó archivo');
     }
 
+    // `rutaDeCarpeta` empieza por `./uploads/`; la URL pública se sirve desde
+    // `/uploads/`, así que se quita el punto inicial.
+    const base = rutaDeCarpeta(carpeta).replace(/^\./, '');
+
     return {
-      url: `/uploads/evidencias-tareas/${file.filename}`,
+      url: `${base}/${file.filename}`,
       path: file.path,
       filename: file.filename,
       originalname: file.originalname,

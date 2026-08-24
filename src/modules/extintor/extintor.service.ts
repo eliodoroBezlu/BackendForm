@@ -1,10 +1,19 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
 import { InjectModel } from '@nestjs/mongoose';
-import { Extintor } from './schema/extintor.schema';
+import { Extintor } from './schemas/extintor.schema';
 import { Model, Types } from 'mongoose';
 import { Cron } from '@nestjs/schedule';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 interface FiltrosExtintor {
   area?: string;
@@ -28,10 +37,15 @@ export class ExtintorService {
       const extintor = new this.extintorModel(createExtintorDto);
       return await extintor.save();
     } catch (error) {
-      if (error.code === 11000) {
-        throw new Error('Ya existe un extintor con ese código');
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      if ((error as { code?: number }).code === 11000) {
+        throw new ConflictException('Ya existe un extintor con ese código');
       }
-      throw new Error(`Error al crear extintor: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Error al crear extintor: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -39,14 +53,19 @@ export class ExtintorService {
     try {
       return await this.extintorModel.find().exec();
     } catch (error) {
-      throw new Error(`Error al obtener extintores: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en un 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        `Error al obtener extintores: ${(error as Error).message}`,
+      );
     }
   }
 
   async findOne(id: string) {
     try {
       if (!Types.ObjectId.isValid(id)) {
-        throw new Error('ID de extintor inválido');
+        throw new BadRequestException('ID de extintor inválido');
       }
 
       const extintor = await this.extintorModel.findById(id).exec();
@@ -57,7 +76,12 @@ export class ExtintorService {
 
       return extintor;
     } catch (error) {
-      throw new Error(`Error al obtener extintor: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en un 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        `Error al obtener extintor: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -83,19 +107,22 @@ export class ExtintorService {
 
       return await this.extintorModel.find(query).exec();
     } catch (error) {
-      throw new Error(
-        `Error al buscar extintores con filtros: ${error.message}`,
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en un 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        `Error al buscar extintores con filtros: ${(error as Error).message}`,
       );
     }
   }
 
   async findByTag(tag: string) {
     try {
-      console.log('Servicio - Buscando tag:', tag);
+      this.logger.debug(`Servicio - Buscando tag: ${tag}`);
 
       const result = await this.extintorModel
         .find({
-          tag: new RegExp(`^${tag}$`, 'i'),
+          tag: new RegExp(`^${escaparRegex(tag)}$`, 'i'),
           inspeccionado: false,
           activo: true,
         })
@@ -104,7 +131,7 @@ export class ExtintorService {
         .exec();
 
       const uniqueTags = [...new Set(result.map((extintor) => extintor.tag))];
-      const tagCountMap = {};
+      const tagCountMap: Record<string, number> = {};
 
       for (const tagItem of uniqueTags) {
         const count = await this.extintorModel
@@ -123,7 +150,7 @@ export class ExtintorService {
 
       const totalExtintoresActivosArea = await this.extintorModel
         .countDocuments({
-          tag: new RegExp(`^${tag}$`, 'i'),
+          tag: new RegExp(`^${escaparRegex(tag)}$`, 'i'),
           activo: true,
         })
         .exec();
@@ -133,14 +160,19 @@ export class ExtintorService {
         totalActivosArea: totalExtintoresActivosArea,
       };
     } catch (error) {
-      console.error('Error en findByTag service:', error);
-      throw new Error(`Error al buscar extintores: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error en findByTag service: ${error}`);
+      throw new InternalServerErrorException(
+        `Error al buscar extintores: ${(error as Error).message}`,
+      );
     }
   }
 
   async findByArea(area: string) {
     try {
-      console.log('Servicio - Buscando área:', area);
+      this.logger.debug(`Servicio - Buscando área: ${area}`);
 
       const result = await this.extintorModel
         .find({
@@ -152,7 +184,7 @@ export class ExtintorService {
         .exec();
 
       const uniqueAreas = [...new Set(result.map((extintor) => extintor.area))];
-      const areaCountMap = {};
+      const areaCountMap: Record<string, number> = {};
 
       for (const areaItem of uniqueAreas) {
         const count = await this.extintorModel
@@ -181,15 +213,20 @@ export class ExtintorService {
         totalActivosArea: totalExtintoresActivosArea,
       };
     } catch (error) {
-      console.error('Error en findByArea service:', error);
-      throw new Error(`Error al buscar extintores: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error en findByArea service: ${error}`);
+      throw new InternalServerErrorException(
+        `Error al buscar extintores: ${(error as Error).message}`,
+      );
     }
   }
 
   async findByCodigo(codigoExtintor: string) {
     try {
       if (!codigoExtintor) {
-        throw new Error('El código del extintor es requerido');
+        throw new BadRequestException('El código del extintor es requerido');
       }
 
       const result = await this.extintorModel
@@ -201,17 +238,22 @@ export class ExtintorService {
 
       return result;
     } catch (error) {
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
       this.logger.error(
-        `Error al buscar extintor por código ${codigoExtintor}: ${error.message}`,
+        `Error al buscar extintor por código ${codigoExtintor}: ${(error as Error).message}`,
       );
-      throw new Error(`Error al buscar extintor: ${error.message}`);
+      throw new InternalServerErrorException(
+        `Error al buscar extintor: ${(error as Error).message}`,
+      );
     }
   }
 
   async update(id: string, updateExtintorDto: UpdateExtintorDto) {
     try {
       if (!Types.ObjectId.isValid(id)) {
-        throw new Error('ID de extintor inválido');
+        throw new BadRequestException('ID de extintor inválido');
       }
 
       const extintor = await this.extintorModel
@@ -224,14 +266,19 @@ export class ExtintorService {
 
       return extintor;
     } catch (error) {
-      throw new Error(`Error al actualizar extintor: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en un 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        `Error al actualizar extintor: ${(error as Error).message}`,
+      );
     }
   }
 
   async remove(id: string) {
     try {
       if (!Types.ObjectId.isValid(id)) {
-        throw new Error('ID de extintor inválido');
+        throw new BadRequestException('ID de extintor inválido');
       }
 
       const result = await this.extintorModel.findByIdAndDelete(id).exec();
@@ -242,7 +289,12 @@ export class ExtintorService {
 
       return { deletedCount: 1 };
     } catch (error) {
-      throw new Error(`Error al eliminar extintor: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en un 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(
+        `Error al eliminar extintor: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -259,8 +311,15 @@ export class ExtintorService {
 
       return { modified: resultado.modifiedCount };
     } catch (error) {
-      console.error('Error al marcar extintores como inspeccionados:', error);
-      throw new Error(`Error al actualizar extintores: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(
+        `Error al marcar extintores como inspeccionados: ${error}`,
+      );
+      throw new InternalServerErrorException(
+        `Error al actualizar extintores: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -283,8 +342,13 @@ export class ExtintorService {
         mensaje: 'Extintor desactivado correctamente',
       };
     } catch (error) {
-      console.error('Error al desactivar el extintor:', error);
-      throw new Error(`Error al desactivar extintor: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error al desactivar el extintor: ${error}`);
+      throw new InternalServerErrorException(
+        `Error al desactivar extintor: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -301,8 +365,13 @@ export class ExtintorService {
 
       return { modified: resultado.modifiedCount };
     } catch (error) {
-      console.error('Error al resetear estado de extintores:', error);
-      throw new Error(`Error al resetear extintores: ${error.message}`);
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error al resetear estado de extintores: ${error}`);
+      throw new InternalServerErrorException(
+        `Error al resetear extintores: ${(error as Error).message}`,
+      );
     }
   }
 
@@ -360,8 +429,11 @@ export class ExtintorService {
           }
         }
       } catch (error) {
+        // Una excepcion de Nest ya trae su codigo: re-envolverla la
+        // convertiria en 500 y perderia el 404 o el 400 original.
+        if (error instanceof HttpException) throw error;
         this.logger.error(
-          `Error al procesar extintor ${extintor?.codigo}: ${error.message}`,
+          `Error al procesar extintor ${extintor?.codigo}: ${(error as Error).message}`,
         );
       }
     }
@@ -418,16 +490,19 @@ export class ExtintorService {
         año: ahora.getFullYear(),
       };
     } catch (error) {
+      // Una excepcion de Nest ya trae su codigo: re-envolverla la
+      // convertiria en 500 y perderia el 404 o el 400 original.
+      if (error instanceof HttpException) throw error;
       this.logger.error(
-        `❌ Error en reseteo automático fin de mes: ${error.message}`,
+        `❌ Error en reseteo automático fin de mes: ${(error as Error).message}`,
         error.stack,
       );
 
       // Opcional: Enviar notificación de error
       // await this.notificationService.sendAlert('Error en reseteo de extintores', error);
 
-      throw new Error(
-        `Error al resetear estado de extintores: ${error.message}`,
+      throw new InternalServerErrorException(
+        `Error al resetear estado de extintores: ${(error as Error).message}`,
       );
     }
   }

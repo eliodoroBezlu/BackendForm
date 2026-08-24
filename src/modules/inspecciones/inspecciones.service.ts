@@ -4,10 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { isValidObjectId, Model } from 'mongoose';
+import { FilterQuery, isValidObjectId, Model } from 'mongoose';
 import { Inspeccion } from './schemas/inspeccion.schema';
 import type { CreateInspeccionDto } from './dto/create-inspeccion.dto';
 import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 @Injectable()
 export class InspeccionesService {
@@ -34,7 +35,7 @@ export class InspeccionesService {
     operativo?: 'SI' | 'NO';
     numInspeccion?: string;
   }) {
-    const query: any = {};
+    const query: FilterQuery<Inspeccion> = {};
 
     if (filters.startDate && filters.endDate) {
       query.createdAt = {
@@ -45,7 +46,7 @@ export class InspeccionesService {
 
     if (filters.superintendencia) {
       query['informacionGeneral.superintendencia'] = {
-        $regex: filters.superintendencia,
+        $regex: escaparRegex(filters.superintendencia),
         $options: 'i',
       };
     }
@@ -56,7 +57,7 @@ export class InspeccionesService {
 
     if (filters.numInspeccion) {
       query['informacionGeneral.numInspeccion'] = {
-        $regex: filters.numInspeccion,
+        $regex: escaparRegex(filters.numInspeccion),
         $options: 'i',
       };
     }

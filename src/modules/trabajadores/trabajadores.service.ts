@@ -2,15 +2,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ConflictException,
-  ForbiddenException,
   BadRequestException,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Trabajador } from './schema/trabajador.schema';
+import { Model } from 'mongoose';
+import { Trabajador } from './schemas/trabajador.schema';
 import { User } from '../auth/schemas/user.schema';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
@@ -20,6 +18,7 @@ import {
   UpdateUserRolesDto,
   DisableUserDto,
 } from './dto/user-management.dto';
+import { escaparRegex } from '../../common/utils/escapar-regex.util';
 
 interface IamServiceUser {
   userId: string;
@@ -176,11 +175,15 @@ export class TrabajadoresService implements OnModuleInit {
       return this.trabajadorModel.find().limit(10).exec();
     }
 
+    // El texto se escapa antes de entrar al $regex: sin eso se interpreta como
+    // patron y un simple «(» hace que Mongo devuelva un error.
+    const termino = escaparRegex(query.trim());
+
     return this.trabajadorModel
       .find({
         $or: [
-          { nomina: { $regex: query, $options: 'i' } },
-          { ci: { $regex: query, $options: 'i' } },
+          { nomina: { $regex: termino, $options: 'i' } },
+          { ci: { $regex: termino, $options: 'i' } },
         ],
       })
       .limit(10)

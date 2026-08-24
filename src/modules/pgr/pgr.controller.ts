@@ -20,6 +20,9 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { PgrService } from './pgr.service';
 import { PgrImportService } from './pgr-import.service';
 import { PgrExcelService } from './pgr-excel.service';
+import { PgrConsolidacionService } from './pgr-consolidacion.service';
+import { ConsolidarPgrDto } from './dto/consolidar-pgr.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreatePgrDto } from './dto/create-pgr.dto';
 import { UpdatePgrDto } from './dto/update-pgr.dto';
 import { AprobarPgrDto } from './dto/aprobar-pgr.dto';
@@ -37,11 +40,50 @@ export class PgrController {
     private readonly pgrService: PgrService,
     private readonly pgrImportService: PgrImportService,
     private readonly pgrExcelService: PgrExcelService,
+    private readonly consolidacion: PgrConsolidacionService,
   ) {}
 
   @Post()
   create(@Body() createPgrDto: CreatePgrDto) {
     return this.pgrService.create(createPgrDto);
+  }
+
+  /**
+   * Previsualiza qué actividades saldrían de las matrices aprobadas de la
+   * superintendencia de este PGR. No escribe nada.
+   *
+   * Cada propuesta viene con su `efecto` (nueva / acumula / sube-nivel) para
+   * que quien consolida entienda qué va a cambiar en un PGR que quizá ya
+   * estaba programado.
+   *
+   * El PGR se indica por id —y no por superintendencia y gestión— porque esa
+   * pareja no identifica un único documento.
+   */
+  @Get(':id/consolidacion/previsualizar')
+  @Roles(Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.ADMIN, Role.SUPER_ADMIN)
+  previsualizarConsolidacion(
+    @Param('id') id: string,
+    @Query('desdoblarPorArea') desdoblar?: string,
+  ) {
+    return this.consolidacion.previsualizar(id, desdoblar === 'true');
+  }
+
+  /**
+   * Consolida las matrices aprobadas en este PGR.
+   * Es incremental: se puede repetir a medida que las áreas van aprobando.
+   */
+  @Post(':id/consolidacion')
+  @Roles(Role.SUPERVISOR, Role.SUPERINTENDENTE, Role.ADMIN, Role.SUPER_ADMIN)
+  consolidar(
+    @Param('id') id: string,
+    @Body() dto: ConsolidarPgrDto,
+    @CurrentUser('username') usuario: string,
+  ) {
+    return this.consolidacion.consolidar(
+      id,
+      usuario ?? 'desconocido',
+      dto.desdoblarPorArea ?? false,
+    );
   }
 
   /**

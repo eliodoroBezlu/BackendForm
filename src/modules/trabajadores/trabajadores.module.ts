@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TrabajadoresService } from './trabajadores.service';
 import { TrabajadoresController } from './trabajadores.controller';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Trabajador, TrabajadorSchema } from './schema/trabajador.schema';
+import { Trabajador, TrabajadorSchema } from './schemas/trabajador.schema';
 import { KeycloakModule } from './keycloak.module';
 import { User, UserSchema } from '../auth/schemas/user.schema';
 

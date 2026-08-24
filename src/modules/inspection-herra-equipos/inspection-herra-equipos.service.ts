@@ -20,7 +20,7 @@ import { EquipmentTrackingService } from '../equipment-tracking/equipment-tracki
 import { TemplateConfigService } from '../equipment-tracking/template-config.service';
 import { TemplateHerraEquiposService } from '../template-herra-equipos/template-herra-equipos.service';
 import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
-import { TemplateHerraEquipos } from '../template-herra-equipos/schema/template-herra-equipo.schema';
+import { TemplateHerraEquipos } from '../template-herra-equipos/schemas/template-herra-equipo.schema';
 import { diasPorFrecuencia } from '../template-herra-equipos/domain/frecuencia.util';
 import { InspectionStatus } from './types/IProps';
 

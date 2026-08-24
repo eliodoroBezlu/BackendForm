@@ -183,7 +183,7 @@ export class KeycloakAdminService {
 
     // Obtener roles disponibles
     const rolesResponse = await firstValueFrom(
-      this.httpService.get(
+      this.httpService.get<{ id: string; name: string }[]>(
         `${keycloakUrl}/admin/realms/${realm}/clients/${clientInternalId}/roles`,
         { headers: { Authorization: `Bearer ${token}` } },
       ),

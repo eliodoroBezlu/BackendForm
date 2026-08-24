@@ -1,12 +1,19 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { FirmaModule } from './common/firma/firma.module';
+import { AuditoriaModule } from './common/auditoria/auditoria.module';
+import { NucleoModule } from './common/nucleo/nucleo.module';
+import { validarEntorno } from './common/nucleo/entorno.validacion';
+import { PrestamosSpccModule } from './modules/prestamos-spcc/prestamos-spcc.module';
+import { LinternasModule } from './modules/linternas/linternas.module';
 import { InspeccionesModule } from './modules/inspecciones/inspecciones.module';
 import { ExcelModule } from './modules/excel/excel.module';
 import { InspeccionesEmergenciaExcelModule } from './modules/inspecciones-emergencia/inspecciones-emergencia-excel/inspecciones-emergencia-excel.module';
 import { InspeccionesEmergenciaModule } from './modules/inspecciones-emergencia/inspecciones-emergencia.module';
 import { TrabajadoresModule } from './modules/trabajadores/trabajadores.module';
 import { SuperintendenciaModule } from './modules/superintendencia/superintendencia.module';
+import { GerenciaModule } from './modules/gerencia/gerencia.module';
 import { AreaModule } from './modules/area/area.module';
 import { ExtintorModule } from './modules/extintor/extintor.module';
 import { TagModule } from './modules/tag/tag.module';
@@ -24,8 +31,10 @@ import { InspectionScheduleModule } from './modules/inspection-schedule/inspecti
 import { AuthModule } from './modules/auth/auth.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PgrModule } from './modules/pgr/pgr.module';
+import { MatrizRiesgosModule } from './modules/matriz-riesgos/matriz-riesgos.module';
 import { UbicacionModule } from './modules/ubicacion/ubicacion.module';
 import { ClasificacionModule } from './modules/clasificacion/clasificacion.module';
+import { ConfigBienvenidaModule } from './modules/config-bienvenida/config-bienvenida.module';
 import { ConfigFormularioModule } from './modules/config-formulario/config-formulario.module';
 import { EquiposModule } from './modules/equipos/equipos.module';
 
@@ -34,7 +43,11 @@ import { EquiposModule } from './modules/equipos/equipos.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      // Aborta el arranque si falta una variable imprescindible.
+      validate: validarEntorno,
     }),
+    // Chasis transversal: id de peticion, registro, errores, auth, salud.
+    NucleoModule,
     HttpModule.register({
       timeout: 60000,
       maxRedirects: 5,
@@ -57,6 +70,7 @@ import { EquiposModule } from './modules/equipos/equipos.module';
     TrabajadoresModule,
     InspeccionesEmergenciaExcelModule,
     SuperintendenciaModule,
+    GerenciaModule,
     AreaModule,
     ExtintorModule,
     TagModule,
@@ -72,10 +86,16 @@ import { EquiposModule } from './modules/equipos/equipos.module';
     InspectionScheduleModule,
     AuthModule,
     PgrModule,
+    MatrizRiesgosModule,
     UbicacionModule,
     ClasificacionModule,
     ConfigFormularioModule,
+    ConfigBienvenidaModule,
     EquiposModule,
+    FirmaModule,
+    AuditoriaModule,
+    PrestamosSpccModule,
+    LinternasModule,
   ],
   providers: [],
 })

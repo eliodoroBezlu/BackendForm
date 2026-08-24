@@ -294,7 +294,9 @@ export class EquipmentTrackingService {
     let message = '';
 
     switch (config.type) {
-      case 'pre-uso-contador':
+      // Las llaves acotan la declaracion de `result` a este caso; sin ellas
+      // su alcance es todo el switch.
+      case 'pre-uso-contador': {
         const result = await this.handlePreUsoContador(
           tracking,
           inspectionId,
@@ -304,6 +306,7 @@ export class EquipmentTrackingService {
         needsFrecuente = result.needsFrecuente;
         message = result.message;
         break;
+      }
 
       case 'mensual':
       case 'semanal':
@@ -543,7 +546,7 @@ export class EquipmentTrackingService {
 
   private async handleSimple(
     tracking: EquipmentInspectionTrackingDocument,
-    inspectionId: string,
+    _inspectionId: string,
   ): Promise<string> {
     tracking.lastInspectionDate = new Date();
     tracking.status = 'ok';

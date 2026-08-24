@@ -3,21 +3,28 @@ import { SuperintendenciaController } from './superintendencia.controller';
 import { SuperintendenciaService } from './superintendencia.service';
 
 /**
- * Comprueba que SuperintendenciaController se instancia con todas sus dependencias
- * resueltas — es decir, que el constructor y los tokens de inyección
- * siguen coincidiendo.
- *
- * Este spec venía generado por `nest generate` sin proveer ninguna
- * dependencia, así que Nest no podía construir la clase y fallaba antes
- * de llegar a la aserción.
+ * Igual que en áreas: el usuario que firma la operación sale del token, no del
+ * cuerpo de la petición.
  */
 describe('SuperintendenciaController', () => {
   let controller: SuperintendenciaController;
+  let servicio: Record<string, jest.Mock>;
 
   beforeEach(async () => {
+    servicio = {
+      create: jest.fn().mockResolvedValue({}),
+      buscarSuperintendencia: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({}),
+      desactivar: jest.fn().mockResolvedValue({}),
+      activar: jest.fn().mockResolvedValue({}),
+      remove: jest.fn().mockResolvedValue({}),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SuperintendenciaController],
-      providers: [{ provide: SuperintendenciaService, useValue: {} }],
+      providers: [{ provide: SuperintendenciaService, useValue: servicio }],
     }).compile();
 
     controller = module.get<SuperintendenciaController>(
@@ -25,7 +32,30 @@ describe('SuperintendenciaController', () => {
     );
   });
 
-  it('se instancia con sus dependencias resueltas', () => {
-    expect(controller).toBeDefined();
+  const peticion = (username?: string) => ({ user: { username } }) as never;
+
+  it('desactivar registra quien lo hizo', async () => {
+    await controller.desactivar('id-1', peticion('jperez'));
+
+    expect(servicio.desactivar).toHaveBeenCalledWith('id-1', 'jperez');
+  });
+
+  it('activar tambien', async () => {
+    await controller.activar('id-1', peticion('jperez'));
+
+    expect(servicio.activar).toHaveBeenCalledWith('id-1', 'jperez');
+  });
+
+  it('sin usuario en el token no se pierde la trazabilidad', async () => {
+    await controller.desactivar('id-1', peticion());
+
+    const [, usuario] = servicio.desactivar.mock.calls[0] as [string, string];
+    expect(usuario).toBeTruthy();
+  });
+
+  it('la busqueda reenvia el termino', async () => {
+    await controller.buscarSuperintendencias('mina');
+
+    expect(servicio.buscarSuperintendencia).toHaveBeenCalledWith('mina');
   });
 });

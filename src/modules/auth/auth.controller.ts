@@ -22,6 +22,11 @@ import { Response } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { IamProxyService } from './iam-proxy.service';
+import { Throttle } from '@nestjs/throttler';
+import { Publico } from '../../common/nucleo/publico.decorator';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
+import { Role } from './enums/role.enum';
 
 @Controller('auth')
 export class AuthController {
@@ -35,6 +40,9 @@ export class AuthController {
   // Proxea a IAM Core, reenvía Set-Cookie al browser.
 
   @Post('login')
+  @Publico()
+  // Sobrescribe el limite general solo para esta ruta: 10 intentos/minuto.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async login(
     @Body() body: { username: string; password: string },
@@ -54,6 +62,9 @@ export class AuthController {
   // IAM Core tiene el endpoint en /auth/login/2fa
 
   @Post('verify-2fa')
+  @Publico()
+  // Sobrescribe el limite general solo para esta ruta: 10 intentos/minuto.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async verify2FA(
     @Body() body: { tempToken: string; code: string },
@@ -72,6 +83,7 @@ export class AuthController {
   // Middleware de FormNext llama a POST /auth/refresh con cookie refresh_token
 
   @Post('refresh')
+  @Publico()
   @HttpCode(HttpStatus.OK)
   async refresh(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const refreshToken = req.cookies?.refresh_token;
@@ -90,6 +102,7 @@ export class AuthController {
   // ── Logout ────────────────────────────────────────────────────
 
   @Post('logout')
+  @Publico()
   @HttpCode(HttpStatus.OK)
   async logout(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const accessToken = req.cookies?.access_token;
@@ -184,7 +197,13 @@ export class AuthController {
   // ── Register ─────────────────────────────────────────────────
   // En IAM Core el registro es admin-only. Se proxy igualmente.
 
+  // Cerrado deliberadamente: este proxy NO reenvia la identidad del que
+  // llama a IAM Core —solo la X-Api-Key del servicio—, asi que IAM no puede
+  // saber quien pide el alta. La comprobacion de admin tiene que ocurrir
+  // aqui o no ocurre en ninguna parte.
   @Post('register')
+  @UseGuards(RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() body: Record<string, unknown>) {
     const { data } = await this.iam.post('/auth/register', body);
@@ -202,6 +221,9 @@ export class AuthController {
   //  4. Se reenvían las cookies (access_token, refresh_token) al browser
 
   @Post('inspector')
+  @Publico()
+  // Sobrescribe el limite general solo para esta ruta: 10 intentos/minuto.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async inspectorLogin(
     @Body() body: { inspectorKey?: string },

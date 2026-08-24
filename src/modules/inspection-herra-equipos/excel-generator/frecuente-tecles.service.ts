@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
-import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { insertarImagenEnCelda } from './comun/imagen-excel.util';
 
 @Injectable()
 export class ExcelFrecuenteTecleService {
@@ -48,25 +48,9 @@ export class ExcelFrecuenteTecleService {
     cellRef: string,
   ) {
     try {
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const rawBuffer = Buffer.from(base64Data, 'base64');
-      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
-        rawBuffer,
-      )) as unknown as ExcelJS.Buffer;
-
-      const imageId = worksheet.workbook.addImage({
-        buffer: imageBuffer,
-        extension: 'jpeg',
+      await insertarImagenEnCelda(worksheet, base64Image, cellRef, {
+        altoDeFila: 25,
       });
-
-      const { row, col } = this.getCellCoordinates(cellRef);
-      worksheet.addImage(imageId, {
-        tl: { col: col - 1, row: row - 1 } as ExcelJS.Anchor,
-        br: { col: col, row: row } as ExcelJS.Anchor,
-        editAs: 'oneCell',
-      });
-
-      worksheet.getRow(row).height = 25;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       throw error;
@@ -76,17 +60,6 @@ export class ExcelFrecuenteTecleService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -276,73 +249,75 @@ export class ExcelFrecuenteTecleService {
           const skipRows = sectionConfig.skipRows || [];
 
           // Procesar preguntas
-          Object.entries(sectionResponses).forEach(([questionId, response]) => {
-            if (currentRow > sectionConfig.endRow) {
-              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-              return;
-            }
-
-            // ← SALTAR FILAS ESPECIFICADAS
-            while (skipRows.includes(currentRow)) {
-              this.logger.log(`⏭️ Saltando fila ${currentRow}`);
-              currentRow++;
-
-              // Verificar si nos pasamos del límite después de saltar
+          Object.entries(sectionResponses).forEach(
+            ([_questionId, response]) => {
               if (currentRow > sectionConfig.endRow) {
-                this.logger.warn(`Límite excedido después de saltar filas`);
+                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
                 return;
               }
-            }
 
-            try {
-              this.logger.log(`📝 Llenando fila ${currentRow}`);
+              // ← SALTAR FILAS ESPECIFICADAS
+              while (skipRows.includes(currentRow)) {
+                this.logger.log(`⏭️ Saltando fila ${currentRow}`);
+                currentRow++;
 
-              // Limpiar celdas
-              worksheet.getCell(`${opCol}${currentRow}`).value = '';
-              worksheet.getCell(`${manCol}${currentRow}`).value = '';
-
-              // Procesar respuesta
-              if (response.value !== undefined && response.value !== null) {
-                const valor = String(response.value).toLowerCase().trim();
-
-                if (
-                  valor === 'bueno' ||
-                  valor === 'si' ||
-                  valor === 'true' ||
-                  valor === '1' ||
-                  valor === 'operativo'
-                ) {
-                  worksheet.getCell(`${opCol}${currentRow}`).value = 'X';
-                } else if (
-                  valor === 'malo' ||
-                  valor === 'no' ||
-                  valor === 'false' ||
-                  valor === '0' ||
-                  valor === 'mantenimiento'
-                ) {
-                  worksheet.getCell(`${manCol}${currentRow}`).value = 'X';
+                // Verificar si nos pasamos del límite después de saltar
+                if (currentRow > sectionConfig.endRow) {
+                  this.logger.warn(`Límite excedido después de saltar filas`);
+                  return;
                 }
               }
 
-              // Observaciones
-              if (response.observacion?.trim()) {
-                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                  response.observacion;
-              }
+              try {
+                this.logger.log(`📝 Llenando fila ${currentRow}`);
 
-              if (response.description?.trim()) {
-                worksheet.getCell(`${descripcionCol}${currentRow}`).value =
-                  response.description;
-              }
+                // Limpiar celdas
+                worksheet.getCell(`${opCol}${currentRow}`).value = '';
+                worksheet.getCell(`${manCol}${currentRow}`).value = '';
 
-              currentRow++;
-            } catch (error) {
-              this.logger.error(
-                `Error en fila ${currentRow}: ${error.message}`,
-              );
-              currentRow++;
-            }
-          });
+                // Procesar respuesta
+                if (response.value !== undefined && response.value !== null) {
+                  const valor = String(response.value).toLowerCase().trim();
+
+                  if (
+                    valor === 'bueno' ||
+                    valor === 'si' ||
+                    valor === 'true' ||
+                    valor === '1' ||
+                    valor === 'operativo'
+                  ) {
+                    worksheet.getCell(`${opCol}${currentRow}`).value = 'X';
+                  } else if (
+                    valor === 'malo' ||
+                    valor === 'no' ||
+                    valor === 'false' ||
+                    valor === '0' ||
+                    valor === 'mantenimiento'
+                  ) {
+                    worksheet.getCell(`${manCol}${currentRow}`).value = 'X';
+                  }
+                }
+
+                // Observaciones
+                if (response.observacion?.trim()) {
+                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                    response.observacion;
+                }
+
+                if (response.description?.trim()) {
+                  worksheet.getCell(`${descripcionCol}${currentRow}`).value =
+                    response.description;
+                }
+
+                currentRow++;
+              } catch (error) {
+                this.logger.error(
+                  `Error en fila ${currentRow}: ${error.message}`,
+                );
+                currentRow++;
+              }
+            },
+          );
         },
       );
 

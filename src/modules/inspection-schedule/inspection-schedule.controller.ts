@@ -15,8 +15,7 @@ import {
 import { InspectionScheduleService } from './inspection-schedule.service';
 import { CreateInspectionScheduleDto } from './dto/create-inspection-schedule.dto';
 import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { Resource } from 'nest-keycloak-connect';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 

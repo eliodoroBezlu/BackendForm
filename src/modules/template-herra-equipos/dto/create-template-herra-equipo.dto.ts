@@ -149,6 +149,11 @@ export class CreateVerificationFieldDto {
   @IsArray()
   options?: string[];
 
+  /** Con `type: select`, admite un valor fuera de la lista. */
+  @IsOptional()
+  @IsBoolean()
+  permiteOtro?: boolean;
+
   @IsOptional()
   @IsString()
   dataSource?: string;

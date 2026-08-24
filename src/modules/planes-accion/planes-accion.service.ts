@@ -10,7 +10,7 @@ import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
 import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
 import { AprobarPlanDto } from './dto/aprobar-plan.dto';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { GenerarPlanesDto } from './dto/generar-planes.dto';
 import { InstancesService } from '../instances/instances.service';
 import { TemplatesService } from '../templates/templates.service';
@@ -19,7 +19,13 @@ import { PlanDeAccion, TareaObservacion } from './schemas/plan-accion.schema';
 import { ConfigService } from '@nestjs/config';
 import { generarTareasDesdeInstancia } from './domain/generar-plan.logic';
 import { validarActualizacionTarea } from './domain/tarea-update.validation';
-import { Role } from '../auth/enums/role.enum';
+import {
+  calcularDiasRetraso,
+  calcularMetadatos,
+  soloTareasActivas,
+  type EstadisticasDePlanes,
+} from './domain/metadatos-plan';
+import { puedeVerPlanesSinAprobar } from './domain/visibilidad-plan';
 
 @Injectable()
 export class PlanesAccionService {
@@ -71,7 +77,7 @@ export class PlanesAccionService {
       );
     }
 
-    const metadatos = this.calcularMetadatos(
+    const metadatos = calcularMetadatos(
       tareasGeneradas as unknown as TareaObservacion[],
     );
 
@@ -113,7 +119,7 @@ export class PlanesAccionService {
         ? new Date(tareaDto.fechaCumplimientoEfectiva)
         : undefined,
       // 🔥 Calcular días de retraso automáticamente
-      diasRetraso: this.calcularDiasRetraso(
+      diasRetraso: calcularDiasRetraso(
         new Date(tareaDto.fechaCumplimientoAcordada),
         tareaDto.fechaCumplimientoEfectiva
           ? new Date(tareaDto.fechaCumplimientoEfectiva)
@@ -126,9 +132,7 @@ export class PlanesAccionService {
 
     plan.tareas.push(nuevaTarea);
 
-    const metadatos = this.calcularMetadatos(
-      plan.tareas.filter((t) => (t as any).activo !== false),
-    );
+    const metadatos = calcularMetadatos(soloTareasActivas(plan.tareas));
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
 
@@ -155,7 +159,7 @@ export class PlanesAccionService {
     }
 
     const tareaIndex = plan.tareas.findIndex(
-      (t) => (t as any)._id && (t as any)._id.toString() === tareaId,
+      (t) => t._id && t._id.toString() === tareaId,
     );
     if (tareaIndex === -1) {
       throw new NotFoundException('Tarea no encontrada');
@@ -163,7 +167,7 @@ export class PlanesAccionService {
 
     const tareaActual = plan.tareas[tareaIndex];
 
-    if ((tareaActual as any).activo === false) {
+    if (tareaActual.activo === false) {
       throw new NotFoundException('Tarea no encontrada');
     }
 
@@ -185,7 +189,7 @@ export class PlanesAccionService {
     // Calcular días de retraso
     const tareaActualizada = plan.tareas[tareaIndex];
     if (tareaActualizada.fechaCumplimientoAcordada) {
-      tareaActualizada.diasRetraso = this.calcularDiasRetraso(
+      tareaActualizada.diasRetraso = calcularDiasRetraso(
         new Date(tareaActualizada.fechaCumplimientoAcordada),
         tareaActualizada.fechaCumplimientoEfectiva
           ? new Date(tareaActualizada.fechaCumplimientoEfectiva)
@@ -228,9 +232,7 @@ export class PlanesAccionService {
     }
 
     // Recalcular metadatos del plan (solo tareas activas)
-    const metadatos = this.calcularMetadatos(
-      plan.tareas.filter((t) => (t as any).activo !== false),
-    );
+    const metadatos = calcularMetadatos(soloTareasActivas(plan.tareas));
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
 
@@ -294,26 +296,6 @@ export class PlanesAccionService {
   // NUEVO MÉTODO AUXILIAR: Calcular días de retraso
   // ==========================================
 
-  private calcularDiasRetraso(
-    fechaAcordada: Date,
-    fechaEfectiva?: Date,
-  ): number {
-    if (!fechaEfectiva) return 0;
-
-    const acordada = new Date(fechaAcordada);
-    const efectiva = new Date(fechaEfectiva);
-
-    // Normalizar a medianoche para comparación exacta
-    acordada.setHours(0, 0, 0, 0);
-    efectiva.setHours(0, 0, 0, 0);
-
-    const diffTime = efectiva.getTime() - acordada.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    // Solo contar como retraso si es positivo
-    return Math.max(0, diffDays);
-  }
-
   /**
    * 🆕 Dar de baja una tarea (baja lógica, nunca se elimina físicamente)
    */
@@ -327,26 +309,23 @@ export class PlanesAccionService {
       throw new NotFoundException('Plan no encontrado');
     }
 
-    const tarea = plan.tareas.find((t) => {
-      const tt = t as any;
-      return tt._id && tt._id.toString() === tareaId;
-    });
+    const tarea = plan.tareas.find(
+      (t) => t._id && t._id.toString() === tareaId,
+    );
 
-    if (!tarea || (tarea as any).activo === false) {
+    if (!tarea || tarea.activo === false) {
       throw new NotFoundException('Tarea no encontrada');
     }
 
-    (tarea as any).activo = false;
+    tarea.activo = false;
 
     // Renumerar solo las tareas activas
-    const tareasActivas = plan.tareas.filter(
-      (t) => (t as any).activo !== false,
-    );
+    const tareasActivas = soloTareasActivas(plan.tareas);
     tareasActivas.forEach((t, index) => {
       t.numeroItem = index + 1;
     });
 
-    const metadatos = this.calcularMetadatos(tareasActivas);
+    const metadatos = calcularMetadatos(tareasActivas);
     Object.assign(plan, metadatos);
     plan.fechaUltimaActualizacion = new Date();
     plan.markModified('tareas');
@@ -370,7 +349,7 @@ export class PlanesAccionService {
     }
 
     const tareaIndex = plan.tareas.findIndex(
-      (t) => (t as any)._id && (t as any)._id.toString() === tareaId,
+      (t) => t._id && t._id.toString() === tareaId,
     );
 
     if (tareaIndex === -1) {
@@ -379,7 +358,7 @@ export class PlanesAccionService {
 
     const tarea = plan.tareas[tareaIndex];
 
-    if ((tarea as any).activo === false) {
+    if (tarea.activo === false) {
       throw new NotFoundException('Tarea no encontrada');
     }
 
@@ -423,7 +402,7 @@ export class PlanesAccionService {
     }
 
     const plan = await this.planDeAccionModel.findById(planId);
-    if (!plan || (plan as any).activo === false) {
+    if (!plan || plan.activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
@@ -455,13 +434,6 @@ export class PlanesAccionService {
    * Un Supervisor (sin ser también Admin o Superintendente) nunca debe
    * poder ver un plan cuyo `estadoAprobacion` no sea 'aprobado'.
    */
-  private esAdminOSuperintendente(roles?: string[]): boolean {
-    return (
-      !!roles &&
-      (roles.includes(Role.ADMIN) || roles.includes(Role.SUPERINTENDENTE))
-    );
-  }
-
   // ==========================================
   // MÉTODOS AUXILIARES
   // ==========================================
@@ -471,43 +443,14 @@ export class PlanesAccionService {
    * antes de devolver el plan al frontend — nunca se eliminan físicamente,
    * solo dejan de mostrarse.
    */
-  private sanitizeTareas(plan: any): PlanDeAccion {
-    plan.tareas = (plan.tareas || []).filter((t: any) => t.activo !== false);
+  private sanitizeTareas<T extends { tareas: TareaObservacion[] }>(plan: T): T {
+    plan.tareas = soloTareasActivas(plan.tareas);
     return plan;
   }
 
   /**
    * 📊 Calcular metadatos del plan basado en sus tareas
    */
-  private calcularMetadatos(tareas: TareaObservacion[]) {
-    const totalTareas = tareas.length;
-    const tareasAbiertas = tareas.filter((t) => t.estado === 'abierto').length;
-    const tareasEnProgreso = tareas.filter(
-      (t) => t.estado === 'en-progreso',
-    ).length;
-    const tareasCerradas = tareas.filter((t) => t.estado === 'cerrado').length;
-    const porcentajeCierre =
-      totalTareas > 0 ? Math.round((tareasCerradas / totalTareas) * 100) : 0;
-
-    // 🔥 LÓGICA MEJORADA: Todas las tareas deben estar en progreso para que el plan esté en progreso
-    let estado: string;
-    if (tareasCerradas === totalTareas && totalTareas > 0) {
-      estado = 'cerrado';
-    } else if (tareasEnProgreso > 0 || tareasCerradas > 0) {
-      estado = 'en-progreso';
-    } else {
-      estado = 'abierto';
-    }
-
-    return {
-      totalTareas,
-      tareasAbiertas,
-      tareasEnProgreso,
-      tareasCerradas,
-      porcentajeCierre,
-      estado,
-    };
-  }
   // ==========================================
   // MÉTODOS CRUD DE PLANES (sin cambios)
   // ==========================================
@@ -529,7 +472,7 @@ export class PlanesAccionService {
         }) as TareaObservacion,
     );
 
-    const metadatos = this.calcularMetadatos(tareas);
+    const metadatos = calcularMetadatos(tareas);
 
     const planData = {
       ...createDto,
@@ -552,7 +495,7 @@ export class PlanesAccionService {
     },
     requesterRoles?: string[],
   ): Promise<PlanDeAccion[]> {
-    const query: any = { activo: { $ne: false } };
+    const query: FilterQuery<PlanDeAccion> = { activo: { $ne: false } };
 
     if (filters?.estado) {
       query.estado = filters.estado;
@@ -569,7 +512,7 @@ export class PlanesAccionService {
 
     // 🔒 Barrera de seguridad server-side: quien no sea Admin/Superintendente
     // nunca recibe planes pendientes de aprobación global.
-    if (!this.esAdminOSuperintendente(requesterRoles)) {
+    if (!puedeVerPlanesSinAprobar(requesterRoles)) {
       query.estadoAprobacion = 'aprobado';
     }
 
@@ -588,13 +531,13 @@ export class PlanesAccionService {
 
     const plan = await this.planDeAccionModel.findById(id).exec();
 
-    if (!plan || (plan as any).activo === false) {
+    if (!plan || plan.activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
     // 🔒 Misma barrera que en findAll, aplicada al acceso directo por ID.
     if (
-      !this.esAdminOSuperintendente(requesterRoles) &&
+      !puedeVerPlanesSinAprobar(requesterRoles) &&
       plan.estadoAprobacion !== 'aprobado'
     ) {
       throw new ForbiddenException(
@@ -614,7 +557,7 @@ export class PlanesAccionService {
     }
 
     const plan = await this.planDeAccionModel.findById(id);
-    if (!plan || (plan as any).activo === false) {
+    if (!plan || plan.activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
@@ -635,11 +578,11 @@ export class PlanesAccionService {
     }
 
     const plan = await this.planDeAccionModel.findById(id);
-    if (!plan || (plan as any).activo === false) {
+    if (!plan || plan.activo === false) {
       throw new NotFoundException('Plan no encontrado');
     }
 
-    (plan as any).activo = false;
+    plan.activo = false;
     plan.fechaUltimaActualizacion = new Date();
     await plan.save();
   }
@@ -647,7 +590,7 @@ export class PlanesAccionService {
   /**
    * Obtener estadísticas globales
    */
-  async getStats(): Promise<any> {
+  async getStats(): Promise<EstadisticasDePlanes> {
     const activoFilter = { activo: { $ne: false } };
     const [total, abiertos, enProgreso, cerrados] = await Promise.all([
       this.planDeAccionModel.countDocuments(activoFilter).exec(),

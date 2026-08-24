@@ -10,7 +10,7 @@ import { InspeccionesEmergenciaExcelModule } from './inspecciones-emergencia-exc
 import { InspeccionesEmergenciaDocumentService } from './inspecciones-emergencia-document.service';
 import { ExtintorModule } from '../extintor/extintor.module';
 import { AreaModule } from '../area/area.module';
-import { Area, AreaSchema } from '../area/schema/area.schema';
+import { Area, AreaSchema } from '../area/schemas/area.schema';
 import { PdfHerraEquipoModule } from '../inspection-herra-equipos/pdf/excel-to-pdf.module';
 import { CommonModule } from '../../common/common.module';
 

@@ -1,20 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InspeccionesEmergenciaService } from './inspecciones-emergencia.service';
 import { FormularioInspeccionEmergencia } from './schemas/inspeccion-emergencia.schema';
 import { ExtintorService } from '../extintor/extintor.service';
-import { Area } from '../area/schema/area.schema';
+import { Area } from '../area/schemas/area.schema';
+import { InspeccionMensualDto } from './dto/create-inspecciones-emergencia.dto';
 
 describe('InspeccionesEmergenciaService', () => {
   let service: InspeccionesEmergenciaService;
   let model: any;
-  let extintorService: any;
-  let areaModel: any;
 
   const mockFormInfo = {
     _id: 'mock-id',
@@ -84,8 +79,6 @@ describe('InspeccionesEmergenciaService', () => {
       InspeccionesEmergenciaService,
     );
     model = module.get(getModelToken(FormularioInspeccionEmergencia.name));
-    extintorService = module.get<ExtintorService>(ExtintorService);
-    areaModel = module.get(getModelToken(Area.name));
   });
 
   afterEach(() => {
@@ -200,7 +193,11 @@ describe('InspeccionesEmergenciaService', () => {
     it('should throw ForbiddenException if form is not active (e.g., completed/expired)', async () => {
       const tag = 'TAG-TEST-01';
       const mes = 'JUNIO';
-      const datosMes = { sistemasPasivos: {} };
+      // Fixture deliberadamente parcial: la prueba comprueba que el metodo
+      // rechaza antes de llegar a leer estos datos.
+      const datosMes = {
+        sistemasPasivos: {},
+      } as unknown as InspeccionMensualDto;
       const area = 'Recursos Hidricos';
 
       // Mock validarEstadoActivo finding a completed form

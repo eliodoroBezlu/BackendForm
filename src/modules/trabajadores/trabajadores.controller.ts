@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { TrabajadoresService } from './trabajadores.service';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
@@ -41,6 +42,8 @@ interface AuthenticatedUserData {
 @ApiTags('trabajadores')
 @Controller('trabajadores')
 export class TrabajadoresController {
+  private readonly logger = new Logger(TrabajadoresController.name);
+
   constructor(private readonly trabajadoresService: TrabajadoresService) {}
 
   @Post()
@@ -50,7 +53,7 @@ export class TrabajadoresController {
   @ApiResponse({ status: 201, description: 'Trabajador creado exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   async create(@Body() createTrabajadorDto: CreateTrabajadorDto) {
-    console.log('🟢 DTO recibido:', createTrabajadorDto);
+    this.logger.debug(`🟢 DTO recibido: ${createTrabajadorDto}`);
     return this.trabajadoresService.create(createTrabajadorDto);
   }
 

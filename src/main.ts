@@ -15,17 +15,9 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   app.use(cookieParser());
   app.use(helmet());
-  // ✅ PRIMERO: Parsers de JSON y URL (ANTES de cualquier middleware)
+  // Parsers de JSON y URL.
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-  // ✅ DESPUÉS: Middleware de logging (ahora sí podrá leer el body)
-  app.use((req, res, next) => {
-    console.log('📨 Request to:', req.method, req.url);
-    console.log('📦 Body:', req.body); // Ahora mostrará el contenido completo
-    console.log('🍪 Cookies:', req.cookies);
-    next();
-  });
 
   // 🔥 Servir archivos estáticos (uploads)
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
@@ -111,21 +103,29 @@ async function bootstrap() {
       'X-API-Key',
       'Cache-Control',
     ],
-    exposedHeaders: ['X-Total-Count', 'Set-Cookie', 'X-Page-Count', 'Link'],
+    exposedHeaders: [
+      'X-Total-Count',
+      'Set-Cookie',
+      'X-Page-Count',
+      'Link',
+      // Permite correlacionar un error visto en el navegador con su linea de log.
+      'X-Request-Id',
+    ],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
 
-  // 🔒 Headers de seguridad básicos
-  app.use((req: any, res: any, next: any) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    next();
-  });
-
   // 🚀 Configuración del puerto y inicio del servidor
+  // El limite de tasa usa la IP del cliente. Detras del proxy de Next todas
+  // las peticiones llegan con la misma IP, asi que sin esto un solo usuario
+  // activo agotaria la cuota de todos. Confia en el primer salto.
+  app.set('trust proxy', 1);
+
+  // Cierra conexiones y trabajos en curso antes de morir, en vez de cortar
+  // las peticiones en vuelo en cada despliegue.
+  app.enableShutdownHooks();
+
   const port = configService.get<number>('PORT') || 3002;
 
   await app.listen(port);
@@ -138,7 +138,9 @@ async function bootstrap() {
 }
 
 // 🛑 Manejo de errores globales
+// Ultimo recurso: si el arranque falla, la app de Nest no llego a existir y
+// con ella tampoco su Logger. `console.error` es aqui la unica salida fiable.
 bootstrap().catch((error) => {
-  console.error('❌ Error al iniciar la aplicación:', error);
+  console.error('Error al iniciar la aplicacion:', error);
   process.exit(1);
 });

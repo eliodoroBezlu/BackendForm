@@ -26,7 +26,7 @@ export class QrGeneratorService {
    */
   async generateQRDataURL(text: string, options?: QROptions): Promise<string> {
     try {
-      this.validateInput(text);
+      this.validateInput(text, options?.errorCorrectionLevel ?? 'M');
 
       const qrOptions = this.getDefaultOptions(options);
       return await QRCode.toDataURL(text, qrOptions);
@@ -42,7 +42,7 @@ export class QrGeneratorService {
    */
   async generateQRBuffer(text: string, options?: QROptions): Promise<Buffer> {
     try {
-      this.validateInput(text);
+      this.validateInput(text, options?.errorCorrectionLevel ?? 'M');
 
       const qrOptions = this.getDefaultOptions(options);
       return await QRCode.toBuffer(text, qrOptions);
@@ -58,7 +58,7 @@ export class QrGeneratorService {
    */
   async generateQRSVG(text: string, options?: QROptions): Promise<string> {
     try {
-      this.validateInput(text);
+      this.validateInput(text, options?.errorCorrectionLevel ?? 'M');
 
       const qrOptions = this.getDefaultOptions(options);
       return await QRCode.toString(text, {
@@ -80,7 +80,7 @@ export class QrGeneratorService {
     options?: QROptions,
   ): Promise<QRGenerationResult> {
     try {
-      this.validateInput(text);
+      this.validateInput(text, options?.errorCorrectionLevel ?? 'M');
 
       const [dataUrl, buffer, svg] = await Promise.all([
         this.generateQRDataURL(text, options),
@@ -121,22 +121,51 @@ export class QrGeneratorService {
     }
   }
 
-  private validateInput(text: string): void {
+  /**
+   * Capacidad maxima en modo byte segun el nivel de correccion de errores.
+   * Cuanta mas correccion, menos datos caben.
+   *
+   * El limite estaba fijado en 2953 —la capacidad del nivel L— pero el nivel
+   * por defecto de este servicio es M, que solo admite 2331. Los textos entre
+   * ambos valores pasaban esta comprobacion y reventaban despues dentro de la
+   * libreria, con un mensaje mucho menos claro.
+   */
+  private static readonly CAPACIDAD_POR_NIVEL: Record<string, number> = {
+    L: 2953,
+    M: 2331,
+    Q: 1663,
+    H: 1273,
+  };
+
+  private validateInput(text: string, nivel: string = 'M'): void {
     if (!text || text.trim().length === 0) {
       throw new BadRequestException('El texto no puede estar vacío');
     }
 
-    if (text.length > 2953) {
+    const maximo = QrGeneratorService.CAPACIDAD_POR_NIVEL[nivel] ?? 2331;
+
+    if (text.length > maximo) {
       throw new BadRequestException(
-        'El texto es demasiado largo para generar un código QR',
+        `El texto es demasiado largo para generar un código QR ` +
+          `(${text.length} caracteres; el máximo con corrección «${nivel}» es ${maximo})`,
       );
     }
   }
 
-  private getDefaultOptions(options?: QROptions): any {
+  /**
+   * Devolvia `any`, y eso hacia que TypeScript resolviera `QRCode.toDataURL`
+   * contra su sobrecarga de callback —cuyo retorno es `void`—. El codigo
+   * compilaba y funcionaba de milagro. Al tipar el retorno, la sobrecarga que
+   * se elige es la que devuelve una promesa, que es la que aqui se espera.
+   *
+   * `height` no se emite: la libreria no tiene esa opcion (el QR es cuadrado y
+   * se dimensiona con `width`). Se ignoraba en silencio.
+   */
+  private getDefaultOptions(
+    options?: QROptions,
+  ): QRCode.QRCodeRenderersOptions {
     return {
       width: options?.width || 256,
-      height: options?.height || 256,
       margin: options?.margin || 2,
       color: {
         dark: options?.color?.dark || '#000000',

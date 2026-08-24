@@ -156,7 +156,7 @@ class InspectorDto {
   firma: string | null;
 }
 
-class InspeccionMensualDto {
+export class InspeccionMensualDto {
   @ValidateNested()
   @Type(() => InspeccionSistemasMensualDto)
   inspeccionesActivos: InspeccionSistemasMensualDto;
@@ -205,13 +205,11 @@ export class CreateFormularioInspeccionDto {
   @IsEnum(Mes)
   mesActual: Mes;
 
+  // Tipado, pero deliberadamente SIN @ValidateNested: activar la validacion
+  // anidada rechazaria payloads que hoy se aceptan, y eso es un cambio de
+  // comportamiento que no toca a esta fase. Aqui solo se recupera el tipo.
   @IsObject()
-  meses: Record<string, any>;
-
-  // @IsObject()
-  // @ValidateNested({ each: true })
-  // @Type(() => InspeccionMensualDto)
-  // meses: { [key in Mes]?: InspeccionMensualDto };
+  meses: Record<string, InspeccionMensualDto>;
 
   @IsDate()
   @IsOptional()

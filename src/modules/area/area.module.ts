@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { AreaService } from './area.service';
 import { AreaController } from './area.controller';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Area, AreaSchema } from './schema/area.schema';
+import { Area, AreaSchema } from './schemas/area.schema';
 import {
   Superintendencia,
   SuperintendenciaSchema,
-} from '../superintendencia/schema/superintendencia.schema';
+} from '../superintendencia/schemas/superintendencia.schema';
 
 @Module({
   imports: [

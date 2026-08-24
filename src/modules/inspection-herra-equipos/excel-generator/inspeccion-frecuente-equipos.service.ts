@@ -180,7 +180,11 @@ export class ExcelInspeccionFrecuenteService {
       if (a.toUpperCase().startsWith('OBSERVACION')) {
         filaObservaciones = r;
         for (let k = r + 1; k <= worksheet.rowCount; k++) {
-          if (this.texto(worksheet.getCell(`A${k}`).value).toUpperCase().startsWith('FIRMA')) {
+          if (
+            this.texto(worksheet.getCell(`A${k}`).value)
+              .toUpperCase()
+              .startsWith('FIRMA')
+          ) {
             filaFirma = k;
             break;
           }
@@ -383,12 +387,7 @@ export class ExcelInspeccionFrecuenteService {
       );
     }
 
-    const rutaPlantilla = path.join(
-      process.cwd(),
-      'src',
-      'templates',
-      archivo,
-    );
+    const rutaPlantilla = path.join(process.cwd(), 'src', 'templates', archivo);
     if (!fs.existsSync(rutaPlantilla)) {
       throw new Error(`No existe la plantilla Excel: ${rutaPlantilla}`);
     }

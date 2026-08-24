@@ -5,6 +5,7 @@ import {
   ConflictException,
   Logger,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -18,7 +19,7 @@ import { Session } from './schemas/session.schema';
 import { Role } from './enums/role.enum';
 import { RegisterDto } from './dto/register.dto';
 import { randomBytes } from 'crypto';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { getPermissionsForRoles } from './enums/role-permissions';
 
 // Tipos de respuesta
@@ -130,7 +131,7 @@ export class AuthService {
       payload = this.jwtService.verify(tempToken, {
         secret: this.configService.get<string>('JWT_TEMP_SECRET'),
       });
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Token temporal inválido o expirado');
     }
 
@@ -173,8 +174,8 @@ export class AuthService {
     userAgent: string,
     ip: string,
   ): Promise<LoginSuccess> {
-    console.log('🔑 [TOKENS] Generando tokens para:', user.username);
-    console.log('💾 [TOKENS] Creando sesión para:', user.username);
+    this.logger.debug(`🔑 [TOKENS] Generando tokens para: ${user.username}`);
+    this.logger.debug(`💾 [TOKENS] Creando sesión para: ${user.username}`);
 
     const rolePermissions = getPermissionsForRoles(user.roles || []);
     const directPermissions = user.permissions || [];
@@ -202,7 +203,8 @@ export class AuthService {
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
 
     // 🔍 Log ANTES de guardar
-    console.log('💾 [TOKENS] Guardando sesión en MongoDB:', {
+    this.logger.debug({
+      mensaje: '[TOKENS] Guardando sesin en MongoDB',
       userId: user._id.toString(),
       userAgent: userAgent.slice(0, 30),
       ip,
@@ -218,19 +220,21 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       });
 
-      console.log('✅ [TOKENS] Sesión guardada:', session._id.toString());
+      this.logger.debug(
+        `✅ [TOKENS] Sesión guardada: ${session._id.toString()}`,
+      );
 
       // 🔍 Contar todas las sesiones para este usuario
       const total = await this.sessionModel.countDocuments({
         userId: user._id,
       });
-      console.log('📊 [TOKENS] Total sesiones en DB:', total);
+      this.logger.debug(`📊 [TOKENS] Total sesiones en DB: ${total}`);
     } catch (dbError: any) {
-      console.error(
+      this.logger.error(
         '❌ [TOKENS] ERROR guardando sesión en MongoDB:',
         dbError.message,
       );
-      console.error('❌ [TOKENS] Detalles:', dbError);
+      this.logger.error(`❌ [TOKENS] Detalles: ${dbError}`);
       throw dbError; // Re-lanzar para que el login falle limpiamente
     }
 
@@ -239,7 +243,7 @@ export class AuthService {
       userId: user._id,
       isRevoked: false,
     });
-    console.log(
+    this.logger.debug(
       '📊 [TOKENS] Sesiones activas para este usuario:',
       sessionCount,
     );
@@ -273,7 +277,7 @@ export class AuthService {
     userAgent: string,
     ip: string,
   ): Promise<LoginSuccess> {
-    console.log('🔄 [REFRESH] Iniciando renovación...');
+    this.logger.debug('[REFRESH] Iniciando renovacion');
 
     // Validar JWT
     let payload: any;
@@ -281,7 +285,7 @@ export class AuthService {
       payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
-    } catch (error: any) {
+    } catch (_error: any) {
       throw new UnauthorizedException('Refresh token inválido');
     }
 
@@ -294,7 +298,7 @@ export class AuthService {
       expiresAt: { $gt: new Date() },
     });
 
-    console.log(`🔍 [REFRESH] Sesiones activas: ${sessions.length}`);
+    this.logger.debug(`[REFRESH] Sesiones activas: ${sessions.length}`);
 
     let validSession: (typeof sessions)[0] | null = null;
 
@@ -350,7 +354,7 @@ export class AuthService {
     validSession.ip = ip; // ← Actualizar IP (puede haber cambiado)
     await validSession.save();
 
-    console.log(
+    this.logger.debug(
       '✅ [REFRESH] Sesión renovada (mismo registro):',
       validSession._id,
     );
@@ -360,7 +364,7 @@ export class AuthService {
       userId: user._id,
       isRevoked: false,
     });
-    console.log('📊 [REFRESH] Sesiones activas:', activeCount);
+    this.logger.debug(`📊 [REFRESH] Sesiones activas: ${activeCount}`);
 
     return {
       accessToken,
@@ -413,6 +417,15 @@ export class AuthService {
 
     user.twoFactorSecret = secret.base32;
     await user.save();
+
+    // speakeasy declara `otpauth_url` como opcional. Sin la comprobacion, un
+    // secreto sin URL generaba un QR con la cadena "undefined" dentro: la app
+    // de 2FA lo escaneaba y quedaba emparejada con basura, sin error visible.
+    if (!secret.otpauth_url) {
+      throw new InternalServerErrorException(
+        'No se pudo generar la URL de aprovisionamiento 2FA',
+      );
+    }
 
     const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
 
@@ -494,24 +507,36 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * **Sin uso: ningún controlador la llama.**
+   *
+   * El acceso «Inspector Técnico» de la pantalla de entrada NO pasa por aquí:
+   * `AuthController.inspectorLogin` hace un *service-login* contra IAM Core
+   * con el usuario `INSPECTOR_USERNAME`, y de ahí salen sus roles. Este método
+   * crea un usuario local con `[USER, INSPECTOR]` que nadie consulta.
+   *
+   * Se anota en vez de borrarse porque induce a error: cambiar los roles de
+   * aquí no tiene ningún efecto sobre quien entra por esa pantalla — para eso
+   * hay que tocar la asignación de roles del servicio «forms» en IAM Core.
+   */
   async loginInspector(
     inspectorKey: string,
     deviceId: string | undefined,
     userAgent: string,
     ip: string,
   ): Promise<LoginSuccess> {
-    console.log('🔧 [INSPECTOR] Intento de login con API Key');
+    this.logger.debug('[INSPECTOR] Intento de login con API Key');
 
     // 1. Validar API Key
     const validInspectorKey =
       this.configService.get<string>('INSPECTOR_API_KEY');
 
     if (!validInspectorKey || inspectorKey !== validInspectorKey) {
-      console.error('❌ [INSPECTOR] API Key inválida');
+      this.logger.warn('[INSPECTOR] API Key invalida');
       throw new UnauthorizedException('API Key de inspector inválida');
     }
 
-    console.log('✅ [INSPECTOR] API Key válida');
+    this.logger.debug('[INSPECTOR] API Key valida');
 
     // 2. Buscar o crear usuario especial "inspector"
     let inspectorUser = await this.userModel.findOne({
@@ -519,7 +544,7 @@ export class AuthService {
     });
 
     if (!inspectorUser) {
-      console.log(
+      this.logger.debug(
         '🔧 [INSPECTOR] Creando usuario inspector por primera vez...',
       );
 
@@ -544,7 +569,7 @@ export class AuthService {
     }
 
     // 3. Generar tokens normalmente
-    console.log('🔑 [INSPECTOR] Generando tokens para sesión...');
+    this.logger.debug('[INSPECTOR] Generando tokens de sesion');
 
     const result = await this.generateTokens(inspectorUser, userAgent, ip);
 
@@ -566,8 +591,7 @@ export class AuthService {
   }
 
   async cleanupExpiredSessions(): Promise<number> {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🧹 [CRON] Iniciando limpieza de sesiones...');
+    this.logger.log('[CRON] Iniciando limpieza de sesiones');
 
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -580,7 +604,8 @@ export class AuthService {
         isRevoked: false,
       });
 
-      console.log('📊 [CRON] Estado actual:', {
+      this.logger.debug({
+        mensaje: '[CRON] Estado actual',
         total: totalBefore,
         activas: activeBefore,
         revocadas: totalBefore - activeBefore,
@@ -620,17 +645,16 @@ export class AuthService {
         isRevoked: false,
       });
 
-      console.log('✅ [CRON] Limpieza completada:', {
+      this.logger.debug({
+        mensaje: '[CRON] Limpieza completada',
         eliminadas: result.deletedCount,
         totalAhora: totalAfter,
         activasAhora: activeAfter,
       });
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       return result.deletedCount;
     } catch (error) {
-      console.error('❌ [CRON] Error en limpieza:', error);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      this.logger.error(`❌ [CRON] Error en limpieza: ${error}`);
       throw error;
     }
   }

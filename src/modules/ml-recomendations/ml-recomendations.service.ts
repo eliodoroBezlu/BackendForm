@@ -6,7 +6,7 @@ import {
   MLTrainingMetrics,
   MLHealthStatus,
   InstanceRecommendations,
-} from './interfaces/ml-recommendation.interface';
+} from './types/ml-recommendation.interface';
 
 @Injectable()
 export class MLRecommendationsService {

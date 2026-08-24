@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TagService } from './tag.service';
 import { TagController } from './tag.controller';
 import { MongooseModule } from '@nestjs/mongoose';
-import { OrdenTrabajo, OrdenTrabajoSchema } from './schema/tag.schema';
+import { OrdenTrabajo, OrdenTrabajoSchema } from './schemas/tag.schema';
 
 @Module({
   imports: [

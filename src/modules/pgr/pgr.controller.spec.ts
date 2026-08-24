@@ -3,6 +3,7 @@ import { PgrController } from './pgr.controller';
 import { PgrService } from './pgr.service';
 import { PgrImportService } from './pgr-import.service';
 import { PgrExcelService } from './pgr-excel.service';
+import { PgrConsolidacionService } from './pgr-consolidacion.service';
 import { CreatePgrDto } from './dto/create-pgr.dto';
 import { UpdatePgrDto } from './dto/update-pgr.dto';
 import { AprobarPgrDto } from './dto/aprobar-pgr.dto';
@@ -27,6 +28,10 @@ describe('PgrController', () => {
 
   const mockPgrImportService = { parsear: jest.fn() };
   const mockPgrExcelService = { generar: jest.fn() };
+  const mockPgrConsolidacionService = {
+    previsualizar: jest.fn(),
+    consolidar: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -43,6 +48,10 @@ describe('PgrController', () => {
         {
           provide: PgrExcelService,
           useValue: mockPgrExcelService,
+        },
+        {
+          provide: PgrConsolidacionService,
+          useValue: mockPgrConsolidacionService,
         },
       ],
     }).compile();

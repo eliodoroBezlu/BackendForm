@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
-import { resizeImageBuffer } from '../../../common/utils/image-resize.util';
+import { insertarImagenEnCelda } from './comun/imagen-excel.util';
 
 @Injectable()
 export class ExcelAmoladoraService {
@@ -48,25 +48,9 @@ export class ExcelAmoladoraService {
     cellRef: string,
   ) {
     try {
-      const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
-      const rawBuffer = Buffer.from(base64Data, 'base64');
-      const imageBuffer: ExcelJS.Buffer = (await resizeImageBuffer(
-        rawBuffer,
-      )) as unknown as ExcelJS.Buffer;
-
-      const imageId = worksheet.workbook.addImage({
-        buffer: imageBuffer,
-        extension: 'jpeg',
+      await insertarImagenEnCelda(worksheet, base64Image, cellRef, {
+        altoDeFila: 25,
       });
-
-      const { row, col } = this.getCellCoordinates(cellRef);
-      worksheet.addImage(imageId, {
-        tl: { col: col - 1, row: row - 1 } as ExcelJS.Anchor,
-        br: { col: col, row: row } as ExcelJS.Anchor,
-        editAs: 'oneCell',
-      });
-
-      worksheet.getRow(row).height = 25;
     } catch (error) {
       this.logger.error(`Error al insertar imagen: ${error.message}`);
       throw error;
@@ -76,17 +60,6 @@ export class ExcelAmoladoraService {
   /**
    * Convierte una referencia de celda (ej: "B5") a coordenadas numéricas
    */
-  private getCellCoordinates(cellRef: string): { row: number; col: number } {
-    const colRef = cellRef.replace(/[^A-Z]/g, '');
-    const row = Number.parseInt(cellRef.replace(/[^0-9]/g, ''), 10);
-
-    let col = 0;
-    for (let i = 0; i < colRef.length; i++) {
-      col = col * 26 + (colRef.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
-    }
-
-    return { row, col };
-  }
 
   /**
    * Llena los campos de verificación del vehículo
@@ -268,66 +241,68 @@ export class ExcelAmoladoraService {
           const skipRows = sectionConfig.skipRows || [];
 
           // Procesar preguntas
-          Object.entries(sectionResponses).forEach(([questionId, response]) => {
-            if (currentRow > sectionConfig.endRow) {
-              this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
-              return;
-            }
-
-            // ← SALTAR FILAS ESPECIFICADAS
-            while (skipRows.includes(currentRow)) {
-              this.logger.log(`⏭️ Saltando fila ${currentRow}`);
-              currentRow++;
-
-              // Verificar si nos pasamos del límite después de saltar
+          Object.entries(sectionResponses).forEach(
+            ([_questionId, response]) => {
               if (currentRow > sectionConfig.endRow) {
-                this.logger.warn(`Límite excedido después de saltar filas`);
+                this.logger.warn(`Límite excedido en ${sectionConfig.name}`);
                 return;
               }
-            }
 
-            try {
-              this.logger.log(`📝 Llenando fila ${currentRow}`);
+              // ← SALTAR FILAS ESPECIFICADAS
+              while (skipRows.includes(currentRow)) {
+                this.logger.log(`⏭️ Saltando fila ${currentRow}`);
+                currentRow++;
 
-              // Limpiar celdas
-              worksheet.getCell(`${siCol}${currentRow}`).value = '';
-              worksheet.getCell(`${noCol}${currentRow}`).value = '';
-
-              // Procesar respuesta
-              if (response.value !== undefined && response.value !== null) {
-                const valor = String(response.value).toLowerCase().trim();
-
-                if (
-                  valor === 'bueno' ||
-                  valor === 'si' ||
-                  valor === 'true' ||
-                  valor === '1'
-                ) {
-                  worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
-                } else if (
-                  valor === 'malo' ||
-                  valor === 'no' ||
-                  valor === 'false' ||
-                  valor === '0'
-                ) {
-                  worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                // Verificar si nos pasamos del límite después de saltar
+                if (currentRow > sectionConfig.endRow) {
+                  this.logger.warn(`Límite excedido después de saltar filas`);
+                  return;
                 }
               }
 
-              // Observaciones
-              if (response.observacion?.trim()) {
-                worksheet.getCell(`${observacionesCol}${currentRow}`).value =
-                  response.observacion;
-              }
+              try {
+                this.logger.log(`📝 Llenando fila ${currentRow}`);
 
-              currentRow++;
-            } catch (error) {
-              this.logger.error(
-                `Error en fila ${currentRow}: ${error.message}`,
-              );
-              currentRow++;
-            }
-          });
+                // Limpiar celdas
+                worksheet.getCell(`${siCol}${currentRow}`).value = '';
+                worksheet.getCell(`${noCol}${currentRow}`).value = '';
+
+                // Procesar respuesta
+                if (response.value !== undefined && response.value !== null) {
+                  const valor = String(response.value).toLowerCase().trim();
+
+                  if (
+                    valor === 'bueno' ||
+                    valor === 'si' ||
+                    valor === 'true' ||
+                    valor === '1'
+                  ) {
+                    worksheet.getCell(`${siCol}${currentRow}`).value = 'X';
+                  } else if (
+                    valor === 'malo' ||
+                    valor === 'no' ||
+                    valor === 'false' ||
+                    valor === '0'
+                  ) {
+                    worksheet.getCell(`${noCol}${currentRow}`).value = 'X';
+                  }
+                }
+
+                // Observaciones
+                if (response.observacion?.trim()) {
+                  worksheet.getCell(`${observacionesCol}${currentRow}`).value =
+                    response.observacion;
+                }
+
+                currentRow++;
+              } catch (error) {
+                this.logger.error(
+                  `Error en fila ${currentRow}: ${error.message}`,
+                );
+                currentRow++;
+              }
+            },
+          );
         },
       );
 
@@ -399,12 +374,12 @@ export class ExcelAmoladoraService {
 
       // SUPERVISOR
       if (inspection.supervisorSignature) {
-        const sup = inspection.supervisorSignature;
-
+        // NOTA: todo el cuerpo de este bloque esta comentado, asi que hoy
+        // NO se escribe la firma del supervisor en el Excel de este
+        // formato. Ver ANALISIS_BACKEND.md.
         // if (sup.supervisorName)
         //   worksheet.getCell(posiciones.supervisor.nombre).value =
         //     sup.supervisorName;
-
         // if (
         //   sup.supervisorSignature &&
         //   typeof sup.supervisorSignature === 'string' &&
@@ -416,7 +391,6 @@ export class ExcelAmoladoraService {
         //     posiciones.supervisor.firma,
         //   );
         // }
-
         // if (sup.supervisorDate)
         //   worksheet.getCell(posiciones.supervisor.fecha).value =
         //     sup.supervisorDate;

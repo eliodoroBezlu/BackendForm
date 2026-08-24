@@ -5,7 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import {
   Superintendencia,
   SuperintendenciaSchema,
-} from './schema/superintendencia.schema';
+} from './schemas/superintendencia.schema';
 
 @Module({
   imports: [

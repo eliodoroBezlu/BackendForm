@@ -69,6 +69,35 @@ export class PgrImportService {
    * Texto de una celda, resolviendo los tipos que ExcelJS puede devolver:
    * richText, fórmulas con resultado cacheado, e hipervínculos.
    */
+  /**
+   * Una celda de texto a lista. Es la inversa de lo que hace el exportador,
+   * que junta las listas con salto de línea para que entren en la única celda
+   * que el formulario prevé.
+   */
+  private lineas(valor: ExcelJS.CellValue): string[] {
+    return this.texto(valor)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * `"2 HH"` → `{ cantidad: 2, unidad: 'HH' }`.
+   *
+   * Devuelve `null` cuando la celda no tiene esa forma —los archivos viejos
+   * traen texto libre— y el llamador la descarta: mejor perder un recurso mal
+   * escrito que guardar `NaN` y arruinar la suma de esfuerzo.
+   */
+  private parsearRecurso(
+    texto: string,
+  ): { cantidad: number; unidad: string } | null {
+    const m = /^\s*(\d+(?:[.,]\d+)?)\s*(.+?)\s*$/.exec(texto);
+    if (!m) return null;
+    const cantidad = Number(m[1].replace(',', '.'));
+    if (!Number.isFinite(cantidad)) return null;
+    return { cantidad, unidad: m[2] };
+  }
+
   private texto(valor: ExcelJS.CellValue): string {
     if (valor === null || valor === undefined) return '';
     if (typeof valor === 'object') {
@@ -246,9 +275,20 @@ export class PgrImportService {
       actividades.push({
         descripcion,
         verificador,
-        responsable: this.texto(celda(r, LAYOUT.col.responsable)),
-        recurso: this.texto(celda(r, LAYOUT.col.recursos)),
-        entregable: this.texto(celda(r, LAYOUT.col.entregable)),
+        // Las tres celdas son texto en el formulario y listas en el modelo:
+        // se parten por salto de línea, que es como las escribe el exportador.
+        // El alcance por área no se lee de acá — el formulario no lo tiene.
+        responsables: this.lineas(celda(r, LAYOUT.col.responsable)).map(
+          (nombre) => ({
+            tipo: 'trabajador' as const,
+            referencia: nombre,
+            nombre,
+          }),
+        ),
+        recursos: this.lineas(celda(r, LAYOUT.col.recursos))
+          .map((t) => this.parsearRecurso(t))
+          .filter((r): r is { cantidad: number; unidad: string } => r !== null),
+        entregables: this.lineas(celda(r, LAYOUT.col.entregable)),
         historialTrazabilidad:
           this.texto(celda(r, LAYOUT.col.historial)) || undefined,
         programacion,

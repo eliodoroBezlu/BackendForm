@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { CreateInstanceDto } from './dto/create-instance.dto';
 import { UpdateInstanceDto } from './dto/update-instance.dto';
@@ -17,6 +18,8 @@ import { Section } from '../templates/schemas/template.schema';
 
 @Injectable()
 export class InstancesService {
+  private readonly logger = new Logger(InstancesService.name);
+
   constructor(
     @InjectModel(Instance.name)
     private instanceModel: Model<Instance>,
@@ -74,14 +77,15 @@ export class InstancesService {
     try {
       const createdInstance = new this.instanceModel(instanceData);
       const saved = await createdInstance.save();
-      console.log('✅ Instance saved with calculated metrics:', {
+      this.logger.debug({
+        mensaje: 'Instance saved with calculated metrics',
         id: saved._id,
         totalObtained: saved.totalObtainedPoints,
         compliance: saved.overallCompliancePercentage,
       });
       return saved;
     } catch (error) {
-      console.error('❌ Error saving instance:', error);
+      this.logger.error(`❌ Error saving instance: ${error}`);
       throw new BadRequestException('Error al crear la instancia');
     }
   }
@@ -362,8 +366,24 @@ export class InstancesService {
       // maxPoints viene del template (es fijo)
       const maxPoints = templateSection.maxPoints;
 
-      // applicablePoints = maxPoints (no cambia aunque haya N/A)
-      const applicablePoints = maxPoints;
+      // Los puntos que SÍ aplican descuentan las preguntas marcadas «N/A».
+      //
+      // Antes `applicablePoints` se igualaba a `maxPoints`, así que una
+      // pregunta que no aplicaba penalizaba exactamente igual que un cero: el
+      // denominador no bajaba. Con el 40 % de las respuestas marcadas N/A, eso
+      // hundía sistemáticamente el cumplimiento de toda inspección.
+      //
+      // El valor de cada pregunta se deriva de la propia plantilla
+      // (`maxPoints / nº de preguntas`) en vez de fijarlo a 3, para que siga
+      // siendo correcto si alguna plantilla usa otra escala.
+      const totalPreguntasPlantilla = templateSection.questions?.length ?? 0;
+      const puntosPorPregunta =
+        totalPreguntasPlantilla > 0 ? maxPoints / totalPreguntasPlantilla : 0;
+
+      const applicablePoints = Math.max(
+        0,
+        maxPoints - naCount * puntosPorPregunta,
+      );
 
       // Calcular porcentaje de cumplimiento
       const compliancePercentage =

@@ -3,15 +3,18 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
-import { OrdenTrabajo } from './schema/tag.schema';
+import { OrdenTrabajo } from './schemas/tag.schema';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 
 @Injectable()
 export class TagService {
+  private readonly logger = new Logger(TagService.name);
+
   constructor(
     @InjectModel(OrdenTrabajo.name)
     private readonly ordenTrabajoModel: Model<OrdenTrabajo>,
@@ -20,7 +23,8 @@ export class TagService {
   async create(createDto: CreateTagDto): Promise<OrdenTrabajo> {
     // Validación explícita de los campos requeridos
     if (!createDto.tag || !createDto.area) {
-      throw new Error('Los campos tag y area son requeridos');
+      // Un `Error` pelado sale como 500; esto es un fallo del cliente.
+      throw new BadRequestException('Los campos tag y area son requeridos');
     }
 
     // Verificar si el tag ya existe
@@ -43,7 +47,7 @@ export class TagService {
 
       return await created.save();
     } catch (error) {
-      console.error('Error al crear:', error);
+      this.logger.error(`Error al crear: ${error}`);
       throw error;
     }
   }
@@ -69,7 +73,7 @@ export class TagService {
       const tags = resultados.map((doc) => doc.tag);
 
       return tags;
-    } catch (error) {
+    } catch {
       throw new BadRequestException('Error al buscar tags por área');
     }
   }

@@ -11,16 +11,18 @@ import {
   Put,
   Query,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { ExtintorService } from './extintor.service';
 import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
-import { Resource } from 'nest-keycloak-connect';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('extintor')
 export class ExtintorController {
+  private readonly logger = new Logger(ExtintorController.name);
+
   constructor(private readonly extintorService: ExtintorService) {}
 
   @Post()
@@ -28,6 +30,9 @@ export class ExtintorController {
     try {
       return await this.extintorService.create(createExtintorDto);
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al crear extintor',
         HttpStatus.BAD_REQUEST,
@@ -39,7 +44,7 @@ export class ExtintorController {
   async findAll() {
     try {
       return await this.extintorService.findAll();
-    } catch (error) {
+    } catch {
       throw new HttpException(
         'Error al obtener extintores',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -67,7 +72,7 @@ export class ExtintorController {
       };
 
       return await this.extintorService.findWithFilters(filtros);
-    } catch (error) {
+    } catch {
       throw new HttpException(
         'Error al obtener extintores filtrados',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -79,9 +84,9 @@ export class ExtintorController {
   @Get('tag/:tag')
   async findByTag(@Param('tag') tag: string) {
     try {
-      console.log('Buscando extintores para el tag:', tag);
+      this.logger.debug(`Buscando extintores para el tag: ${tag}`);
       const resultado = await this.extintorService.findByTag(tag);
-      console.log('Extintores encontrados:', resultado.extintores);
+      this.logger.debug(`Extintores encontrados: ${resultado.extintores}`);
 
       return {
         success: true,
@@ -90,7 +95,10 @@ export class ExtintorController {
         totalExtintoresActivosArea: resultado.totalActivosArea,
       };
     } catch (error) {
-      console.error('Error en findByTag:', error);
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error en findByTag: ${error}`);
       throw new HttpException(
         error.message || 'Error al buscar extintores',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -102,9 +110,9 @@ export class ExtintorController {
   @Get('area/:area')
   async findByArea(@Param('area') area: string) {
     try {
-      console.log('Buscando extintores para el área:', area);
+      this.logger.debug(`Buscando extintores para el área: ${area}`);
       const resultado = await this.extintorService.findByArea(area);
-      console.log('Extintores encontrados:', resultado.extintores);
+      this.logger.debug(`Extintores encontrados: ${resultado.extintores}`);
 
       return {
         success: true,
@@ -113,7 +121,10 @@ export class ExtintorController {
         totalExtintoresActivosArea: resultado.totalActivosArea,
       };
     } catch (error) {
-      console.error('Error en findByArea:', error);
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error en findByArea: ${error}`);
       throw new HttpException(
         error.message || 'Error al buscar extintores',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -127,6 +138,9 @@ export class ExtintorController {
     try {
       return await this.extintorService.findOne(id);
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al obtener extintor',
         HttpStatus.NOT_FOUND,
@@ -142,6 +156,9 @@ export class ExtintorController {
     try {
       return await this.extintorService.update(id, updateExtintorDto);
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al actualizar extintor',
         HttpStatus.BAD_REQUEST,
@@ -159,6 +176,9 @@ export class ExtintorController {
         ...resultado,
       };
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al eliminar extintor',
         HttpStatus.BAD_REQUEST,
@@ -172,7 +192,10 @@ export class ExtintorController {
       const resultado = await this.extintorService.deshabilitarExtintor(codigo);
       return resultado;
     } catch (error) {
-      console.error('Error al desactivar extintor:', error);
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
+      this.logger.error(`Error al desactivar extintor: ${error}`);
       throw new HttpException(
         error.message || 'Error al desactivar extintor',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -192,6 +215,9 @@ export class ExtintorController {
         );
       return resultado;
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al marcar extintores como inspeccionados',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -211,6 +237,9 @@ export class ExtintorController {
         );
       return resultado;
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al resetear estado de inspección',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -233,6 +262,9 @@ export class ExtintorController {
       );
       return resultado;
     } catch (error) {
+      // No re-envolver: una excepcion de Nest ya trae su codigo y
+      // convertirla en 500 pierde el 404 o el 400 que venia del servicio.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || 'Error al verificar y crear extintores',
         HttpStatus.INTERNAL_SERVER_ERROR,

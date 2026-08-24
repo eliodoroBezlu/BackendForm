@@ -8,7 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { CreateEquipoDto } from './dto/create-equipo.dto';
 import { UpdateEquipoDto } from './dto/update-equipo.dto';
-import { Equipo, EquipoDocument } from './schemas/equipo.schema';
+import { AmbitoEquipo, Equipo, EquipoDocument } from './schemas/equipo.schema';
 import { ConfigFormularioService } from '../config-formulario/config-formulario.service';
 
 @Injectable()
@@ -26,7 +26,7 @@ export class EquiposService {
     let config;
     try {
       config = await this.configService.findOne(tipoEquipo);
-    } catch (e) {
+    } catch {
       // Si no hay configuración para este tipo de equipo, se permite sin validación estricta
       return;
     }
@@ -60,17 +60,47 @@ export class EquiposService {
     }
   }
 
+  /**
+   * Comprueba que el ámbito traiga la referencia que le corresponde.
+   *
+   * El código ya no se valida por duplicado: en el inventario de SPCC hay
+   * pares de equipos físicamente distintos con el mismo ID interno. La
+   * identidad de la unidad es `rfid`, y su unicidad la garantiza el índice.
+   */
+  private resolverAmbito(dto: CreateEquipoDto): Record<string, unknown> {
+    const ambito = dto.ambito ?? AmbitoEquipo.AREA;
+
+    const requerido: Record<AmbitoEquipo, keyof CreateEquipoDto> = {
+      [AmbitoEquipo.AREA]: 'area_id',
+      [AmbitoEquipo.SUPERINTENDENCIA]: 'superintendencia_id',
+      [AmbitoEquipo.GERENCIA]: 'gerencia_id',
+    };
+
+    const campo = requerido[ambito];
+    const valor = dto[campo] as string | undefined;
+    if (!valor) {
+      throw new BadRequestException(
+        `Con ámbito '${ambito}' hace falta '${campo}'.`,
+      );
+    }
+
+    // Solo se guarda la referencia del ámbito elegido: dejar las otras
+    // pobladas haría que el equipo pareciera pertenecer a dos niveles.
+    return { ambito, [campo]: new Types.ObjectId(valor) };
+  }
+
   async create(createDto: CreateEquipoDto): Promise<Equipo> {
     const codigoClean = createDto.codigo.trim();
 
-    // Check duplicate code
-    const exists = await this.equipoModel
-      .findOne({ codigo: codigoClean })
-      .exec();
-    if (exists) {
-      throw new ConflictException(
-        `El código de equipo '${codigoClean}' ya está registrado`,
-      );
+    if (createDto.rfid) {
+      const exists = await this.equipoModel
+        .findOne({ rfid: createDto.rfid.trim() })
+        .exec();
+      if (exists) {
+        throw new ConflictException(
+          `El RFID '${createDto.rfid}' ya está registrado en el equipo '${exists.codigo}'`,
+        );
+      }
     }
 
     // Validate dynamic specifications
@@ -82,7 +112,7 @@ export class EquiposService {
     const created = new this.equipoModel({
       ...createDto,
       codigo: codigoClean,
-      area_id: new Types.ObjectId(createDto.area_id),
+      ...this.resolverAmbito(createDto),
       ubicacion_id: new Types.ObjectId(createDto.ubicacion_id),
       clasificacion_id: new Types.ObjectId(createDto.clasificacion_id),
     });
@@ -95,8 +125,10 @@ export class EquiposService {
       .find()
       .populate({
         path: 'area_id',
-        populate: { path: 'superintendencia' },
+        populate: [{ path: 'superintendencia' }, { path: 'areaPadre' }],
       })
+      .populate('superintendencia_id')
+      .populate('gerencia_id')
       .populate('ubicacion_id')
       .populate('clasificacion_id')
       .exec();
@@ -107,8 +139,10 @@ export class EquiposService {
       .findById(id)
       .populate({
         path: 'area_id',
-        populate: { path: 'superintendencia' },
+        populate: [{ path: 'superintendencia' }, { path: 'areaPadre' }],
       })
+      .populate('superintendencia_id')
+      .populate('gerencia_id')
       .populate('ubicacion_id')
       .populate('clasificacion_id')
       .exec();
@@ -126,20 +160,20 @@ export class EquiposService {
     }
 
     if (updateDto.codigo) {
-      const codigoClean = updateDto.codigo.trim();
-      const exists = await this.equipoModel
-        .findOne({
-          codigo: codigoClean,
-          _id: { $ne: id },
-        })
-        .exec();
+      // El código dejó de ser único a propósito: hay equipos distintos con el
+      // mismo ID interno. La unicidad la lleva `rfid`.
+      updateDto.codigo = updateDto.codigo.trim();
+    }
 
+    if (updateDto.rfid) {
+      const exists = await this.equipoModel
+        .findOne({ rfid: updateDto.rfid.trim(), _id: { $ne: id } })
+        .exec();
       if (exists) {
         throw new ConflictException(
-          `El código de equipo '${codigoClean}' ya está registrado`,
+          `El RFID '${updateDto.rfid}' ya está registrado en el equipo '${exists.codigo}'`,
         );
       }
-      updateDto.codigo = codigoClean;
     }
 
     // Dynamic specs validation
@@ -164,8 +198,10 @@ export class EquiposService {
       .findByIdAndUpdate(id, updateObj, { new: true })
       .populate({
         path: 'area_id',
-        populate: { path: 'superintendencia' },
+        populate: [{ path: 'superintendencia' }, { path: 'areaPadre' }],
       })
+      .populate('superintendencia_id')
+      .populate('gerencia_id')
       .populate('ubicacion_id')
       .populate('clasificacion_id')
       .exec();

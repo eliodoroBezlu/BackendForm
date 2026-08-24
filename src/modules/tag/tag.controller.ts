@@ -11,17 +11,20 @@ import {
   HttpException,
   HttpStatus,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { TagService } from './tag.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
-import { OrdenTrabajo } from './schema/tag.schema';
+import { OrdenTrabajo } from './schemas/tag.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tag')
 export class TagController {
+  private readonly logger = new Logger(TagController.name);
+
   constructor(private readonly tagService: TagService) {}
 
   @Post()
@@ -40,7 +43,7 @@ export class TagController {
   async findAll() {
     try {
       return await this.tagService.findAll();
-    } catch (error) {
+    } catch {
       throw new HttpException(
         'Error al obtener tags',
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -60,7 +63,7 @@ export class TagController {
 
       return tags;
     } catch (error) {
-      console.error('❌ Error al buscar tags por área:', error);
+      this.logger.error(`❌ Error al buscar tags por área: ${error}`);
       throw new HttpException(
         error.message || 'Error al buscar tags por área',
         HttpStatus.INTERNAL_SERVER_ERROR,
