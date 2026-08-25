@@ -91,6 +91,7 @@ export class AuditoriaInterceptor implements NestInterceptor {
       fallo: !!desenlace.error,
       mensajeError: desenlace.error ? this.mensaje(desenlace.error) : undefined,
       datos: this.datos(peticion),
+      documento: this.documentoBorrado(peticion, desenlace.resultado),
       ip: peticion.ip,
       userAgent: peticion.get('user-agent'),
       duracionMs: Date.now() - inicio,
@@ -134,6 +135,49 @@ export class AuditoriaInterceptor implements NestInterceptor {
       if (id instanceof Types.ObjectId) return id.toHexString();
     }
     return undefined;
+  }
+
+  /**
+   * Archiva el documento que se dio de baja, para los `DELETE`.
+   *
+   * Antes un borrado dejaba constancia de **quién y cuándo** pero no de
+   * **qué**: con el id a la vista no había forma de saber qué contenía lo
+   * borrado. Aquí se guarda el contenido.
+   *
+   * El contrato es sencillo y voluntario: **si el endpoint devuelve el
+   * documento, se archiva**. Un `DELETE` que responda `{ message: '...' }`
+   * sigue sin guardar nada, porque el interceptor es genérico y no sabe a qué
+   * colección pertenece la ruta ni podría ir a buscarlo.
+   *
+   * Se acepta tanto `{ data: doc }` —la forma habitual de las respuestas de
+   * este backend— como el documento devuelto directamente.
+   */
+  private documentoBorrado(
+    peticion: Request,
+    resultado?: unknown,
+  ): Record<string, unknown> | undefined {
+    if (peticion.method !== 'DELETE') return undefined;
+    if (!resultado || typeof resultado !== 'object') return undefined;
+
+    const cuerpo = resultado as Record<string, unknown>;
+    const candidato = cuerpo.data ?? cuerpo.documento ?? cuerpo;
+
+    if (!candidato || typeof candidato !== 'object') return undefined;
+
+    // Un documento de Mongoose lleva encima toda la maquinaria del modelo;
+    // `toJSON` deja los datos limpios. Los objetos planos no lo tienen.
+    const plano = (candidato as { toJSON?: () => Record<string, unknown> })
+      .toJSON;
+    const datos =
+      typeof plano === 'function'
+        ? plano.call(candidato)
+        : (candidato as Record<string, unknown>);
+
+    // Sin las llaves de la respuesta, que no son del documento.
+    const { success: _s, message: _m, ...limpio } = datos;
+    if (Object.keys(limpio).length === 0) return undefined;
+
+    return sanearCuerpo(limpio);
   }
 
   /**

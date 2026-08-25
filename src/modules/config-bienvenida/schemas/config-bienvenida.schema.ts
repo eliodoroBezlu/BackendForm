@@ -65,7 +65,12 @@ export const MantenimientoSchema = SchemaFactory.createForClass(Mantenimiento);
  */
 @Schema({ timestamps: true, collection: 'config_bienvenida' })
 export class ConfigBienvenida extends Document {
-  @Prop({ required: true, unique: true, index: true, default: CLAVE_BIENVENIDA })
+  @Prop({
+    required: true,
+    unique: true,
+    index: true,
+    default: CLAVE_BIENVENIDA,
+  })
   clave: string;
 
   /** Apagarla sin perder lo configurado. Con `false` se entra sin pantalla. */

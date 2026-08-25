@@ -69,32 +69,25 @@ export class TrabajadoresService implements OnModuleInit {
     private readonly configService: ConfigService,
   ) {}
 
-  async onModuleInit() {
-    // Sincronización best-effort al arrancar — si el IAM Core no está
-    // disponible, no debe impedir que BackendForm levante.
-    try {
-      const roster = await this.syncTrabajadoresFromIam();
-      if (roster.error) {
-        this.logger.warn(
-          `Sync de roster de trabajadores omitido al arrancar: ${roster.error}`,
-        );
-      } else {
-        this.logger.log(
-          `Trabajadores sincronizados desde IAM al arrancar: ${roster.creados} creados, ${roster.actualizados} actualizados`,
-        );
-      }
-
-      const supervisores = await this.syncRolFromIam('supervisor');
-      if (supervisores.error) {
-        this.logger.warn(
-          `Sync de rol supervisor omitido al arrancar: ${supervisores.error}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Sync con IAM omitido al arrancar: ${error instanceof Error ? error.message : 'error desconocido'}`,
-      );
-    }
+  /**
+   * El arranque **no** sincroniza contra el IAM.
+   *
+   * Traía el roster completo y los roles en cada arranque —en Railway, cada
+   * despliegue y cada reinicio—. Además de escribir sin que nadie lo pidiera,
+   * dejaba el arranque colgando de que el IAM respondiera: era best-effort,
+   * pero igualmente esperaba a que fallase.
+   *
+   * La sincronización sigue disponible, ahora cuando alguien la decide:
+   *
+   *     POST /trabajadores/sync?role=supervisor      (solo admin)
+   *
+   * Ese endpoint hace las dos cosas que hacía el arranque: el roster y los
+   * roles del servicio.
+   */
+  onModuleInit(): void {
+    this.logger.log(
+      'Sync con IAM no se ejecuta al arrancar. Usar POST /trabajadores/sync.',
+    );
   }
 
   // ==================== CRUD BÁSICO ====================

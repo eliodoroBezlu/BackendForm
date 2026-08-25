@@ -60,6 +60,26 @@ export class Auditoria extends Document {
   @Prop({ type: Object })
   datos?: Record<string, unknown>;
 
+  /**
+   * El documento afectado por un `DELETE`, tal como estaba justo antes.
+   *
+   * Existe porque una baja dejaba rastro de **quién y cuándo** pero no de
+   * **qué**: sabiendo que se borró la inspección `695e…` no había forma de
+   * saber qué contenía. Ahora la bitácora guarda el contenido.
+   *
+   * Pasa por el mismo saneador que `datos`, así que las firmas en base64
+   * quedan como `[omitido: N KB]` y el asiento entero se corta a 20 KB. Es
+   * material de consulta y de reconstrucción, **no una copia byte a byte**:
+   * quien tiene que preservar el documento íntegro es el borrado lógico del
+   * módulo; esto es la red por debajo.
+   *
+   * Solo se llena si el endpoint devuelve el documento. Los `DELETE` que
+   * responden `{ message: '...' }` siguen sin guardar nada, y eso hoy es la
+   * mayoría de los módulos.
+   */
+  @Prop({ type: Object })
+  documento?: Record<string, unknown>;
+
   @Prop()
   ip?: string;
 

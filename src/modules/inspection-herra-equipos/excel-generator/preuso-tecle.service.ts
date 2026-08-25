@@ -136,8 +136,23 @@ export class ExcelPreUsoTecleService {
         templateCode: '3.04.P37.F24',
       };
 
-      if (revision && templateData) {
-        query['templateId'] = templateData._id;
+      if (revision && templateData?._id) {
+        // Compara el `templateId` como cadena, no como ObjectId.
+        //
+        // El schema lo declara `Types.ObjectId`, pero las inspecciones lo
+        // tienen guardado como **cadena** —las 2048 de la colección, sin
+        // excepción—. Mongoose castea el valor de la consulta al tipo del
+        // schema, así que `templateId: <ObjectId>` no encontraba nada; y
+        // pasarle una cadena tampoco servía, porque el casteo lo decide el
+        // schema y no el argumento. La consulta devolvía 0 en silencio y la
+        // tabla horizontal salía vacía mientras el encabezado se llenaba bien.
+        //
+        // `$toString` compara contra el valor tal como está almacenado: funciona
+        // con los datos de hoy y seguiría funcionando si algún día se migran a
+        // ObjectId de verdad.
+        query.$expr = {
+          $eq: [{ $toString: '$templateId' }, String(templateData._id)],
+        };
       }
 
       // 4. Buscar TODAS las inspecciones que coincidan

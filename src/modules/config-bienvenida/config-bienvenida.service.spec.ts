@@ -133,9 +133,7 @@ describe('ConfigBienvenidaService · operadores del upsert', () => {
       submensaje: 'Abriendo…',
     });
 
-    const repetidos = Object.keys($setOnInsert ?? {}).filter(
-      (k) => k in $set,
-    );
+    const repetidos = Object.keys($setOnInsert ?? {}).filter((k) => k in $set);
     expect(repetidos).toEqual([]);
   });
 

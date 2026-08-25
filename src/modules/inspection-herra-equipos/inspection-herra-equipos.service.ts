@@ -24,6 +24,47 @@ import { TemplateHerraEquipos } from '../template-herra-equipos/schemas/template
 import { diasPorFrecuencia } from '../template-herra-equipos/domain/frecuencia.util';
 import { InspectionStatus } from './types/IProps';
 
+/**
+ * Lo que un **listado** no enseña y sin embargo era casi todo su peso.
+ *
+ * Medido sobre las 2047 inspecciones de la colección: 47,1 MB en total, de los
+ * cuales
+ *
+ *   firmas (las dos imágenes)      33,0 MB   69 %
+ *   vehicle.damageImageBase64       9,0 MB   19 %
+ *   responses                       3,5 MB    7 %
+ *   ─────────────────────────────────────────────
+ *   lo que la tabla sí usa          1,4 MB    3 %
+ *
+ * Una búsqueda sin filtro llegaba a tardar 15 segundos descargando 35 MB para
+ * pintar diez filas de fecha, área y TAG. Recortando los adjuntos queda en
+ * torno a 1,4 MB.
+ *
+ * ⚠️ Se quitan **las imágenes, no los objetos que las contienen**: la tarjeta
+ * de actividad del panel lee `inspectorSignature.inspectorName`, y excluir
+ * `inspectorSignature` entero la dejaría sin el nombre de quien inspeccionó.
+ * Por eso la exclusión baja al subcampo.
+ *
+ * El detalle de una inspección **no pasa por aquí** —usa `findOne`, que
+ * devuelve el documento completo—, así que abrir una sigue mostrándolo todo.
+ */
+const CAMPOS_FUERA_DEL_LISTADO = [
+  '-inspectorSignature.inspectorSignature',
+  '-supervisorSignature.supervisorSignature',
+  '-vehicle.damageImageBase64',
+  '-responses',
+].join(' ');
+
+/**
+ * Techo del listado aunque quien llama pida más.
+ *
+ * No es una paginación —esa es harina de otro costal, porque el filtrado por
+ * texto todavía ocurre en el cliente y paginar en el servidor lo rompería—.
+ * Es solo un tope para que ninguna petición pueda volver a arrastrar la
+ * colección entera.
+ */
+const TOPE_LISTADO = 500;
+
 @Injectable()
 export class InspectionsHerraEquiposService {
   private readonly logger = new Logger(InspectionsHerraEquiposService.name);
@@ -121,52 +162,85 @@ export class InspectionsHerraEquiposService {
         return { inspection: saved };
       }
 
-      // 🆕 Frecuencia configurable desde el template — independiente de la
-      // config hardcodeada de tecles, corre siempre que aplique.
-      await this.trackearFrecuenciaSiCorresponde(
-        template,
-        createDto.templateCode,
-        createDto.verification,
-      );
-
-      // Tracking normal para inspecciones que no requieren aprobación
-      if (config.type === 'pre-uso' || config.type === 'diaria') {
-        this.logger.log('✅ Inspección sin tracking especial');
-        return { inspection: saved };
-      }
-
-      const trackingResult =
-        await this.equipmentTrackingService.registerInspectionWithAutoTracking({
-          inspectionId: String(saved._id),
-          templateCode: createDto.templateCode,
-          verificationData: createDto.verification,
-          inspectorName: createDto.submittedBy,
-        });
-
-      this.logger.log(`✅ Tracking registrado: ${trackingResult.message}`);
-
-      if (config.type === 'frecuente' && config.linkedFormCode) {
-        const equipmentId = this.extractEquipmentId(
+      // ── A partir de aquí la inspección YA ESTÁ GUARDADA ────────────────
+      //
+      // Todo lo que sigue es contabilidad: llevar la cuenta de cuándo toca la
+      // próxima revisión de cada equipo. Es útil, pero **es secundario**, y
+      // por eso va dentro de un `try` propio.
+      //
+      // Antes no lo estaba, y una plantilla cuyo campo de código no cuadraba
+      // con la configuración hacía fracasar toda la petición: el inspector
+      // veía «Error al guardar borrador» y volvía a llenar el formulario,
+      // cuando su inspección estaba guardada desde hacía tres líneas. Perder
+      // el trabajo de quien inspecciona para no perder una fecha de
+      // seguimiento es exactamente el intercambio equivocado.
+      try {
+        // 🆕 Frecuencia configurable desde el template — independiente de la
+        // config hardcodeada de tecles, corre siempre que aplique.
+        await this.trackearFrecuenciaSiCorresponde(
+          template,
+          createDto.templateCode,
           createDto.verification,
-          config.equipmentFieldName,
         );
 
-        if (equipmentId) {
-          await this.equipmentTrackingService.resetPreUsoCounter(
-            equipmentId,
-            config.linkedFormCode,
-          );
-          this.logger.log(`🔄 Contador reseteado para ${equipmentId}`);
+        // Tracking normal para inspecciones que no requieren aprobación
+        if (config.type === 'pre-uso' || config.type === 'diaria') {
+          this.logger.log('✅ Inspección sin tracking especial');
+          return { inspection: saved };
         }
-      }
 
-      return {
-        inspection: saved,
-        tracking: trackingResult.tracking,
-        warning: trackingResult.needsFrecuenteInspection
-          ? `⚠️ El equipo requiere inspección FRECUENTE en el próximo uso`
-          : null,
-      };
+        const trackingResult =
+          await this.equipmentTrackingService.registerInspectionWithAutoTracking(
+            {
+              inspectionId: String(saved._id),
+              templateCode: createDto.templateCode,
+              verificationData: createDto.verification,
+              inspectorName: createDto.submittedBy,
+            },
+          );
+
+        this.logger.log(`✅ Tracking registrado: ${trackingResult.message}`);
+
+        if (config.type === 'frecuente' && config.linkedFormCode) {
+          const equipmentId = this.extractEquipmentId(
+            createDto.verification,
+            config.equipmentFieldName,
+          );
+
+          if (equipmentId) {
+            await this.equipmentTrackingService.resetPreUsoCounter(
+              equipmentId,
+              config.linkedFormCode,
+            );
+            this.logger.log(`🔄 Contador reseteado para ${equipmentId}`);
+          }
+        }
+
+        return {
+          inspection: saved,
+          tracking: trackingResult.tracking,
+          warning: trackingResult.needsFrecuenteInspection
+            ? `⚠️ El equipo requiere inspección FRECUENTE en el próximo uso`
+            : null,
+        };
+      } catch (fallo) {
+        // Se avisa fuerte en el registro —hay seguimiento que no se anotó y
+        // alguien tendrá que mirarlo— pero la respuesta es un éxito, porque
+        // guardar es lo que pidió quien llamó y guardar se hizo.
+        const motivo =
+          fallo instanceof Error ? fallo.message : 'error desconocido';
+        this.logger.error(
+          `⚠️ Inspección ${String(saved._id)} guardada, pero el seguimiento ` +
+            `de frecuencia no se pudo registrar: ${motivo}`,
+        );
+
+        return {
+          inspection: saved,
+          warning:
+            'La inspección se guardó. No se pudo registrar el seguimiento ' +
+            `de frecuencia del equipo: ${motivo}`,
+        };
+      }
     } catch (error) {
       this.logger.error('❌ Error al crear inspección:', error);
       throw error;
@@ -462,11 +536,20 @@ export class InspectionsHerraEquiposService {
       if (filters.endDate) query.submittedAt.$lte = new Date(filters.endDate);
     }
 
-    return this.inspectionModel
+    const consulta = this.inspectionModel
       .find(query)
-      .populate('templateId')
-      .sort({ submittedAt: -1 })
-      .exec();
+      .select(CAMPOS_FUERA_DEL_LISTADO)
+      // Solo `revision`, que es lo único que la tabla enseña de la plantilla.
+      // Traerla entera multiplicaba: 24 plantillas de 16 KB incrustadas en
+      // 2047 filas son ~31 MB de repetir lo mismo una y otra vez.
+      .populate('templateId', 'revision')
+      .sort({ submittedAt: -1 });
+
+    if (filters?.limit && filters.limit > 0) {
+      consulta.limit(Math.min(filters.limit, TOPE_LISTADO));
+    }
+
+    return consulta.exec();
   }
 
   async findOne(id: string): Promise<InspectionHerraEquiposDocument> {
@@ -501,14 +584,65 @@ export class InspectionsHerraEquiposService {
     return inspection;
   }
 
-  async remove(id: string): Promise<{ message: string }> {
-    const result = await this.inspectionModel.findByIdAndDelete(id).exec();
+  /**
+   * Da de baja una inspección. **No la borra.**
+   *
+   * Una inspección es el registro de que alguien revisó un equipo un día
+   * concreto; eso no deja de haber ocurrido porque se retire el asiento de las
+   * pantallas. Antes esto era un `findByIdAndDelete` y lo borrado no se podía
+   * recuperar: la bitácora guardaba quién y cuándo, pero no el documento.
+   *
+   * Devuelve la inspección **tal como quedó** porque el interceptor de
+   * auditoría archiva lo que devuelven los `DELETE`. Es la copia de seguridad
+   * de segundo nivel, por si alguien vaciara la colección por otra vía.
+   */
+  async remove(
+    id: string,
+    usuario?: string,
+  ): Promise<{ message: string; data: InspectionHerraEquiposDocument }> {
+    const inspeccion = await this.inspectionModel
+      .findByIdAndUpdate(
+        id,
+        {
+          activo: false,
+          eliminadaEn: new Date(),
+          eliminadaPor: usuario ?? 'desconocido',
+        },
+        { new: true },
+      )
+      .exec();
 
-    if (!result) {
+    // El gancho del esquema ya excluye las dadas de baja, así que un `null`
+    // aquí significa «no existe» o «ya estaba de baja». Las dos cosas son un
+    // 404 desde fuera: para quien pregunta, no hay nada que dar de baja.
+    if (!inspeccion) {
       throw new NotFoundException(`Inspección ${id} no encontrada`);
     }
 
-    return { message: 'Inspección eliminada exitosamente' };
+    return { message: 'Inspección dada de baja', data: inspeccion };
+  }
+
+  /**
+   * Revierte la baja. El filtro nombra `activo` a propósito: es lo que
+   * desactiva el gancho de exclusión del esquema, sin el cual no se podría
+   * encontrar lo que se quiere restaurar.
+   */
+  async restaurar(id: string): Promise<InspectionHerraEquiposDocument> {
+    const inspeccion = await this.inspectionModel
+      .findOneAndUpdate(
+        { _id: id, activo: false },
+        { activo: true, $unset: { eliminadaEn: '', eliminadaPor: '' } },
+        { new: true },
+      )
+      .exec();
+
+    if (!inspeccion) {
+      throw new NotFoundException(
+        `Inspección ${id} no encontrada entre las dadas de baja`,
+      );
+    }
+
+    return inspeccion;
   }
 
   async findDrafts(userId?: string): Promise<InspectionHerraEquiposDocument[]> {

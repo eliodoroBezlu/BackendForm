@@ -25,6 +25,8 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 import {
   buildInspectionFilename,
   buildContentDispositionHeader,
@@ -156,6 +158,9 @@ export class InspectionsHerraEquiposController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('submittedBy') submittedBy?: string,
+    // El frontend ya mandaba `limit` —la tarjeta de actividad pide 20— pero el
+    // endpoint no lo leía y devolvía todo igualmente.
+    @Query('limit') limit?: string,
   ) {
     const inspections = await this.inspectionsService.findAll(
       {
@@ -164,6 +169,7 @@ export class InspectionsHerraEquiposController {
         startDate,
         endDate,
         submittedBy,
+        limit: limit ? Number(limit) : undefined,
       },
       roles,
     );
@@ -252,13 +258,35 @@ export class InspectionsHerraEquiposController {
     };
   }
 
+  /**
+   * Da de baja la inspección; no la borra de la base.
+   *
+   * Devuelve el documento en `data` porque el interceptor de auditoría archiva
+   * lo que devuelven los `DELETE`. Si algún día esto dejara de devolverlo, la
+   * bitácora volvería a guardar solo quién y cuándo.
+   */
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    const result = await this.inspectionsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('username') username?: string,
+  ) {
+    const result = await this.inspectionsService.remove(id, username);
 
     return {
       success: true,
       ...result,
+    };
+  }
+
+  @Post(':id/restaurar')
+  @Roles(Role.ADMIN)
+  async restaurar(@Param('id') id: string) {
+    const inspeccion = await this.inspectionsService.restaurar(id);
+
+    return {
+      success: true,
+      message: 'Inspección restaurada',
+      data: inspeccion,
     };
   }
 

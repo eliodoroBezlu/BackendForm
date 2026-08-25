@@ -40,33 +40,25 @@ export class AreaService implements OnModuleInit {
     private readonly configService: ConfigService,
   ) {}
 
-  async onModuleInit() {
-    // Sincronización best-effort al arrancar — si el IAM Core no está
-    // disponible, no debe impedir que BackendForm levante.
-    try {
-      const resultado = await this.syncAreasFromIam();
-      if (resultado.error) {
-        this.logger.warn(
-          `Sync de áreas con IAM omitido al arrancar: ${resultado.error}`,
-        );
-      } else {
-        this.logger.log(
-          `Áreas sincronizadas desde IAM al arrancar: ${resultado.creadas} creadas, ${resultado.actualizadas} actualizadas`,
-        );
-        // Solo se avisa: dar de baja un área es una decisión de negocio (puede
-        // tener inspecciones en curso), así que se hace a mano desde el panel.
-        for (const baja of resultado.candidatasBaja) {
-          this.logger.warn(
-            `Área "${baja.nombre}" (código ${baja.codigo}) ya no está activa en el IAM ` +
-              `y sigue activa acá. Revisar si corresponde darla de baja.`,
-          );
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Sync de áreas con IAM omitido al arrancar: ${error instanceof Error ? error.message : 'error desconocido'}`,
-      );
-    }
+  /**
+   * El arranque **no** sincroniza contra el IAM.
+   *
+   * Lo hacía, y era best-effort, pero escribía en la base en cada arranque —y
+   * en Railway eso es cada despliegue y cada reinicio—. Una escritura
+   * automática que nadie pidió, en un momento en que nadie está mirando los
+   * registros, es justo la que se descubre tarde y mal.
+   *
+   * La sincronización sigue disponible, ahora cuando alguien la decide:
+   *
+   *     POST /area/sync
+   *
+   * Si se vuelve a querer al arrancar, que sea detrás de una variable de
+   * entorno explícita, no por omisión.
+   */
+  onModuleInit(): void {
+    this.logger.log(
+      'Sync de áreas con IAM no se ejecuta al arrancar. Usar POST /area/sync.',
+    );
   }
 
   /**

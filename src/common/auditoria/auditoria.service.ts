@@ -14,6 +14,8 @@ export interface AsientoAuditoria {
   fallo: boolean;
   mensajeError?: string;
   datos?: Record<string, unknown>;
+  /** Documento afectado por un `DELETE`, tal como estaba antes de la baja. */
+  documento?: Record<string, unknown>;
   ip?: string;
   userAgent?: string;
   duracionMs?: number;
