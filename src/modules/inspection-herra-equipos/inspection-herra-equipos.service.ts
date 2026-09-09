@@ -400,9 +400,29 @@ export class InspectionsHerraEquiposService {
   // ============================================
 
   /**
-   * Extrae el valor del campo "área" desde el objeto verification.
-   * La clave puede variar: "ÁREA", "AREA", "Área", "area", etc.
-   * Se normaliza quitando tildes y convirtiendo a minúsculas para comparar.
+   * Extrae el área desde `verification` para guardarla en su propio campo.
+   *
+   * Ese campo denormalizado es lo que usan los informes, el panel y el filtro
+   * por área; si sale vacío, la inspección existe pero **no aparece en ninguna
+   * vista organizada por área**, sin que nada falle ni avise.
+   *
+   * ── Por qué no basta una lista de grafías ────────────────────────────────
+   *
+   * Antes aceptaba exactamente `area` y `area/seccion`. Cada plantilla nombra
+   * el campo a su manera, así que se quedaban fuera:
+   *
+   * ```
+   * UBICACIÓN FÍSICA EL EQUIPO               F39, F40, F42   ← nótese «EL»
+   * AREA FÍSICA DE UBICACIÓN DE LA ESCALERA  F33
+   * ÁREA FÍSICA DEL MONTAJE DEL ANDAMIO      F30
+   * ```
+   *
+   * 312 inspecciones con el área bien escrita se guardaron sin ella. La de F39
+   * es además una errata de la plantilla —«FÍSICA EL EQUIPO»— que ninguna
+   * lista de grafías habría previsto: de ahí que se reconozca por significado.
+   *
+   * Se descartan los campos que nombran a una persona: `SUPERVISOR DE ÁREA`
+   * lleva «área» en la etiqueta y contiene un nombre propio.
    */
   private extractAreaFromVerification(
     verification: Record<string, string | number>,
@@ -414,14 +434,37 @@ export class InspectionsHerraEquiposService {
         .toLowerCase()
         .trim();
 
-    for (const key of Object.keys(verification)) {
-      const normalizedKey = normalize(key);
-      if (normalizedKey === 'area' || normalizedKey === 'area/seccion') {
-        const val = verification[key];
-        return typeof val === 'string' ? val.trim() : String(val);
+    const esDePersona = (clave: string) =>
+      /supervisor|responsable|inspector|persona|trabajador|jefe|firma/.test(
+        clave,
+      );
+
+    const claves = Object.keys(verification ?? {}).filter(
+      (k) => !esDePersona(normalize(k)),
+    );
+
+    /** Primera clave que cumple y **tiene valor**; vacío no cuenta. */
+    const primeraConValor = (
+      cumple: (claveNormalizada: string) => boolean,
+    ): string | undefined => {
+      for (const clave of claves) {
+        if (!cumple(normalize(clave))) continue;
+        const valor = verification[clave];
+        const texto =
+          valor === null || valor === undefined ? '' : String(valor).trim();
+        if (texto) return texto;
       }
-    }
-    return undefined;
+      return undefined;
+    };
+
+    // El orden importa: `2.03.P10.F05` tiene AREA y UBICACIÓN a la vez. Un
+    // área es dónde trabaja la cuadrilla; una ubicación puede ser «Caja
+    // soldadura 320», un sitio dentro del área. Gana la primera.
+    return (
+      primeraConValor((k) => k === 'area' || k === 'area/seccion') ??
+      primeraConValor((k) => k.includes('area') || k.includes('seccion')) ??
+      primeraConValor((k) => k.includes('ubicac'))
+    );
   }
 
   /** Escapa caracteres especiales para usar en RegExp de MongoDB */
