@@ -17,6 +17,7 @@ import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.se
 import { ExcelArnestService } from './excel-generator/arnes.service';
 import { ExcelInspeccionFrecuenteService } from './excel-generator/inspeccion-frecuente-equipos.service';
 import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
+import { corregirAreaDeImpresionEnBuffer } from './excel-generator/comun/area-de-impresion.util';
 
 export interface DocumentFilenameParts {
   nombre: string;
@@ -56,9 +57,23 @@ export class InspectionHerraEquiposDocumentService {
 
   /**
    * Resuelve el buffer de Excel correspondiente al templateCode de la
-   * inspección, probando cada generador especializado.
+   * inspección y le devuelve el área de impresión que traía la plantilla.
+   *
+   * La corrección vive aquí y no en cada generador porque este es el único
+   * punto por el que pasan los dieciséis —y también el PDF, que sale de este
+   * mismo buffer, que es donde se veía el problema—.
    */
   async generarExcelBuffer(
+    inspection: any,
+    templateCode: string,
+  ): Promise<Buffer | null> {
+    const buffer = await this.despacharGenerador(inspection, templateCode);
+    if (!buffer) return null;
+    return corregirAreaDeImpresionEnBuffer(buffer, templateCode);
+  }
+
+  /** Elige el generador especializado que sabe llenar este templateCode. */
+  private async despacharGenerador(
     inspection: any,
     templateCode: string,
   ): Promise<Buffer | null> {
