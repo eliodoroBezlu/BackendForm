@@ -174,7 +174,9 @@ describe('PgrController', () => {
       mockPgrService.remove.mockResolvedValue(result);
 
       expect(await controller.remove('1')).toEqual(result);
-      expect(service.remove).toHaveBeenCalledWith('1');
+      // El usuario llega del token; sin sesion queda constancia igualmente de
+      // que no se pudo identificar a nadie, en vez de un campo vacio.
+      expect(service.remove).toHaveBeenCalledWith('1', 'desconocido');
     });
   });
 });

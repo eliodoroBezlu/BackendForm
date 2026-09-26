@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
 import {
+  ESTADOS_SIN_EFECTO,
   EntregaLinterna,
   EstadoEntrega,
   TipoEntrega,
@@ -78,7 +79,7 @@ export class LinternasReportesService {
         { tipo: { $ne: TipoEntrega.REPOSICION_PERDIDA } },
         { estado: EstadoEntrega.APROBADA },
       ],
-      estado: { $ne: EstadoEntrega.RECHAZADA },
+      estado: { $nin: ESTADOS_SIN_EFECTO },
       // Las dotaciones anteriores al sistema no salieron de este stock: ya las
       // tenía la gente cuando se empezó a llevar la cuenta. Contarlas aquí
       // dejaría «entregadas» por encima de «ingresadas» sin que falte nada.
@@ -101,11 +102,11 @@ export class LinternasReportesService {
       this.entregaModel.countDocuments({ tipo: TipoEntrega.DOTACION }),
       this.entregaModel.countDocuments({
         tipo: TipoEntrega.CAMBIO,
-        estado: { $ne: EstadoEntrega.RECHAZADA },
+        estado: { $nin: ESTADOS_SIN_EFECTO },
       }),
       this.entregaModel.countDocuments({
         tipo: TipoEntrega.REPOSICION_PERDIDA,
-        estado: { $ne: EstadoEntrega.RECHAZADA },
+        estado: { $nin: ESTADOS_SIN_EFECTO },
       }),
       this.entregaModel.countDocuments({
         estado: EstadoEntrega.PENDIENTE_APROBACION,
@@ -131,7 +132,7 @@ export class LinternasReportesService {
   /** Distribución por área, para ver dónde se concentran las pérdidas. */
   async porArea(): Promise<FilaPorArea[]> {
     const etapas: PipelineStage[] = [
-      { $match: { estado: { $ne: EstadoEntrega.RECHAZADA } } },
+      { $match: { estado: { $nin: ESTADOS_SIN_EFECTO } } },
       {
         $group: {
           _id: { area: '$area', superintendencia: '$superintendencia' },
@@ -210,7 +211,7 @@ export class LinternasReportesService {
     const esTipo = (tipo: TipoEntrega) => ({ $eq: ['$tipo', tipo] });
 
     const etapas: PipelineStage[] = [
-      { $match: { estado: { $ne: EstadoEntrega.RECHAZADA } } },
+      { $match: { estado: { $nin: ESTADOS_SIN_EFECTO } } },
       { $sort: { createdAt: 1 } },
       {
         $group: {

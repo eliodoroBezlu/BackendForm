@@ -1,6 +1,7 @@
 // superintendencia.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 @Schema({ timestamps: true })
 export class Superintendencia extends Document {
@@ -56,4 +57,11 @@ export class Superintendencia extends Document {
 }
 
 export const SuperintendenciaSchema =
-  SchemaFactory.createForClass(Superintendencia); // Genera el esquema
+  SchemaFactory.createForClass(Superintendencia);
+
+/**
+ * No se borra: pasa a inactivo y deja de aparecer en las consultas.
+ *
+ * De ella cuelgan las areas, y de las areas todo lo demas.
+ */
+SuperintendenciaSchema.plugin(bajaLogica); // Genera el esquema

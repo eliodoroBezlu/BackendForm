@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 /**
  * Leer es para cualquiera autenticado —los formularios y selectores consultan
@@ -95,7 +96,10 @@ export class GerenciaController {
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
-  async remove(@Param('id') id: string) {
-    return this.gerenciaService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.gerenciaService.remove(id, usuario ?? 'desconocido');
   }
 }

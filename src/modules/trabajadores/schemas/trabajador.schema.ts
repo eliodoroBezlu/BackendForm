@@ -1,5 +1,6 @@
 import { Schema, Prop, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 @Schema({ timestamps: true })
 export class Trabajador extends Document {
@@ -85,6 +86,14 @@ export class Trabajador extends Document {
 }
 
 export const TrabajadorSchema = SchemaFactory.createForClass(Trabajador);
+
+/**
+ * No se borra: pasa a inactiva y deja de aparecer en las consultas.
+ *
+ * Una persona que deja la empresa no deja de figurar en las inspecciones que
+ * firmo ni en las entregas que recibio.
+ */
+TrabajadorSchema.plugin(bajaLogica);
 
 // Índices
 TrabajadorSchema.index({ ci: 1 });

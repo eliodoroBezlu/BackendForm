@@ -9,6 +9,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { TemplateHerraEquipos } from './schemas/template-herra-equipo.schema';
 import { Model } from 'mongoose';
 import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
+import {
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class TemplateHerraEquiposService {
@@ -161,13 +165,36 @@ export class TemplateHerraEquiposService {
     return updatedTemplate;
   }
 
-  async remove(id: string): Promise<void> {
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
     const result = await this.templateHerraEquiposModel
-      .findByIdAndDelete(id)
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
       .exec();
     if (!result) {
       throw new NotFoundException(`Template with ID ${id} not found`);
     }
+    return result;
+  }
+
+  /** Devuelve al uso un registro dado de baja. */
+  async restaurar(id: string) {
+    const result = await this.templateHerraEquiposModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+    if (!result) {
+      throw new NotFoundException(
+        'No encontrado o no estaba dado de baja: ' + id,
+      );
+    }
+    return result;
   }
 
   async count(filters?: { type?: string }, roles?: string[]): Promise<number> {

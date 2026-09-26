@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 export enum PgrEstado {
   BORRADOR = 'BORRADOR',
@@ -352,3 +353,10 @@ export class Pgr {
 }
 
 export const PgrSchema = SchemaFactory.createForClass(Pgr);
+
+/**
+ * No se borra: pasa a inactivo y deja de aparecer en las consultas.
+ *
+ * Borrarlo dejaria senalando al vacio a todo lo que lo referencia.
+ */
+PgrSchema.plugin(bajaLogica);

@@ -23,6 +23,7 @@ const ETIQUETA_ESTADO: Record<EstadoEntrega, string> = {
   [EstadoEntrega.PENDIENTE_APROBACION]: 'Pendiente de aprobación',
   [EstadoEntrega.APROBADA]: 'Aprobada',
   [EstadoEntrega.RECHAZADA]: 'Rechazada',
+  [EstadoEntrega.ANULADA]: 'ANULADA',
 };
 
 const MARGEN = 50;

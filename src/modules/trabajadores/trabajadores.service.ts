@@ -19,6 +19,7 @@ import {
   DisableUserDto,
 } from './dto/user-management.dto';
 import { escaparRegex } from '../../common/utils/escapar-regex.util';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 interface IamServiceUser {
   userId: string;
@@ -132,8 +133,12 @@ export class TrabajadoresService implements OnModuleInit {
     );
   }
 
-  async remove(id: string): Promise<Trabajador> {
-    const trabajador = await this.trabajadorModel.findByIdAndDelete(id).exec();
+  async remove(id: string, usuario: string): Promise<Trabajador> {
+    // Una persona que deja la empresa no deja de figurar en las
+    // inspecciones que firmo ni en las entregas que recibio.
+    const trabajador = await this.trabajadorModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
 
     if (!trabajador) {
       throw new NotFoundException(`Trabajador ${id} no encontrado`);

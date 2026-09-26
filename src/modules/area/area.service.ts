@@ -17,6 +17,19 @@ import {
   normalizarNombre,
 } from '../../common/utils/nombres-organizacion.util';
 import { escaparRegex } from '../../common/utils/escapar-regex.util';
+import {
+  INCLUIR_DADOS_DE_BAJA,
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
+
+/** Un área con los dos escalones que tiene por encima en el maestro. */
+export interface CadenaOrganizativa {
+  area: string;
+  superintendencia: string | null;
+  /** Vacía cuando la superintendencia no tiene gerencia asignada. */
+  gerencia: string | null;
+}
 
 interface IamAreaCatalogEntry {
   codigo: string;
@@ -309,12 +322,64 @@ export class AreaService implements OnModuleInit {
     return areas.map((area) => area.nombre);
   }
 
+  /**
+   * Todas las áreas, **incluidas las inactivas**.
+   *
+   * La pantalla de administración filtra por activo/inactivo sobre esta lista
+   * y necesita las dos: sin las inactivas no habría desde dónde reactivarlas.
+   * Los desplegables de los formularios ya descartan las inactivas por su
+   * cuenta, así que esto no cambia lo que ve el inspector.
+   */
   async findAll() {
     return await this.areaModel
       .find()
+      .setOptions({ [INCLUIR_DADOS_DE_BAJA]: true })
       .populate('superintendencia')
       .sort({ nombre: 1 })
       .exec();
+  }
+
+  /**
+   * Cada área con la superintendencia y la gerencia a las que pertenece.
+   *
+   * La cadena **Gerencia → Superintendencia → Área** ya vive en el maestro,
+   * pero los formularios no la usaban: el inspector elegía el área y luego
+   * tenía que escribir a mano la superintendencia, con lo que eso trae —el
+   * mismo parte diciendo que un área de Mantenimiento Planta pertenece a otra
+   * superintendencia, porque nadie lo comprueba—. Con esto el formulario puede
+   * deducirla en vez de preguntarla.
+   *
+   * Devuelve solo tres cadenas por área, no los documentos: se pide al abrir
+   * un formulario y no hace falta nada más para resolver la cadena.
+   *
+   * `gerencia` viene vacía a menudo, y no es un fallo: `gerencia_id` es
+   * opcional porque el catálogo del IAM no expone gerencias y se asignan a
+   * mano desde el panel. Quien lo consuma tiene que contar con ello.
+   */
+  async obtenerCadenaOrganizativa(): Promise<CadenaOrganizativa[]> {
+    const areas = await this.areaModel
+      .find({ activo: { $ne: false } })
+      .select('nombre superintendencia')
+      .populate({
+        path: 'superintendencia',
+        select: 'nombre gerencia_id',
+        populate: { path: 'gerencia_id', select: 'nombre' },
+      })
+      .sort({ nombre: 1 })
+      .lean()
+      .exec();
+
+    return areas.map((area) => {
+      const superintendencia = area.superintendencia as unknown as
+        | { nombre?: string; gerencia_id?: { nombre?: string } }
+        | undefined;
+
+      return {
+        area: area.nombre,
+        superintendencia: superintendencia?.nombre ?? null,
+        gerencia: superintendencia?.gerencia_id?.nombre ?? null,
+      };
+    });
   }
 
   async findOne(id: string) {
@@ -434,17 +499,46 @@ export class AreaService implements OnModuleInit {
     return area;
   }
 
-  async remove(id: string) {
-    // Importante: Verificar si hay extintores asociados antes de eliminar
-    const result = await this.areaModel.findByIdAndDelete(id);
+  /**
+   * Da de baja el área; no la borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoría archiva lo que
+   * devuelven los `DELETE`: si dejara de devolverlo, la bitácora guardaría solo
+   * quién y cuándo, no qué.
+   */
+  async remove(id: string, usuario: string) {
+    const area = await this.areaModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
 
-    if (!result) {
+    // El gancho del esquema ya excluye las dadas de baja, así que un `null`
+    // significa «no existe» o «ya estaba de baja». Desde fuera las dos cosas
+    // son un 404: no hay nada que dar de baja.
+    if (!area) {
       throw new NotFoundException(`Área con ID "${id}" no encontrada`);
     }
 
     return {
       success: true,
-      message: 'Área eliminada correctamente',
+      message: 'Área dada de baja correctamente',
+      data: area,
     };
+  }
+
+  /** Devuelve al uso un área dada de baja. */
+  async restaurar(id: string) {
+    const area = await this.areaModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+
+    if (!area) {
+      throw new NotFoundException(
+        `Área con ID "${id}" no encontrada o no estaba dada de baja`,
+      );
+    }
+
+    return area;
   }
 }

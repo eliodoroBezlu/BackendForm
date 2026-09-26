@@ -7,7 +7,7 @@
 
 const FALLBACK = 'N-A';
 
-function sanitizePart(value: string | undefined | null): string {
+export function sanitizePart(value: string | undefined | null): string {
   if (!value) return FALLBACK;
   const clean = value
     .replace(/[\\/:*?"<>|]/g, '-') // caracteres inválidos en nombres de archivo

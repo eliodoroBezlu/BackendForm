@@ -38,7 +38,9 @@ describe('TrabajadoresService', () => {
 
   const construir = async (resultado: unknown) => {
     modelo = cadena(resultado);
-    modelo.findByIdAndDelete = jest.fn(() => cadena(resultado));
+    // Un trabajador no se borra: se da de baja. Si el dia de manana alguien
+    // volviera a `findByIdAndDelete`, este mock ya no existe y el test avisa.
+    modelo.findByIdAndUpdate = jest.fn(() => cadena(resultado));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -225,12 +227,12 @@ describe('TrabajadoresService', () => {
       );
     });
 
-    it('borrar un trabajador inexistente da 404', async () => {
+    it('dar de baja un trabajador inexistente da 404', async () => {
       await construir(null);
 
-      await expect(servicio.remove('id-que-no-existe')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        servicio.remove('id-que-no-existe', 'jperez'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

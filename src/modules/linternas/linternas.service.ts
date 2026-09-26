@@ -8,6 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
+  ESTADOS_SIN_EFECTO,
   EntregaLinterna,
   EstadoEntrega,
   TipoEntrega,
@@ -72,8 +73,10 @@ export class LinternasService {
       .sort({ createdAt: 1 })
       .exec();
 
+    // Rechazadas y anuladas no cuentan como dotacion: para el sistema esa
+    // persona no recibio nada por esa via.
     const efectivas = entregas.filter(
-      (e) => e.estado !== EstadoEntrega.RECHAZADA,
+      (e) => !ESTADOS_SIN_EFECTO.includes(e.estado),
     );
     const tieneDotacion = efectivas.some(
       (e) => e.tipo === TipoEntrega.DOTACION,
@@ -286,6 +289,171 @@ export class LinternasService {
     await entrega.save();
     this.logger.log(
       `Pérdida ${id} ${dto.aprobar ? 'aprobada' : 'rechazada'} por ${contexto.usuario}`,
+    );
+    return entrega;
+  }
+
+  /**
+   * Corrige la observacion de una entrega **aun sin firmar**.
+   *
+   * Solo lo que no cambia la naturaleza del acto: el tipo, el trabajador y los
+   * bloques mueven stock y estado, y eso va por `reclasificar`. Con el acta ya
+   * firmada no se toca nada — lo que dice es lo que alguien firmo.
+   */
+  async corregir(
+    id: string,
+    dto: { observacion?: string },
+    contexto: ContextoFirma,
+  ): Promise<EntregaLinterna> {
+    const entrega = await this.buscarEntrega(id);
+
+    if (entrega.firmaTrabajador || entrega.perdida?.firmaAprobador) {
+      throw new ConflictException(
+        'La entrega ya esta firmada: el acta dice lo que alguien firmo y no se reescribe.',
+      );
+    }
+    if (ESTADOS_SIN_EFECTO.includes(entrega.estado)) {
+      throw new ConflictException(
+        `Esta entrega esta ${entrega.estado}; no hay nada que corregir.`,
+      );
+    }
+
+    if (dto.observacion !== undefined) entrega.observacion = dto.observacion;
+    await entrega.save();
+
+    this.logger.log(`Entrega ${id} corregida por ${contexto.usuario}`);
+    return entrega;
+  }
+
+  /**
+   * Anula una entrega que no debia registrarse.
+   *
+   * El asiento se queda —la informacion no se borra—, pero sale de los
+   * recuentos de dotacion. Es la salida para el registro equivocado que ya no
+   * se puede corregir de otra forma.
+   *
+   * **La linterna que salio no vuelve sola al stock.** El sistema no sabe si
+   * se recupero fisicamente, y suponerlo descuadraria el almacen en silencio:
+   * quien anula lo declara.
+   */
+  async anular(
+    id: string,
+    dto: { motivo: string; linternaRecuperada?: boolean },
+    contexto: ContextoFirma,
+  ): Promise<EntregaLinterna> {
+    const entrega = await this.buscarEntrega(id);
+
+    if (ESTADOS_SIN_EFECTO.includes(entrega.estado)) {
+      throw new ConflictException(
+        `Esta entrega ya esta ${entrega.estado}; no se puede anular otra vez.`,
+      );
+    }
+
+    // Solo devuelve al stock si la unidad llego a salir y quien anula dice
+    // que volvio. Una perdida sin aprobar nunca descento nada.
+    if (dto.linternaRecuperada && this.descontoStock(entrega)) {
+      await this.stock.reponerUna();
+    }
+
+    entrega.estado = EstadoEntrega.ANULADA;
+    entrega.motivoAnulacion = dto.motivo;
+    entrega.anuladaPor = contexto.usuario;
+    entrega.fechaAnulacion = new Date();
+    await entrega.save();
+
+    this.logger.log(`Entrega ${id} anulada por ${contexto.usuario}`);
+    return entrega;
+  }
+
+  /** Si esta entrega llego a descontar una unidad del almacen. */
+  private descontoStock(entrega: EntregaLinterna): boolean {
+    if (entrega.tipo !== TipoEntrega.REPOSICION_PERDIDA) {
+      // Dotacion y cambio descuentan al registrarse.
+      return true;
+    }
+    // La perdida descuenta al aprobarse, no antes.
+    return entrega.estado === EstadoEntrega.APROBADA;
+  }
+
+  /**
+   * Cambia el tipo de una entrega ya registrada.
+   *
+   * **No es editar un campo.** El tipo decide que exige la entrega, si
+   * descuenta stock y en que estado nace: poner «perdida» donde decia «cambio»
+   * dejaria una unidad descontada que no debia, un estado que no corresponde,
+   * una foto de devolucion que sobra y sin justificacion. Por eso esto aplica
+   * las mismas reglas que la creacion.
+   *
+   * De `cambio` a `perdida` la unidad vuelve al stock y la entrega queda
+   * pendiente de aprobacion, porque en ese flujo la linterna sale al aprobar.
+   * Si ya salio fisicamente, el almacen queda descuadrado hasta que alguien
+   * apruebe — y esa es una decision del operario, no del sistema.
+   *
+   * Solo mientras no haya firma: con el acta firmada, lo que dice es lo que
+   * alguien firmo.
+   */
+  async reclasificar(
+    id: string,
+    dto: RegistrarEntregaDto & { motivo: string },
+    contexto: ContextoFirma,
+  ): Promise<EntregaLinterna> {
+    const entrega = await this.buscarEntrega(id);
+
+    if (entrega.firmaTrabajador || entrega.perdida?.firmaAprobador) {
+      throw new ConflictException(
+        'La entrega ya esta firmada: el acta dice lo que alguien firmo y no se reescribe. ' +
+          'Si el registro no debia existir, anulala.',
+      );
+    }
+    if (ESTADOS_SIN_EFECTO.includes(entrega.estado)) {
+      throw new ConflictException(
+        `Esta entrega esta ${entrega.estado}; no hay nada que reclasificar.`,
+      );
+    }
+    if (dto.tipo === entrega.tipo) {
+      throw new BadRequestException(`La entrega ya es de tipo «${dto.tipo}».`);
+    }
+
+    // Las mismas reglas que al crear: cada tipo trae lo suyo, y solo lo suyo.
+    this.validarBloquesDelTipo(dto);
+
+    const descontabaAntes = this.descontoStock(entrega);
+    const tipoAnterior = entrega.tipo;
+
+    entrega.tipo = dto.tipo;
+    // Los bloques del tipo viejo que el nuevo prohibe se sueltan: dejarlos
+    // colgados haria que el acta mostrara una devolucion que no hubo.
+    //
+    // Se usa `set` y no una asignacion directa para que Mongoose haga la misma
+    // coercion del DTO al subdocumento que hace al crear.
+    entrega.set({ devolucion: dto.devolucion, perdida: dto.perdida });
+    entrega.estado =
+      dto.tipo === TipoEntrega.REPOSICION_PERDIDA
+        ? EstadoEntrega.PENDIENTE_APROBACION
+        : EstadoEntrega.REGISTRADA;
+    entrega.fechaEntrega =
+      dto.tipo === TipoEntrega.REPOSICION_PERDIDA
+        ? undefined
+        : (entrega.fechaEntrega ?? new Date());
+
+    const descuentaAhora = this.descontoStock(entrega);
+    if (descontabaAntes && !descuentaAhora) await this.stock.reponerUna();
+    if (!descontabaAntes && descuentaAhora) await this.stock.descontarUna();
+
+    entrega.reclasificaciones = [
+      ...(entrega.reclasificaciones ?? []),
+      {
+        tipoAnterior,
+        tipoNuevo: dto.tipo,
+        reclasificadaPor: contexto.usuario,
+        fecha: new Date(),
+        motivo: dto.motivo,
+      },
+    ];
+
+    await entrega.save();
+    this.logger.log(
+      `Entrega ${id} reclasificada de ${tipoAnterior} a ${dto.tipo} por ${contexto.usuario}`,
     );
     return entrega;
   }

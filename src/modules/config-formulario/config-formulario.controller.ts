@@ -19,6 +19,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { Role } from '../auth/enums/role.enum';
 import { Permission } from '../auth/enums/permission.enum';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @Roles(Role.ADMIN)
@@ -54,7 +55,10 @@ export class ConfigFormularioController {
   @Delete(':tipoEquipo')
   @Permissions(Permission.MANAGE_SETTINGS)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('tipoEquipo') tipoEquipo: string) {
-    return this.configService.remove(tipoEquipo);
+  remove(
+    @Param('tipoEquipo') tipoEquipo: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.configService.remove(tipoEquipo, usuario ?? 'desconocido');
   }
 }

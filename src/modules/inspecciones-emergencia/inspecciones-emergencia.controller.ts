@@ -26,6 +26,8 @@ import {
   buildContentDispositionHeader,
 } from '../../common/utils/download-filename.util';
 import { BulkDownloadService } from '../../common/services/bulk-download.service';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inspecciones-emergencia')
@@ -191,6 +193,7 @@ export class InspeccionesEmergenciaController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
   remove(@Param('id') id: string) {
     return this.inspeccionesEmergenciaService.remove(+id);
   }

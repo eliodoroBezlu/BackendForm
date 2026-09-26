@@ -238,8 +238,11 @@ export class TrabajadoresController {
     description: 'Trabajador eliminado exitosamente',
   })
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
-  remove(@Param('id') id: string) {
-    return this.trabajadoresService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.trabajadoresService.remove(id, usuario ?? 'desconocido');
   }
 
   @Post(':id/create-user')

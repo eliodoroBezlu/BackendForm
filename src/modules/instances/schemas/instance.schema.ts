@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { type Document, Types } from 'mongoose';
 import * as mongoose from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 export type InstanceDocument = Instance & Document;
 
@@ -153,6 +154,14 @@ export class Instance {
 }
 
 export const InstanceSchema = SchemaFactory.createForClass(Instance);
+
+/**
+ * No se borra: pasa a inactiva y deja de aparecer en las consultas.
+ *
+ * Es una inspeccion hecha: el registro de que alguien reviso algo un dia
+ * concreto, y eso no deja de haber ocurrido porque se de de baja el asiento.
+ */
+InstanceSchema.plugin(bajaLogica);
 
 // Índices para optimizar consultas
 InstanceSchema.index({ templateId: 1 });

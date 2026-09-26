@@ -27,6 +27,9 @@ import {
   buildContentDispositionHeader,
 } from '../../common/utils/download-filename.util';
 import { BulkDownloadService } from '../../common/services/bulk-download.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('instances')
@@ -148,8 +151,12 @@ export class InstancesController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.instancesService.remove(id);
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
+  remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.instancesService.remove(id, usuario ?? 'desconocido');
   }
 
   @Post('bulk-download')

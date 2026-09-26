@@ -9,6 +9,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Superintendencia } from './schemas/superintendencia.schema';
 import { Model } from 'mongoose';
 import { escaparRegex } from '../../common/utils/escapar-regex.util';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class SuperintendenciaService {
@@ -172,11 +173,15 @@ export class SuperintendenciaService {
     return superintendencia;
   }
 
-  async remove(id: string) {
+  async remove(id: string, usuario: string) {
     // Importante: Aquí deberías verificar si hay áreas asociadas
     // antes de permitir la eliminación física
 
-    const result = await this.superintendenciaModel.findByIdAndDelete(id);
+    const result = await this.superintendenciaModel.findByIdAndUpdate(
+      id,
+      marcarDadoDeBaja(usuario),
+      { new: true },
+    );
 
     if (!result) {
       throw new NotFoundException(

@@ -33,6 +33,12 @@ describe('AreaService', () => {
   } = {}) => {
     modeloArea = cadena(areas);
     modeloArea.findOne = jest.fn().mockResolvedValue(areaExistente);
+    modeloArea.findByIdAndUpdate = jest.fn(() => ({
+      exec: jest.fn().mockResolvedValue(areaExistente),
+    }));
+    modeloArea.findOneAndUpdate = jest.fn(() => ({
+      exec: jest.fn().mockResolvedValue(areaExistente),
+    }));
     modeloSuper = cadena([]);
     modeloSuper.findById = jest.fn().mockResolvedValue(superintendencia);
 
@@ -177,6 +183,117 @@ describe('AreaService', () => {
         'Chancado',
         'Molienda',
       ]);
+    });
+  });
+
+  /**
+   * Un área nunca se borra: hay inspecciones, equipos y trabajadores que
+   * apuntan a ella, y borrarla los dejaría señalando a un identificador que ya
+   * no existe.
+   */
+  describe('remove', () => {
+    it('marca inactiva en vez de borrar, dejando quién y cuándo', async () => {
+      await construir({ areaExistente: { nombre: 'Chancado' } });
+
+      await servicio.remove('id-1', 'jperez');
+
+      expect(modeloArea.findByIdAndDelete).toBeUndefined();
+      const [id, cambios] = modeloArea.findByIdAndUpdate.mock.calls[0] as [
+        string,
+        { activo: boolean; eliminadaPor: string; eliminadaEn: Date },
+      ];
+      expect(id).toBe('id-1');
+      expect(cambios.activo).toBe(false);
+      expect(cambios.eliminadaPor).toBe('jperez');
+      expect(cambios.eliminadaEn).toBeInstanceOf(Date);
+    });
+
+    it('devuelve el documento, que es lo que archiva la auditoría', async () => {
+      await construir({ areaExistente: { nombre: 'Chancado' } });
+
+      const salida = await servicio.remove('id-1', 'jperez');
+
+      expect(salida.data).toEqual({ nombre: 'Chancado' });
+    });
+
+    it('da 404 si no existe o ya estaba de baja', async () => {
+      await construir({ areaExistente: null });
+
+      await expect(servicio.remove('id-1', 'jperez')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('restaurar', () => {
+    it('solo actúa sobre un área que estaba dada de baja', async () => {
+      await construir({ areaExistente: { nombre: 'Chancado' } });
+
+      await servicio.restaurar('id-1');
+
+      const [filtro] = modeloArea.findOneAndUpdate.mock.calls[0] as [
+        Record<string, unknown>,
+      ];
+      expect(filtro).toEqual({ _id: 'id-1', activo: false });
+    });
+  });
+
+  /**
+   * La cadena que los formularios usan para deducir superintendencia y
+   * gerencia del área elegida, en vez de pedírselas al inspector.
+   */
+  describe('obtenerCadenaOrganizativa', () => {
+    it('aplana los dos escalones que hay por encima del área', async () => {
+      await construir({
+        areas: [
+          {
+            nombre: 'Flotacion',
+            superintendencia: {
+              nombre: 'SUPERINTENDENCIA DE OPERACIONES PLANTA',
+              gerencia_id: { nombre: 'GERENCIA DE OPERACIONES PLANTA' },
+            },
+          },
+        ],
+      });
+
+      await expect(servicio.obtenerCadenaOrganizativa()).resolves.toEqual([
+        {
+          area: 'Flotacion',
+          superintendencia: 'SUPERINTENDENCIA DE OPERACIONES PLANTA',
+          gerencia: 'GERENCIA DE OPERACIONES PLANTA',
+        },
+      ]);
+    });
+
+    it('devuelve la gerencia vacía cuando la superintendencia no tiene', async () => {
+      // No es un fallo: `gerencia_id` es opcional porque el catálogo del IAM
+      // no expone gerencias y se asignan a mano. Quien consuma esto tiene que
+      // contar con el hueco.
+      await construir({
+        areas: [{ nombre: 'Chancado', superintendencia: { nombre: 'SUP X' } }],
+      });
+
+      await expect(servicio.obtenerCadenaOrganizativa()).resolves.toEqual([
+        { area: 'Chancado', superintendencia: 'SUP X', gerencia: null },
+      ]);
+    });
+
+    it('no se cae si un área quedó sin superintendencia poblada', async () => {
+      await construir({ areas: [{ nombre: 'Huérfana' }] });
+
+      await expect(servicio.obtenerCadenaOrganizativa()).resolves.toEqual([
+        { area: 'Huérfana', superintendencia: null, gerencia: null },
+      ]);
+    });
+
+    it('deja fuera las áreas dadas de baja', async () => {
+      await construir({ areas: [] });
+
+      await servicio.obtenerCadenaOrganizativa();
+
+      expect(modeloArea.find).toHaveBeenCalledWith({
+        activo: { $ne: false },
+      });
     });
   });
 });

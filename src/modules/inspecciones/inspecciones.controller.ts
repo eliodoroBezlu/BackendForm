@@ -19,6 +19,8 @@ import type { UpdateInspeccionDto } from './dto/update-inspeccion.dto';
 import { ExcelService } from '../excel/excel.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard) // Aquí puedes agregar tus guards de autenticación/autorización
 @Controller('inspecciones')
@@ -84,6 +86,7 @@ export class InspeccionesController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
   async remove(@Param('id') id: string) {
     try {
       await this.inspeccionesService.remove(id);

@@ -158,6 +158,21 @@ export class CreateVerificationFieldDto {
   @IsString()
   dataSource?: string;
 
+  /**
+   * Valor con el que aparece el campo la primera vez.
+   *
+   * El caso que lo motivó es `EMPRESA`: sale en escaleras, man-lift y vehículo
+   * y siempre lleva lo mismo, así que pedírselo al inspector en cada parte es
+   * trabajo sin información. Se escribe desde el constructor y no en el
+   * código, porque es un dato de negocio: el día que cambie la razón social se
+   * toca en el panel.
+   *
+   * Solo se aplica si el campo está vacío, y queda editable.
+   */
+  @IsOptional()
+  @IsString()
+  valorPorDefecto?: string;
+
   @IsOptional()
   @IsBoolean()
   obligatorio?: boolean;

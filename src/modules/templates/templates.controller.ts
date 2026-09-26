@@ -16,6 +16,9 @@ import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 @ApiTags('templates')
@@ -98,10 +101,14 @@ export class TemplatesController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Eliminar un template' })
   @ApiResponse({ status: 200, description: 'Template eliminado exitosamente' })
   @ApiResponse({ status: 404, description: 'Template no encontrado' })
-  remove(@Param('id') id: string) {
-    return this.templatesService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.templatesService.remove(id, usuario ?? 'desconocido');
   }
 }

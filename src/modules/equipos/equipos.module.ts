@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { EquiposService } from './equipos.service';
 import { MigracionService } from './migracion.service';
+import { EquiposExcelService } from './equipos-excel.service';
 import { ResolucionOrganizacionalService } from './importacion/resolucion-organizacional.service';
 import { EquiposController } from './equipos.controller';
 import { Equipo, EquipoSchema } from './schemas/equipo.schema';
@@ -38,6 +39,7 @@ import {
   providers: [
     EquiposService,
     MigracionService,
+    EquiposExcelService,
     ResolucionOrganizacionalService,
   ],
   exports: [EquiposService, MigracionService],

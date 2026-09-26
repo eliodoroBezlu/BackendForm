@@ -15,6 +15,10 @@ import {
 } from './schemas/instance.schema';
 import { TemplatesService } from '../templates/templates.service';
 import { Section } from '../templates/schemas/template.schema';
+import {
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class InstancesService {
@@ -260,11 +264,36 @@ export class InstancesService {
     return instance;
   }
 
-  async remove(id: string): Promise<void> {
-    const result = await this.instanceModel.findByIdAndDelete(id).exec();
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
+    const result = await this.instanceModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
     if (!result) {
       throw new NotFoundException('Instancia no encontrada');
     }
+    return result;
+  }
+
+  /** Devuelve al uso un registro dado de baja. */
+  async restaurar(id: string) {
+    const result = await this.instanceModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+    if (!result) {
+      throw new NotFoundException(
+        'No encontrado o no estaba dado de baja: ' + id,
+      );
+    }
+    return result;
   }
 
   async updateStatus(

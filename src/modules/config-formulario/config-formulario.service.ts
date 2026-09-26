@@ -12,6 +12,7 @@ import {
   ConfigFormulario,
   ConfigFormularioDocument,
 } from './schemas/config-formulario.schema';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class ConfigFormularioService implements OnModuleInit {
@@ -174,14 +175,25 @@ export class ConfigFormularioService implements OnModuleInit {
     return config;
   }
 
-  async remove(tipoEquipo: string): Promise<void> {
+  /**
+   * Da de baja la configuracion; no la borra.
+   *
+   * Explica como se llenaron los formularios de ese tipo de equipo:
+   * quitarla impide entender los que ya se llenaron con ella.
+   */
+  async remove(tipoEquipo: string, usuario: string) {
     const result = await this.configModel
-      .findOneAndDelete({ tipo_equipo: tipoEquipo })
+      .findOneAndUpdate(
+        { tipo_equipo: tipoEquipo },
+        marcarDadoDeBaja(usuario),
+        { new: true },
+      )
       .exec();
     if (!result) {
       throw new NotFoundException(
         `Configuración para el tipo de equipo '${tipoEquipo}' no encontrada`,
       );
     }
+    return result;
   }
 }

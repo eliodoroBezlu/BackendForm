@@ -10,6 +10,10 @@ import { CreateEquipoDto } from './dto/create-equipo.dto';
 import { UpdateEquipoDto } from './dto/update-equipo.dto';
 import { AmbitoEquipo, Equipo, EquipoDocument } from './schemas/equipo.schema';
 import { ConfigFormularioService } from '../config-formulario/config-formulario.service';
+import {
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class EquiposService {
@@ -134,6 +138,28 @@ export class EquiposService {
       .exec();
   }
 
+  /**
+   * Trae varios equipos por id, ya poblados — mismo `populate` que
+   * `findAll()`/`findOne()`, pero acotado a la selección que el usuario ya
+   * filtró en pantalla (área/ubicación/búsqueda), para exportaciones en
+   * lote. La baja lógica sigue excluyendo inactivos igual que en cualquier
+   * otra consulta: el plugin actúa sobre `find()` sin que haga falta nada
+   * especial acá.
+   */
+  async findByIds(ids: string[]): Promise<Equipo[]> {
+    return this.equipoModel
+      .find({ _id: { $in: ids } })
+      .populate({
+        path: 'area_id',
+        populate: [{ path: 'superintendencia' }, { path: 'areaPadre' }],
+      })
+      .populate('superintendencia_id')
+      .populate('gerencia_id')
+      .populate('ubicacion_id')
+      .populate('clasificacion_id')
+      .exec();
+  }
+
   async findOne(id: string): Promise<Equipo> {
     const item = await this.equipoModel
       .findById(id)
@@ -213,11 +239,36 @@ export class EquiposService {
     return updated;
   }
 
-  async remove(id: string): Promise<void> {
-    const result = await this.equipoModel.findByIdAndDelete(id).exec();
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
+    const result = await this.equipoModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
     if (!result) {
       throw new NotFoundException(`Equipo con ID ${id} no encontrado`);
     }
+    return result;
+  }
+
+  /** Devuelve al uso un registro dado de baja. */
+  async restaurar(id: string) {
+    const result = await this.equipoModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+    if (!result) {
+      throw new NotFoundException(
+        'No encontrado o no estaba dado de baja: ' + id,
+      );
+    }
+    return result;
   }
 
   // Upsert helper for migration service

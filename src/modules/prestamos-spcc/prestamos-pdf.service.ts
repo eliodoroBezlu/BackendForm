@@ -165,6 +165,33 @@ export class PrestamosPdfService {
         .text(titulo, x, yFirmas + 66);
     });
 
+    /**
+     * Correcciones posteriores a la firma.
+     *
+     * El sello de las firmas es un hash sobre la imagen, no sobre el
+     * contenido: corregir el solicitante no rompe ningún hash, así que el acta
+     * pasaría a decir algo distinto de lo que se firmó **sin que nada lo
+     * delatara**. Esto es lo que permite a quien tenga una copia impresa vieja
+     * entender por qué no coincide.
+     */
+    const correcciones = solicitud.correcciones ?? [];
+    if (correcciones.length > 0) {
+      doc.moveDown(1);
+      doc.fontSize(7).fillColor('#a00').text('Correcciones posteriores:');
+      correcciones.forEach((c) => {
+        doc
+          .fontSize(6)
+          .fillColor('#a00')
+          .text(
+            `· ${c.campo}: antes decía «${c.valorAnterior ?? '—'}». ` +
+              `Corregido por ${c.corregidoPor} el ${fecha(c.fecha)}. ` +
+              `Motivo: ${c.motivo}`,
+            { width: 505 },
+          );
+      });
+      doc.fillColor('#000');
+    }
+
     // Huella de las firmas, para poder comprobar después que no cambiaron.
     const hashes = [
       solicitud.entrega?.firmaEntrega?.hash,

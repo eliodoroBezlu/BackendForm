@@ -248,19 +248,29 @@ describe('PgrService', () => {
   });
 
   describe('remove', () => {
-    it('should remove a pgr by id', async () => {
-      jest.spyOn(model, 'findByIdAndDelete').mockReturnValue({
-        exec: jest.fn().mockResolvedValueOnce(mockPgr),
-      } as any);
-      const result = await service.remove('some-id');
+    it('da de baja el pgr en vez de borrarlo, con quien y cuando', async () => {
+      const findByIdAndUpdate = jest
+        .spyOn(model, 'findByIdAndUpdate')
+        .mockReturnValue({
+          exec: jest.fn().mockResolvedValueOnce(mockPgr),
+        } as any);
+
+      const result = await service.remove('some-id', 'jperez');
+
       expect(result).toEqual(mockPgr);
+      const cambios = findByIdAndUpdate.mock.calls[0][1] as unknown as {
+        activo: boolean;
+        eliminadaPor: string;
+      };
+      expect(cambios.activo).toBe(false);
+      expect(cambios.eliminadaPor).toBe('jperez');
     });
 
     it('should throw an error if not found when trying to remove', async () => {
-      jest.spyOn(model, 'findByIdAndDelete').mockReturnValue({
+      jest.spyOn(model, 'findByIdAndUpdate').mockReturnValue({
         exec: jest.fn().mockResolvedValueOnce(null),
       } as any);
-      await expect(service.remove('invalid-id')).rejects.toThrow(
+      await expect(service.remove('invalid-id', 'jperez')).rejects.toThrow(
         NotFoundException,
       );
     });

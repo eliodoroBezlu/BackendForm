@@ -18,6 +18,9 @@ import { CreateExtintorDto } from './dto/create-extintor.dto';
 import { UpdateExtintorDto } from './dto/update-extintor.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('extintor')
 export class ExtintorController {
@@ -167,9 +170,16 @@ export class ExtintorController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  @Roles(Role.ADMIN)
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
     try {
-      const resultado = await this.extintorService.remove(id);
+      const resultado = await this.extintorService.remove(
+        id,
+        usuario ?? 'desconocido',
+      );
       return {
         success: true,
         message: 'Extintor eliminado correctamente',

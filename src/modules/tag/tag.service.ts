@@ -10,6 +10,7 @@ import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schemas/tag.schema';
 import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class TagService {
@@ -124,12 +125,21 @@ export class TagService {
     return updated;
   }
 
-  async remove(id: string): Promise<{ message: string }> {
-    const result = await this.ordenTrabajoModel.findByIdAndDelete(id).exec();
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
+    const result = await this.ordenTrabajoModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
     if (!result) {
       throw new NotFoundException(`Tag con ID ${id} no encontrado`);
     }
-    return { message: 'Tag eliminado correctamente' };
+    return result;
   }
 
   async desactivar(id: string): Promise<OrdenTrabajo> {

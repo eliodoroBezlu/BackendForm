@@ -266,6 +266,7 @@ export class InspectionsHerraEquiposController {
    * bitácora volvería a guardar solo quién y cuándo.
    */
   @Delete(':id')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
   async remove(
     @Param('id') id: string,
     @CurrentUser('username') username?: string,

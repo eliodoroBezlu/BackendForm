@@ -23,6 +23,10 @@ import {
   calcularIndicadoresPgr,
   IndicadoresPgr,
 } from './domain/pgr-kpi.util';
+import {
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
 
 const MAX_INTENTOS_CODIGO = 5;
 
@@ -444,11 +448,35 @@ export class PgrService {
     return this.findOne(pgrId);
   }
 
-  async remove(id: string): Promise<Pgr> {
-    const deleted = await this.pgrModel.findByIdAndDelete(id).exec();
-    if (!deleted) {
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
+    const result = await this.pgrModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
+    if (!result) {
       throw new NotFoundException(`PGR con ID "${id}" no encontrado`);
     }
-    return deleted;
+    return result;
+  }
+
+  /** Devuelve al uso un registro dado de baja. */
+  async restaurar(id: string) {
+    const result = await this.pgrModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+    if (!result) {
+      throw new NotFoundException(
+        'No encontrado o no estaba dado de baja: ' + id,
+      );
+    }
+    return result;
   }
 }

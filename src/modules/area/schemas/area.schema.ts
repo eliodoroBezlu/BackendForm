@@ -1,5 +1,6 @@
 // area.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 import { Document, Types } from 'mongoose';
 import { Superintendencia } from '../../superintendencia/schemas/superintendencia.schema';
 
@@ -62,3 +63,12 @@ export class Area extends Document {
 }
 
 export const AreaSchema = SchemaFactory.createForClass(Area); // Crea el esquema
+
+/**
+ * Un área no se borra: pasa a inactiva y deja de aparecer en las consultas.
+ *
+ * Hay inspecciones, equipos y trabajadores que apuntan a ella; borrarla los
+ * dejaría señalando a un identificador que ya no existe, y el informe diría
+ * «Sin área» sobre inspecciones que sí tenían la suya.
+ */
+AreaSchema.plugin(bajaLogica);

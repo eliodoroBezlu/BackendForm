@@ -90,7 +90,13 @@ export class TemplateHerraEquiposController {
   @Delete(':id')
   @Roles(Role.ADMIN, Role.SUPER_ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string) {
-    return this.templateHerraEquiposService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.templateHerraEquiposService.remove(
+      id,
+      usuario ?? 'desconocido',
+    );
   }
 }

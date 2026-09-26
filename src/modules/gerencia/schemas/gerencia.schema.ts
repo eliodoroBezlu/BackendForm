@@ -1,6 +1,7 @@
 // gerencia.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 /**
  * Nivel más alto de la jerarquía operativa: **Gerencia → Superintendencia →
@@ -27,3 +28,11 @@ export class Gerencia extends Document {
 }
 
 export const GerenciaSchema = SchemaFactory.createForClass(Gerencia);
+
+/**
+ * No se borra: pasa a inactiva y deja de aparecer en las consultas.
+ *
+ * De una gerencia cuelgan superintendencias y de estas las areas. Borrarla
+ * deja el arbol sin raiz.
+ */
+GerenciaSchema.plugin(bajaLogica);

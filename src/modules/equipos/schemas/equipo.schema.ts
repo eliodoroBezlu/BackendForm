@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import * as mongoose from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 /**
  * A qué nivel de la organización pertenece un equipo.
@@ -206,6 +207,13 @@ export class Equipo extends Document {
 
 export type EquipoDocument = Equipo & Document;
 export const EquipoSchema = SchemaFactory.createForClass(Equipo);
+
+/**
+ * No se borra: pasa a inactivo y deja de aparecer en las consultas.
+ *
+ * Borrarlo dejaria senalando al vacio a todo lo que lo referencia.
+ */
+EquipoSchema.plugin(bajaLogica);
 
 /**
  * La identidad del equipo es el **par** `(codigo, rfid)` — el equivalente en

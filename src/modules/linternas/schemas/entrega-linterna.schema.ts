@@ -17,7 +17,20 @@ export enum EstadoEntrega {
   PENDIENTE_APROBACION = 'pendiente_aprobacion',
   APROBADA = 'aprobada',
   RECHAZADA = 'rechazada',
+  /**
+   * Se registró y no debía registrarse.
+   *
+   * El asiento se queda —la información no se borra— pero sale de los
+   * recuentos de dotación: para el sistema esa persona no recibió nada.
+   */
+  ANULADA = 'anulada',
 }
+
+/** Estados en los que la entrega ya no cuenta como dotación vigente. */
+export const ESTADOS_SIN_EFECTO = [
+  EstadoEntrega.RECHAZADA,
+  EstadoEntrega.ANULADA,
+];
 
 @Schema({ _id: false })
 export class ArchivoAdjunto {
@@ -80,6 +93,34 @@ export class Perdida {
   comentarioAprobador?: string;
 }
 export const PerdidaSchema = SchemaFactory.createForClass(Perdida);
+
+/**
+ * Un cambio de tipo sobre una entrega ya registrada.
+ *
+ * No es una edición de campo: el tipo decide qué exige la entrega, si descuenta
+ * stock y en qué estado nace. Por eso se guarda de qué a qué, quién y por qué —
+ * sin el rastro, el stock cuadra de una forma que nadie sabe explicar.
+ */
+@Schema({ _id: false })
+export class Reclasificacion {
+  @Prop({ required: true })
+  tipoAnterior: string;
+
+  @Prop({ required: true })
+  tipoNuevo: string;
+
+  @Prop({ required: true })
+  reclasificadaPor: string;
+
+  @Prop({ required: true })
+  fecha: Date;
+
+  @Prop({ required: true })
+  motivo: string;
+}
+
+export const ReclasificacionSchema =
+  SchemaFactory.createForClass(Reclasificacion);
 
 /**
  * Un acto de entrega de linterna. **Un documento por entrega**, no un estado
@@ -152,6 +193,26 @@ export class EntregaLinterna extends Document {
   /** Acuse de recibo. Va en los tres tipos, pérdida incluida. */
   @Prop({ type: FirmaSchema })
   firmaTrabajador?: Firma;
+
+  /** Por qué se anuló. Sin motivo, dentro de un ano nadie sabra por que. */
+  @Prop()
+  motivoAnulacion?: string;
+
+  @Prop()
+  anuladaPor?: string;
+
+  @Prop()
+  fechaAnulacion?: Date;
+
+  /**
+   * Tipos por los que ha pasado la entrega, si se reclasifico.
+   *
+   * Guarda de que a que, quien y por que. El tipo anterior no se pisa:
+   * cambiar un cambio por una perdida mueve stock y estado, y sin el
+   * rastro no hay forma de explicar despues por que cuadraron asi.
+   */
+  @Prop({ type: [ReclasificacionSchema], default: [] })
+  reclasificaciones: Reclasificacion[];
 
   @Prop({ type: DevolucionSchema })
   devolucion?: Devolucion;

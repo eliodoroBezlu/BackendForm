@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 export type ResponseType =
   | 'si_no_na'
@@ -156,6 +157,20 @@ export class VerificationField {
   @Prop()
   dataSource?: string;
 
+  /**
+   * Valor con el que aparece el campo la primera vez.
+   *
+   * Nació para `EMPRESA`, que está en escaleras, man-lift y vehículo y siempre
+   * lleva lo mismo: preguntárselo al inspector en cada parte es trabajo que no
+   * aporta información. Vive en la plantilla y no en el código porque es un
+   * dato de negocio — el día que cambie la razón social se corrige desde el
+   * constructor.
+   *
+   * Solo se aplica sobre un campo vacío, y el inspector puede cambiarlo.
+   */
+  @Prop()
+  valorPorDefecto?: string;
+
   @Prop({ default: true }) // Set to true by default to match frontend behavior
   obligatorio?: boolean;
 }
@@ -266,6 +281,13 @@ export type TemplateHerraEquiposDocument = TemplateHerraEquipos &
   mongoose.Document;
 export const TemplateHerraEquiposSchema =
   SchemaFactory.createForClass(TemplateHerraEquipos);
+
+/**
+ * No se borra: pasa a inactivo y deja de aparecer en las consultas.
+ *
+ * Borrarlo dejaria senalando al vacio a todo lo que lo referencia.
+ */
+TemplateHerraEquiposSchema.plugin(bajaLogica);
 
 // ============================================
 // ÍNDICES

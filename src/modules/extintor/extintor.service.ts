@@ -14,6 +14,7 @@ import { Extintor } from './schemas/extintor.schema';
 import { Model, Types } from 'mongoose';
 import { Cron } from '@nestjs/schedule';
 import { escaparRegex } from '../../common/utils/escapar-regex.util';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 interface FiltrosExtintor {
   area?: string;
@@ -275,19 +276,23 @@ export class ExtintorService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, usuario: string) {
     try {
       if (!Types.ObjectId.isValid(id)) {
         throw new BadRequestException('ID de extintor inválido');
       }
 
-      const result = await this.extintorModel.findByIdAndDelete(id).exec();
+      // Baja logica: las inspecciones de emergencia apuntan al extintor y
+      // borrarlo dejaria ese historial senalando al vacio.
+      const result = await this.extintorModel
+        .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+        .exec();
 
       if (!result) {
         throw new NotFoundException('Extintor no encontrado');
       }
 
-      return { deletedCount: 1 };
+      return { deletedCount: 1, data: result };
     } catch (error) {
       // Una excepcion de Nest ya trae su codigo: re-envolverla la
       // convertiria en un 500 y perderia el 404 o el 400 original.

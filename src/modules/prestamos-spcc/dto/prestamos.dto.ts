@@ -44,6 +44,20 @@ export class CrearSolicitudDto {
   @IsOptional()
   superintendenciaSolicitante?: string;
 
+  /**
+   * Quién pide los equipos, cuando no es quien teclea.
+   *
+   * Es el caso del mostrador: alguien pide un arnés de palabra y lo registra
+   * el de almacén. Sin esto la solicitud quedaba a nombre de quien escribía.
+   *
+   * **Solo lo aceptan `admin` y `superintendente`**; para el resto se ignora y
+   * el solicitante sigue siendo el usuario de la sesión, que es el
+   * comportamiento de siempre.
+   */
+  @IsMongoId()
+  @IsOptional()
+  solicitanteId?: string;
+
   @IsString()
   @IsNotEmpty()
   motivo: string;
@@ -147,4 +161,19 @@ export class CancelarDto {
   @IsString()
   @IsOptional()
   motivo?: string;
+}
+
+/**
+ * Corrige a quién pertenece una solicitud ya registrada.
+ *
+ * El motivo es obligatorio: dentro de un año, una solicitud que cambió de
+ * dueño sin explicación no se puede distinguir de un error.
+ */
+export class CorregirSolicitanteDto {
+  @IsMongoId()
+  solicitanteId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  motivo: string;
 }

@@ -17,6 +17,7 @@ import { PrestamosReportesService } from './prestamos-reportes.service';
 import { PrestamosPdfService } from './prestamos-pdf.service';
 import {
   CancelarDto,
+  CorregirSolicitanteDto,
   CrearSolicitudDto,
   DevolverDto,
   EntregarDto,
@@ -49,12 +50,20 @@ export class PrestamosSpccController {
   private actor(req: Request): Actor {
     const usuario = (
       req as Request & {
-        user?: { username?: string; fullName?: string };
+        user?: { username?: string; fullName?: string; roles?: string[] };
       }
     ).user;
+
+    // Quien puede atribuir una solicitud a otra persona se decide aqui, donde
+    // se conocen los roles, y no en el servicio.
+    const roles = usuario?.roles ?? [];
+    const puedeElegirSolicitante =
+      roles.includes(Role.ADMIN) || roles.includes(Role.SUPERINTENDENTE);
+
     return {
       usuario: usuario?.username ?? 'desconocido',
       nombre: usuario?.fullName ?? undefined,
+      puedeElegirSolicitante,
       ip: req.ip,
       userAgent: req.get('user-agent'),
     };
@@ -187,5 +196,22 @@ export class PrestamosSpccController {
     @Req() req: Request,
   ) {
     return this.servicio.cancelar(id, dto, this.actor(req));
+  }
+
+  /**
+   * Corrige a quien pertenece una solicitud ya registrada.
+   *
+   * Solo administracion, y **sin limite de estado**: las mal atribuidas que
+   * hay que arreglar son justamente las viejas, ya entregadas y firmadas. El
+   * valor anterior no se pierde: queda en `correcciones` y el acta lo muestra.
+   */
+  @Patch(':id/solicitante')
+  @Roles(Role.ADMIN)
+  async corregirSolicitante(
+    @Param('id') id: string,
+    @Body() dto: CorregirSolicitanteDto,
+    @Req() req: Request,
+  ) {
+    return this.servicio.corregirSolicitante(id, dto, this.actor(req));
   }
 }

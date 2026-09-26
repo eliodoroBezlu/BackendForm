@@ -16,6 +16,9 @@ import { CreateSuperintendenciaDto } from './dto/create-superintendencia.dto';
 import { UpdateSuperintendenciaDto } from './dto/update-superintendencia.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('superintendencia')
@@ -80,7 +83,14 @@ export class SuperintendenciaController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return this.superintendenciaService.remove(id);
+  @Roles(Role.ADMIN)
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.superintendenciaService.remove(
+      id,
+      usuario ?? 'desconocido',
+    );
   }
 }

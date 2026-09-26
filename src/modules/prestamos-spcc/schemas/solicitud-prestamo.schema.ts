@@ -59,6 +59,37 @@ export const LineaSolicitadaSchema =
   SchemaFactory.createForClass(LineaSolicitada);
 
 /**
+ * Una corrección hecha sobre una solicitud ya registrada.
+ *
+ * Guarda **lo que decía antes**, porque es lo único que permite entender una
+ * copia impresa que ya no coincide con el sistema.
+ */
+@Schema({ _id: false })
+export class Correccion {
+  /** Qué se corrigió. Hoy solo `solicitante`. */
+  @Prop({ required: true })
+  campo: string;
+
+  @Prop()
+  valorAnterior?: string;
+
+  @Prop()
+  valorNuevo?: string;
+
+  @Prop({ required: true })
+  corregidoPor: string;
+
+  @Prop({ required: true })
+  fecha: Date;
+
+  /** Por qué se corrigió. Sin motivo, dentro de un año nadie sabrá por qué. */
+  @Prop({ required: true })
+  motivo: string;
+}
+
+export const CorreccionSchema = SchemaFactory.createForClass(Correccion);
+
+/**
  * Cabecera de un préstamo: quién pide, para qué área y con qué plazo.
  *
  * Los equipos **no** viven aquí sino en `prestamos_spcc`, una línea por
@@ -86,11 +117,44 @@ export class SolicitudPrestamo extends Document {
   @Prop()
   superintendenciaSolicitante?: string;
 
+  /**
+   * Quién pide los equipos.
+   *
+   * No tiene por qué ser quien teclea la solicitud: lo normal es que alguien
+   * la pida de palabra en el mostrador y la registre el de almacén. Hasta
+   * ahora este campo se rellenaba con el usuario de la sesión y no había forma
+   * de decir otra cosa, así que las solicitudes quedaban a nombre de quien las
+   * escribía. Ver `registradoPor`.
+   */
   @Prop({ required: true, index: true })
   solicitanteUsername: string;
 
   @Prop()
   solicitanteNombre?: string;
+
+  /**
+   * Quién tecleó la solicitud, que puede no ser quien la pidió.
+   *
+   * Se guarda siempre. Sin esto, dejar elegir al solicitante habría hecho
+   * imposible saber quién registró el movimiento.
+   */
+  @Prop({ index: true })
+  registradoPor?: string;
+
+  /**
+   * Correcciones hechas sobre una solicitud ya registrada.
+   *
+   * El acta imprime el nombre del solicitante, y el sello de las firmas es un
+   * hash **sobre la imagen**, no sobre el contenido: cambiar el nombre no
+   * rompe ningún hash, así que el acta pasaría a decir algo distinto de lo que
+   * se firmó sin que nada lo detectase. Guardando aquí lo que decía antes, el
+   * acta puede mostrarlo y quien tenga una copia impresa vieja entiende por
+   * qué no coincide.
+   *
+   * El valor anterior no se pisa nunca: la información no se borra.
+   */
+  @Prop({ type: [CorreccionSchema], default: [] })
+  correcciones: Correccion[];
 
   /** Para qué se piden. Obligatorio: un préstamo sin motivo no se justifica. */
   @Prop({ required: true })

@@ -19,6 +19,9 @@ import { UpdateTagDto } from './dto/update-tag.dto';
 import { OrdenTrabajo } from './schemas/tag.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('tag')
@@ -121,9 +124,13 @@ export class TagController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  @Roles(Role.ADMIN)
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
     try {
-      return await this.tagService.remove(id);
+      return await this.tagService.remove(id, usuario ?? 'desconocido');
     } catch (error) {
       throw new HttpException(
         error.message || 'Error al eliminar tag',

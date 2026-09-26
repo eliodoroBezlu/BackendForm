@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 @Schema({ _id: false })
 export class CampoFormulario {
@@ -36,3 +37,11 @@ export class ConfigFormulario extends Document {
 export type ConfigFormularioDocument = ConfigFormulario & Document;
 export const ConfigFormularioSchema =
   SchemaFactory.createForClass(ConfigFormulario);
+
+/**
+ * No se borra: pasa a inactivo y deja de aparecer en las consultas.
+ *
+ * La configuracion explica como se lleno un formulario: quitarla impide
+ * entender los que ya se llenaron con ella.
+ */
+ConfigFormularioSchema.plugin(bajaLogica);

@@ -9,6 +9,7 @@ import { CreateGerenciaDto } from './dto/create-gerencia.dto';
 import { UpdateGerenciaDto } from './dto/update-gerencia.dto';
 import { Gerencia } from './schemas/gerencia.schema';
 import { Superintendencia } from '../superintendencia/schemas/superintendencia.schema';
+import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 
 /**
  * Gerencias: el nivel que faltaba en la cadena
@@ -136,7 +137,7 @@ export class GerenciaService {
     return { exito: true, mensaje: 'Gerencia activada correctamente' };
   }
 
-  async remove(id: string) {
+  async remove(id: string, usuario: string) {
     // Borrar una gerencia con superintendencias dejaría a esas huérfanas y a
     // sus áreas sin raíz: se desactiva, no se borra.
     const colgando = await this.superintendenciaModel.countDocuments({
@@ -148,7 +149,11 @@ export class GerenciaService {
       );
     }
 
-    const gerencia = await this.gerenciaModel.findByIdAndDelete(id).exec();
+    // El comentario de arriba ya decia que se desactiva y no se borra;
+    // faltaba que el codigo hiciera eso.
+    const gerencia = await this.gerenciaModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
     if (!gerencia) {
       throw new NotFoundException(`Gerencia con ID "${id}" no encontrada`);
     }

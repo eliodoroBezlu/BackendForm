@@ -608,10 +608,68 @@ export class InspectionsHerraEquiposService {
     return inspection;
   }
 
+  /**
+   * Estados a los que **este** `PATCH` puede llevar una inspección.
+   *
+   * Aprobar y rechazar tienen sus propios endpoints, con la firma del
+   * supervisor y sus comentarios. Dejar que un `PATCH` genérico escriba
+   * `approved` permitiría saltarse todo eso: el parte quedaría aprobado sin
+   * que nadie lo hubiera aprobado.
+   */
+  private static readonly ESTADOS_QUE_PUEDE_ESCRIBIR_UN_PATCH: ReadonlySet<InspectionStatus> =
+    new Set([
+      InspectionStatus.DRAFT,
+      InspectionStatus.IN_PROGRESS,
+      InspectionStatus.COMPLETED,
+      InspectionStatus.PENDING_APPROVAL,
+    ]);
+
+  /** Una vez resuelta, la inspección no se reabre editándola. */
+  private static readonly ESTADOS_CERRADOS: ReadonlySet<InspectionStatus> =
+    new Set([InspectionStatus.APPROVED, InspectionStatus.REJECTED]);
+
   async update(
     id: string,
     updateDto: UpdateInspectionHerraEquipoDto,
   ): Promise<InspectionHerraEquiposDocument> {
+    // El cambio de estado se comprueba **antes** de escribir: el endpoint no
+    // tenía guarda de rol, así que hasta ahora cualquier usuario autenticado
+    // podía dejar una inspección aprobada sin pasar por la aprobación.
+    if (updateDto.status) {
+      const destino = updateDto.status as InspectionStatus;
+
+      if (
+        !InspectionsHerraEquiposService.ESTADOS_QUE_PUEDE_ESCRIBIR_UN_PATCH.has(
+          destino,
+        )
+      ) {
+        throw new BadRequestException(
+          `El estado «${destino}» no se puede fijar editando la inspección: ` +
+            'usá aprobar o rechazar, que dejan constancia de quién lo hizo.',
+        );
+      }
+
+      const actual = await this.inspectionModel
+        .findById(id)
+        .select('status')
+        .lean()
+        .exec();
+
+      if (!actual) {
+        throw new NotFoundException(`Inspección ${id} no encontrada`);
+      }
+
+      if (
+        InspectionsHerraEquiposService.ESTADOS_CERRADOS.has(
+          actual.status as InspectionStatus,
+        )
+      ) {
+        throw new BadRequestException(
+          `La inspección está «${actual.status}» y no se reabre editándola.`,
+        );
+      }
+    }
+
     const inspection = await this.inspectionModel
       .findByIdAndUpdate(
         id,

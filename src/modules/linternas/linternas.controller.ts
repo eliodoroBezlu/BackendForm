@@ -19,6 +19,11 @@ import { LinternasReportesService } from './linternas-reportes.service';
 import { StockLinternasService } from './stock-linternas.service';
 import { RegistrarEntregaDto } from './dto/registrar-entrega.dto';
 import {
+  AnularEntregaDto,
+  CorregirEntregaDto,
+  ReclasificarEntregaDto,
+} from './dto/corregir-entrega.dto';
+import {
   FirmarReciboDto,
   RegistrarIngresoDto,
   ResolverPerdidaDto,
@@ -170,6 +175,58 @@ export class LinternasController {
     @Req() req: Request,
   ) {
     return this.linternas.resolverPerdida(id, dto, this.contexto(req, usuario));
+  }
+
+  /**
+   * Corrige la observacion de una entrega aun sin firmar.
+   *
+   * Para cambiar el tipo esta `reclasificar`; para dejarla sin efecto,
+   * `anular`.
+   */
+  @Patch(':id')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE)
+  corregir(
+    @Param('id') id: string,
+    @Body() dto: CorregirEntregaDto,
+    @CurrentUser('username') usuario: string,
+    @Req() req: Request,
+  ) {
+    return this.linternas.corregir(id, dto, this.contexto(req, usuario));
+  }
+
+  /**
+   * Anula una entrega que no debia registrarse.
+   *
+   * Solo administracion: dejar sin efecto un acta no es mantenimiento
+   * corriente. El asiento se queda y sale de los recuentos de dotacion.
+   */
+  @Patch(':id/anular')
+  @Roles(Role.ADMIN)
+  anular(
+    @Param('id') id: string,
+    @Body() dto: AnularEntregaDto,
+    @CurrentUser('username') usuario: string,
+    @Req() req: Request,
+  ) {
+    return this.linternas.anular(id, dto, this.contexto(req, usuario));
+  }
+
+  /**
+   * Cambia el tipo de una entrega: de «cambio» a «perdida» y al reves.
+   *
+   * No es editar un campo. El tipo decide que exige la entrega, si descuenta
+   * stock y en que estado nace, asi que se declara la entrega entera con las
+   * reglas del tipo nuevo. Solo mientras no haya firma.
+   */
+  @Patch(':id/reclasificar')
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE)
+  reclasificar(
+    @Param('id') id: string,
+    @Body() dto: ReclasificarEntregaDto,
+    @CurrentUser('username') usuario: string,
+    @Req() req: Request,
+  ) {
+    return this.linternas.reclasificar(id, dto, this.contexto(req, usuario));
   }
 
   @Patch(':id/firmar')

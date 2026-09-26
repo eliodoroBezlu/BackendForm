@@ -35,6 +35,14 @@ import { MetodoFirma } from '../../common/firma/firma.schema';
 /** Lo que hace falta saber de quien realiza la acción. */
 export interface Actor extends ContextoFirma {
   nombre?: string;
+  /**
+   * Si puede atribuir la solicitud a otra persona.
+   *
+   * Lo decide el controlador a partir del rol —admin y superintendente—, no el
+   * servicio: aquí no se conocen los roles, y hacer que los conociera abriría
+   * la puerta a que la regla se escribiera distinta en cada sitio.
+   */
+  puedeElegirSolicitante?: boolean;
 }
 
 @Injectable()
@@ -170,12 +178,53 @@ export class PrestamosSpccService {
    * entrega, así que fijarlos aquí solo servía para que caducaran. Las líneas
    * de `prestamos_spcc` —y con ellas la reserva del equipo— nacen al entregar.
    */
+  /**
+   * Quien figura como solicitante.
+   *
+   * Por defecto, quien teclea. Un `solicitanteId` solo se atiende si el actor
+   * puede elegirlo: es lo que permite registrar en el mostrador lo que alguien
+   * pidio de palabra, sin que el almacen pueda poner solicitudes a nombre de
+   * terceros.
+   */
+  private async resolverSolicitante(
+    solicitanteId: string | undefined,
+    actor: Actor,
+  ): Promise<{ username: string; nombre?: string }> {
+    if (!solicitanteId || !actor.puedeElegirSolicitante) {
+      return {
+        username: actor.usuario,
+        nombre: (await this.nombreDeTrabajador(actor.usuario)) ?? actor.nombre,
+      };
+    }
+
+    const trabajador = await this.equipos.db
+      .collection('trabajadors')
+      .findOne(
+        { _id: new Types.ObjectId(solicitanteId) },
+        { projection: { nomina: 1, username: 1 } },
+      );
+
+    if (!trabajador) {
+      throw new NotFoundException('El trabajador indicado no existe.');
+    }
+
+    const datos = trabajador as { nomina?: string; username?: string };
+    if (!datos.username) {
+      throw new BadRequestException(
+        'Ese trabajador no tiene usuario: no se le puede atribuir una solicitud.',
+      );
+    }
+
+    return { username: datos.username, nombre: datos.nomina?.trim() };
+  }
+
   async crear(
     dto: CrearSolicitudDto,
     actor: Actor,
   ): Promise<SolicitudPrestamo> {
     const { inicio, devolucion } = this.validarPlazo(dto);
     const solicitado = this.validarSolicitado(dto.solicitado);
+    const solicitante = await this.resolverSolicitante(dto.solicitanteId, actor);
 
     const solicitud = await this.solicitudes.create({
       numero: await this.siguienteNumero(),
@@ -184,9 +233,11 @@ export class PrestamosSpccService {
         ? new Types.ObjectId(dto.areaSolicitanteId)
         : undefined,
       superintendenciaSolicitante: dto.superintendenciaSolicitante,
-      solicitanteUsername: actor.usuario,
-      solicitanteNombre:
-        (await this.nombreDeTrabajador(actor.usuario)) ?? actor.nombre,
+      solicitanteUsername: solicitante.username,
+      solicitanteNombre: solicitante.nombre,
+      // Siempre, aunque coincida con el solicitante: sin esto, dejar elegir a
+      // quien pide haria imposible saber quien registro el movimiento.
+      registradoPor: actor.usuario,
       motivo: dto.motivo,
       solicitado,
       fechaSolicitud: new Date(),
@@ -194,6 +245,46 @@ export class PrestamosSpccService {
       fechaDevolucionPrevista: devolucion,
       estado: EstadoSolicitud.SOLICITADA,
     });
+
+    return solicitud;
+  }
+
+  /**
+   * Corrige a quien pertenece una solicitud ya registrada.
+   *
+   * **Sin limite de estado**: las mal atribuidas que hay que arreglar son
+   * justamente las viejas, ya entregadas y firmadas. Y no pisa el valor
+   * anterior — queda en `correcciones`, que es lo que permite entender una
+   * copia impresa que ya no coincide con el sistema.
+   */
+  async corregirSolicitante(
+    id: string,
+    dto: { solicitanteId: string; motivo: string },
+    actor: Actor,
+  ): Promise<SolicitudPrestamo> {
+    const solicitud = await this.buscar(id);
+    const nuevo = await this.resolverSolicitante(dto.solicitanteId, {
+      ...actor,
+      puedeElegirSolicitante: true,
+    });
+
+    const anterior =
+      solicitud.solicitanteNombre ?? solicitud.solicitanteUsername;
+
+    solicitud.correcciones = [
+      ...(solicitud.correcciones ?? []),
+      {
+        campo: 'solicitante',
+        valorAnterior: anterior,
+        valorNuevo: nuevo.nombre ?? nuevo.username,
+        corregidoPor: actor.usuario,
+        fecha: new Date(),
+        motivo: dto.motivo,
+      },
+    ];
+    solicitud.solicitanteUsername = nuevo.username;
+    solicitud.solicitanteNombre = nuevo.nombre;
+    await solicitud.save();
 
     return solicitud;
   }

@@ -8,6 +8,10 @@ import { Model } from 'mongoose';
 import { CreateUbicacionDto } from './dto/create-ubicacion.dto';
 import { UpdateUbicacionDto } from './dto/update-ubicacion.dto';
 import { Ubicacion, UbicacionDocument } from './schemas/ubicacion.schema';
+import {
+  marcarDadoDeBaja,
+  marcarRestaurado,
+} from '../../common/baja-logica/baja-logica.plugin';
 
 @Injectable()
 export class UbicacionService {
@@ -97,11 +101,36 @@ export class UbicacionService {
     return updated;
   }
 
-  async remove(id: string): Promise<void> {
-    const result = await this.ubicacionModel.findByIdAndDelete(id).exec();
+  /**
+   * Da de baja el registro; no lo borra.
+   *
+   * Devuelve el documento porque el interceptor de auditoria archiva lo que
+   * devuelven los `DELETE`. Un `null` significa que no existe o que ya estaba
+   * de baja: desde fuera las dos cosas son un 404.
+   */
+  async remove(id: string, usuario: string) {
+    const result = await this.ubicacionModel
+      .findByIdAndUpdate(id, marcarDadoDeBaja(usuario), { new: true })
+      .exec();
     if (!result) {
       throw new NotFoundException(`Ubicación con ID ${id} no encontrada`);
     }
+    return result;
+  }
+
+  /** Devuelve al uso un registro dado de baja. */
+  async restaurar(id: string) {
+    const result = await this.ubicacionModel
+      .findOneAndUpdate({ _id: id, activo: false }, marcarRestaurado(), {
+        new: true,
+      })
+      .exec();
+    if (!result) {
+      throw new NotFoundException(
+        'No encontrado o no estaba dado de baja: ' + id,
+      );
+    }
+    return result;
   }
 
   private escapeRegex(string: string) {

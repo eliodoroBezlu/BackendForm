@@ -18,6 +18,8 @@ import { UpdateInspectionScheduleDto } from './dto/update-inspection-schedule.dt
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '../auth/enums/role.enum';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('inspection-schedule')
@@ -67,6 +69,7 @@ export class InspectionScheduleController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Delete inspection schedule' })
   remove(@Param('id') id: string) {
     return this.inspectionScheduleService.remove(id);

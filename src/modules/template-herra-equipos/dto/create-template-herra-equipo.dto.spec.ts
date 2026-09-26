@@ -57,4 +57,25 @@ describe('CreateVerificationFieldDto', () => {
       validar({ label: 'COLOR', type: 'select', permiteOtro: 'si' }),
     ).rejects.toThrow();
   });
+
+  /**
+   * `whitelist: true` descarta en silencio lo que el DTO no declara: si esta
+   * propiedad no estuviera aquí, el constructor guardaría el valor por defecto
+   * y el backend lo tiraría sin decir nada.
+   */
+  it('conserva el valor por defecto del campo', async () => {
+    const salida = await validar({
+      label: 'EMPRESA',
+      type: 'text',
+      valorPorDefecto: 'Minera San Cristóbal S.A.',
+    });
+
+    expect(salida.valorPorDefecto).toBe('Minera San Cristóbal S.A.');
+  });
+
+  it('rechaza un valor por defecto que no es texto', async () => {
+    await expect(
+      validar({ label: 'EMPRESA', type: 'text', valorPorDefecto: 42 }),
+    ).rejects.toThrow();
+  });
 });
