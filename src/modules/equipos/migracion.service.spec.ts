@@ -10,7 +10,7 @@ describe('MigracionService', () => {
   let service: MigracionService;
 
   const mockUbicacionService = {
-    findByNameOrCreate: jest
+    findOrCreateByRuta: jest
       .fn()
       .mockResolvedValue({ _id: 'mock-ubicacion-id', nombre: 'Taller' }),
   };

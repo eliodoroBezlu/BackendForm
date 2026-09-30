@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
+import { versionadoPlantilla } from '../../../common/versionado/versionado.plugin';
+import type { EstadoRevision } from '../../../common/versionado/versionado';
 
 export type TemplateDocument = Template & Document;
 
@@ -105,7 +107,14 @@ SimpleSectionSchema.add({
 
 @Schema({ timestamps: true })
 export class Template {
-  @Prop({ required: true, unique: true })
+  /**
+   * Código de formulario (p. ej. 1.02.P06.F12). **Ya no es único**: todas
+   * las revisiones de una plantilla comparten el código. La unicidad pasa a
+   * `{ code, numeroRevision }` y a «una sola vigente por código» (ver
+   * `versionadoPlantilla`). El índice único viejo `code_1` lo borra
+   * `scripts/migrar-versionado-plantillas.cjs`.
+   */
+  @Prop({ required: true })
   code: string;
 
   @Prop({ required: true })
@@ -131,6 +140,16 @@ export class Template {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  // Campos del versionado: los declara `versionadoPlantilla` en el esquema.
+  numeroRevision?: number;
+  estadoRevision?: EstadoRevision;
+  revisionAnteriorId?: Types.ObjectId | null;
+  motivoCambio?: string;
+  vigenteDesde?: Date;
+  obsoletaDesde?: Date;
+  publicadaPor?: string;
+  creadaPor?: string;
 }
 
 // ✅ Crear el esquema principal
@@ -142,6 +161,9 @@ export const TemplateSchema = SchemaFactory.createForClass(Template);
  * Borrarlo dejaria senalando al vacio a todo lo que lo referencia.
  */
 TemplateSchema.plugin(bajaLogica);
+
+/** Borrador / vigente / obsoleta: ver `common/versionado/versionado.ts`. */
+TemplateSchema.plugin(versionadoPlantilla);
 
 // 📈 Índices útiles
 TemplateSchema.index({ type: 1 });

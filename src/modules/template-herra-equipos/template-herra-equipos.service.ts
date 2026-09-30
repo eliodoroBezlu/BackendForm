@@ -1,13 +1,18 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateTemplateHerraEquipoDto } from './dto/create-template-herra-equipo.dto';
 import { UpdateTemplateHerraEquipoDto } from './dto/update-template-herra-equipo.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { TemplateHerraEquipos } from './schemas/template-herra-equipo.schema';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import { InspectionHerraEquipos } from '../inspection-herra-equipos/schemas/inspection-herra-equipos.schema';
+import {
+  FILTRO_VIGENTE,
+  FILTRO_VIGENTE_O_BORRADOR,
+} from '../../common/versionado/versionado';
+import {
+  PlantillaVersionable,
+  VersionadoPlantillas,
+} from '../../common/versionado/versionado-plantillas';
 import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
 import {
   marcarDadoDeBaja,
@@ -16,29 +21,41 @@ import {
 
 @Injectable()
 export class TemplateHerraEquiposService {
+  /** Borrador / vigente / obsoleta: ver `common/versionado/versionado.ts`. */
+  readonly versionado: VersionadoPlantillas<
+    TemplateHerraEquipos & PlantillaVersionable
+  >;
+
   constructor(
     @InjectModel(TemplateHerraEquipos.name)
     private templateHerraEquiposModel: Model<TemplateHerraEquipos>,
-  ) {}
+    @InjectModel(InspectionHerraEquipos.name)
+    private inspectionModel: Model<InspectionHerraEquipos>,
+  ) {
+    this.versionado = new VersionadoPlantillas(
+      this.templateHerraEquiposModel as unknown as Model<
+        TemplateHerraEquipos & PlantillaVersionable
+      >,
+      (id: Types.ObjectId) =>
+        this.inspectionModel.countDocuments({ templateId: id }).exec(),
+    );
+  }
 
+  /**
+   * Alta de una plantilla **nueva**. Una revisión nueva de una existente no
+   * se crea por aquí sino con `POST :id/nueva-revision`: antes se admitía
+   * dar de alta otra vez el mismo código con otra revisión, y así quedaron
+   * dos documentos sueltos de 1.02.P06.F19 sin saber cuál valía.
+   */
   async create(
     createTemplateDto: CreateTemplateHerraEquipoDto,
+    usuario?: string,
   ): Promise<TemplateHerraEquipos> {
-    // 1. Verificar si ya existe la combinación Código + Revisión
-    const existingTemplate = await this.templateHerraEquiposModel.findOne({
-      code: createTemplateDto.code,
-      revision: createTemplateDto.revision, // <--- Agregamos esto
+    await this.versionado.exigirCodigoLibre(createTemplateDto.code);
+    const createdTemplate = new this.templateHerraEquiposModel({
+      ...createTemplateDto,
+      ...this.versionado.camposDeAlta(createTemplateDto.revision, usuario),
     });
-
-    if (existingTemplate) {
-      throw new ConflictException(
-        `Template with code ${createTemplateDto.code} and revision ${createTemplateDto.revision} already exists`,
-      );
-    }
-
-    const createdTemplate = new this.templateHerraEquiposModel(
-      createTemplateDto,
-    );
     return createdTemplate.save();
   }
 
@@ -76,11 +93,20 @@ export class TemplateHerraEquiposService {
     return docs.map((d) => (d as { code: string }).code);
   }
 
+  /**
+   * Por defecto solo la revisión vigente de cada plantilla: es lo que se
+   * ofrece para inspeccionar. `incluirBorradores` es para la pantalla de
+   * administración. Las obsoletas se ven por `historial`, y una inspección
+   * vieja abre la suya por id (`findOne`).
+   */
   async findAll(
-    filters?: { type?: string },
+    filters?: { type?: string; incluirBorradores?: boolean },
     roles?: string[],
   ): Promise<TemplateHerraEquipos[]> {
     const query: Record<string, unknown> = {
+      ...(filters?.incluirBorradores
+        ? FILTRO_VIGENTE_O_BORRADOR
+        : FILTRO_VIGENTE),
       ...(filters?.type ? { type: filters.type } : {}),
       ...this.filtroPorRoles(roles),
     };
@@ -114,7 +140,7 @@ export class TemplateHerraEquiposService {
     roles?: string[],
   ): Promise<TemplateHerraEquipos> {
     const template = await this.templateHerraEquiposModel
-      .findOne({ code, ...this.filtroPorRoles(roles) })
+      .findOne({ code, ...FILTRO_VIGENTE, ...this.filtroPorRoles(roles) })
       .exec();
     if (!template) {
       throw new NotFoundException(`Template with code ${code} not found`);
@@ -122,40 +148,22 @@ export class TemplateHerraEquiposService {
     return template;
   }
 
+  /**
+   * Edita en el lugar. Solo se puede con un borrador o con una vigente que
+   * todavía no tiene inspecciones; si no, 409 con el motivo. El código y el
+   * número de revisión los controla el versionado (ver
+   * `VersionadoPlantillas.prepararEdicion`).
+   */
   async update(
     id: string,
     updateTemplateDto: UpdateTemplateHerraEquipoDto,
   ): Promise<TemplateHerraEquipos> {
-    // 1. Obtener el documento actual para saber qué valores tiene ahora
-    const currentTemplate = await this.templateHerraEquiposModel.findById(id);
-
-    if (!currentTemplate) {
-      throw new NotFoundException(`Template with ID ${id} not found`);
-    }
-
-    // 2. Determinar cuáles serán los nuevos valores (si vienen en el DTO o se mantienen los actuales)
-    const codeToCheck = updateTemplateDto.code ?? currentTemplate.code;
-    const revisionToCheck =
-      updateTemplateDto.revision ?? currentTemplate.revision;
-
-    // 3. Solo verificamos si ha cambiado el código o la revisión
-    if (updateTemplateDto.code || updateTemplateDto.revision) {
-      const existingTemplate = await this.templateHerraEquiposModel.findOne({
-        code: codeToCheck,
-        revision: revisionToCheck,
-        _id: { $ne: id }, // Excluir el documento actual
-      });
-
-      if (existingTemplate) {
-        throw new ConflictException(
-          `Template with code ${codeToCheck} and revision ${revisionToCheck} already exists`,
-        );
-      }
-    }
-
-    // 4. Proceder con la actualización
+    const cambios = await this.versionado.prepararEdicion(
+      id,
+      updateTemplateDto,
+    );
     const updatedTemplate = await this.templateHerraEquiposModel
-      .findByIdAndUpdate(id, updateTemplateDto, { new: true })
+      .findByIdAndUpdate(id, cambios, { new: true })
       .exec();
 
     if (!updatedTemplate) {
@@ -199,6 +207,7 @@ export class TemplateHerraEquiposService {
 
   async count(filters?: { type?: string }, roles?: string[]): Promise<number> {
     const query: Record<string, unknown> = {
+      ...FILTRO_VIGENTE,
       ...(filters?.type ? { type: filters.type } : {}),
       ...this.filtroPorRoles(roles),
     };
@@ -212,6 +221,7 @@ export class TemplateHerraEquiposService {
     // `$and` explícito: el filtro por roles ya usa `$or`, y combinarlos al
     // mismo nivel haría que uno pisara al otro y se colara todo el catálogo.
     const condiciones: Record<string, unknown>[] = [
+      FILTRO_VIGENTE,
       {
         $or: [
           { name: { $regex: searchTerm, $options: 'i' } },

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -19,7 +20,7 @@ import {
 import { EquipmentTrackingService } from '../equipment-tracking/equipment-tracking.service';
 import { TemplateConfigService } from '../equipment-tracking/template-config.service';
 import { TemplateHerraEquiposService } from '../template-herra-equipos/template-herra-equipos.service';
-import { ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
+import { Role, ROLES_VISIBILIDAD_TOTAL } from '../auth/enums/role.enum';
 import { TemplateHerraEquipos } from '../template-herra-equipos/schemas/template-herra-equipo.schema';
 import { diasPorFrecuencia } from '../template-herra-equipos/domain/frecuencia.util';
 import { InspectionStatus } from './types/IProps';
@@ -282,36 +283,55 @@ export class InspectionsHerraEquiposService {
       `✅ Inspección ${id} aprobada por ${approveDto.approvedBy}`,
     );
 
-    // ✅ Ahora sí ejecutar tracking
-    const config = this.templateConfigService.getConfig(
-      inspection.templateCode,
-    );
-    const template = await this.intentarObtenerTemplate(
-      inspection.templateCode,
-    );
+    await this.registrarSeguimientoTrasAprobar(approved);
+    return approved;
+  }
 
-    await this.trackearFrecuenciaSiCorresponde(
-      template,
-      inspection.templateCode,
-      inspection.verification,
-    );
+  /**
+   * El seguimiento del equipo (frecuencia y tracking) que `create` **deja en
+   * suspenso** mientras la inspección espera aprobación: se registra cuando
+   * se aprueba.
+   *
+   * Antes solo lo hacía `approveInspection`, que ninguna pantalla llamaba —la
+   * aprobación viajaba por el `PATCH` general—, así que las inspecciones con
+   * aprobación nunca registraban su seguimiento. Ahora lo llaman las dos vías.
+   *
+   * Es contabilidad secundaria: si falla se registra en el log y la
+   * aprobación queda hecha igual, como en `create`.
+   */
+  private async registrarSeguimientoTrasAprobar(
+    inspection: InspectionHerraEquiposDocument,
+  ): Promise<void> {
+    try {
+      const config = this.templateConfigService.getConfig(
+        inspection.templateCode,
+      );
+      const template = await this.intentarObtenerTemplate(
+        inspection.templateCode,
+      );
 
-    if (config.type !== 'pre-uso' && config.type !== 'diaria') {
-      try {
+      await this.trackearFrecuenciaSiCorresponde(
+        template,
+        inspection.templateCode,
+        inspection.verification,
+      );
+
+      if (config.type !== 'pre-uso' && config.type !== 'diaria') {
         await this.equipmentTrackingService.registerInspectionWithAutoTracking({
-          inspectionId: String(approved._id),
+          inspectionId: String(inspection._id),
           templateCode: inspection.templateCode,
           verificationData: inspection.verification,
           inspectorName: inspection.submittedBy,
         });
-
         this.logger.log(`✅ Tracking registrado después de aprobación`);
-      } catch (error) {
-        this.logger.error('⚠️ Error en tracking post-aprobación:', error);
       }
+    } catch (error) {
+      const motivo = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `⚠️ Inspección ${String(inspection._id)} aprobada, pero el seguimiento ` +
+          `no se pudo registrar: ${motivo}`,
+      );
     }
-
-    return approved;
   }
 
   async rejectInspection(
@@ -609,12 +629,9 @@ export class InspectionsHerraEquiposService {
   }
 
   /**
-   * Estados a los que **este** `PATCH` puede llevar una inspección.
-   *
-   * Aprobar y rechazar tienen sus propios endpoints, con la firma del
-   * supervisor y sus comentarios. Dejar que un `PATCH` genérico escriba
-   * `approved` permitiría saltarse todo eso: el parte quedaría aprobado sin
-   * que nadie lo hubiera aprobado.
+   * Estados a los que **este** `PATCH` puede llevar una inspección sin ser una
+   * aprobación. `approved` y `rejected` solo se alcanzan resolviendo una
+   * inspección pendiente (ver `update`).
    */
   private static readonly ESTADOS_QUE_PUEDE_ESCRIBIR_UN_PATCH: ReadonlySet<InspectionStatus> =
     new Set([
@@ -628,27 +645,54 @@ export class InspectionsHerraEquiposService {
   private static readonly ESTADOS_CERRADOS: ReadonlySet<InspectionStatus> =
     new Set([InspectionStatus.APPROVED, InspectionStatus.REJECTED]);
 
+  /**
+   * Roles que resuelven (aprueban o rechazan) una inspección pendiente. Son
+   * los mismos que las configuraciones de formulario del frontend declaran en
+   * `approval.requiredRoles` (admin, supervisor, superintendente), más
+   * super admin.
+   */
+  static readonly ROLES_APROBADORES: ReadonlySet<string> = new Set([
+    Role.SUPER_ADMIN,
+    Role.ADMIN,
+    Role.SUPERINTENDENTE,
+    Role.SUPERVISOR,
+  ]);
+
+  /**
+   * Edita una inspección.
+   *
+   * **Resolver una inspección pendiente también pasa por aquí.** El
+   * formulario de detalle guarda en una sola petición la firma del
+   * supervisor, sus comentarios y la decisión; separar eso en dos llamadas
+   * dejaría una ventana con la firma puesta y la decisión sin tomar. Por eso
+   * el `PATCH` acepta salir de `pending_approval` —a `approved`, a
+   * `rejected`, o a `in_progress` en los andamios, que tras aprobarse siguen
+   * acumulando rutinarias—, pero solo:
+   *
+   * - si quien edita tiene un rol aprobador (`ROLES_APROBADORES`), y
+   * - con quién y cuándo tomados de la sesión y del servidor: el `approval`
+   *   que mande el navegador se reemplaza. Antes el nombre del aprobador lo
+   *   escribía el propio cliente.
+   *
+   * Fuera de una resolución, un `approval` con decisión (`approved` /
+   * `rejected`) que llegue en el cuerpo se ignora: la decisión no se escribe
+   * editando.
+   *
+   * Historia: el 2026-09-26 se cerró la vía para que cualquier usuario
+   * autenticado dejara una inspección aprobada, pero el frontend seguía
+   * aprobando por aquí y los supervisores quedaron sin poder aprobar. Ver
+   * `transicion-de-estado.spec.ts`.
+   */
   async update(
     id: string,
     updateDto: UpdateInspectionHerraEquipoDto,
+    actor: { username?: string; roles?: string[] } = {},
   ): Promise<InspectionHerraEquiposDocument> {
-    // El cambio de estado se comprueba **antes** de escribir: el endpoint no
-    // tenía guarda de rol, así que hasta ahora cualquier usuario autenticado
-    // podía dejar una inspección aprobada sin pasar por la aprobación.
-    if (updateDto.status) {
-      const destino = updateDto.status as InspectionStatus;
+    const destino = updateDto.status;
+    const decisionEntrante = updateDto.approval?.status;
+    let resolucion: 'approved' | 'rejected' | null = null;
 
-      if (
-        !InspectionsHerraEquiposService.ESTADOS_QUE_PUEDE_ESCRIBIR_UN_PATCH.has(
-          destino,
-        )
-      ) {
-        throw new BadRequestException(
-          `El estado «${destino}» no se puede fijar editando la inspección: ` +
-            'usá aprobar o rechazar, que dejan constancia de quién lo hizo.',
-        );
-      }
-
+    if (destino || decisionEntrante) {
       const actual = await this.inspectionModel
         .findById(id)
         .select('status')
@@ -658,15 +702,69 @@ export class InspectionsHerraEquiposService {
       if (!actual) {
         throw new NotFoundException(`Inspección ${id} no encontrada`);
       }
+      const estadoActual = actual.status;
 
       if (
-        InspectionsHerraEquiposService.ESTADOS_CERRADOS.has(
-          actual.status as InspectionStatus,
-        )
+        destino &&
+        InspectionsHerraEquiposService.ESTADOS_CERRADOS.has(estadoActual)
       ) {
         throw new BadRequestException(
           `La inspección está «${actual.status}» y no se reabre editándola.`,
         );
+      }
+
+      const esResolucion =
+        !!destino &&
+        estadoActual === InspectionStatus.PENDING_APPROVAL &&
+        destino !== InspectionStatus.PENDING_APPROVAL &&
+        destino !== InspectionStatus.DRAFT;
+
+      if (
+        destino &&
+        !esResolucion &&
+        !InspectionsHerraEquiposService.ESTADOS_QUE_PUEDE_ESCRIBIR_UN_PATCH.has(
+          destino,
+        )
+      ) {
+        throw new BadRequestException(
+          `El estado «${destino}» solo se alcanza resolviendo una inspección pendiente de aprobación.`,
+        );
+      }
+
+      if (esResolucion) {
+        const esAprobador = (actor.roles ?? []).some((r) =>
+          InspectionsHerraEquiposService.ROLES_APROBADORES.has(r),
+        );
+        if (!esAprobador) {
+          throw new ForbiddenException(
+            'Solo un supervisor, superintendente o administrador puede aprobar o rechazar una inspección.',
+          );
+        }
+
+        resolucion =
+          destino === InspectionStatus.REJECTED ? 'rejected' : 'approved';
+        const quien = actor.username || 'desconocido';
+        const ahora = new Date().toISOString();
+        updateDto.approval =
+          resolucion === 'approved'
+            ? {
+                status: 'approved',
+                approvedBy: quien,
+                approvedAt: ahora,
+                supervisorComments: updateDto.approval?.supervisorComments,
+              }
+            : {
+                status: 'rejected',
+                approvedBy: quien,
+                approvedAt: ahora,
+                rejectionReason: updateDto.approval?.rejectionReason,
+              };
+      } else if (
+        decisionEntrante === 'approved' ||
+        decisionEntrante === 'rejected'
+      ) {
+        // No es una resolución: se conserva la decisión que ya tenía.
+        delete updateDto.approval;
       }
     }
 
@@ -680,6 +778,15 @@ export class InspectionsHerraEquiposService {
 
     if (!inspection) {
       throw new NotFoundException(`Inspección ${id} no encontrada`);
+    }
+
+    if (resolucion) {
+      this.logger.log(
+        `✅ Inspección ${id} ${resolucion === 'approved' ? 'aprobada' : 'rechazada'} por ${actor.username}`,
+      );
+    }
+    if (resolucion === 'approved') {
+      await this.registrarSeguimientoTrasAprobar(inspection);
     }
 
     return inspection;

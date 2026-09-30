@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Query,
   Delete,
   UseGuards,
   HttpCode,
@@ -34,9 +35,10 @@ export class UbicacionController {
     return this.ubicacionService.create(createDto);
   }
 
+  /** `?incluirBajas=true` para la pantalla de administración. */
   @Get()
-  findAll() {
-    return this.ubicacionService.findAll();
+  findAll(@Query('incluirBajas') incluirBajas?: string) {
+    return this.ubicacionService.findAll(incluirBajas === 'true');
   }
 
   @Get(':id')
@@ -44,6 +46,7 @@ export class UbicacionController {
     return this.ubicacionService.findOne(id);
   }
 
+  /** Renombrar y/o mover (`padre`). */
   @Patch(':id')
   @Permissions(Permission.MANAGE_SETTINGS)
   update(@Param('id') id: string, @Body() updateDto: UpdateUbicacionDto) {
@@ -53,10 +56,28 @@ export class UbicacionController {
   @Delete(':id')
   @Permissions(Permission.MANAGE_SETTINGS)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(
+  remove(@Param('id') id: string, @CurrentUser('username') usuario?: string) {
+    return this.ubicacionService.remove(id, usuario ?? 'desconocido');
+  }
+
+  @Post(':id/restaurar')
+  @Permissions(Permission.MANAGE_SETTINGS)
+  restaurar(@Param('id') id: string) {
+    return this.ubicacionService.restaurar(id);
+  }
+
+  /** Pasa equipos e hijas de `:id` a `:destinoId` y da de baja `:id`. */
+  @Post(':id/fusionar-en/:destinoId')
+  @Permissions(Permission.MANAGE_SETTINGS)
+  fusionar(
     @Param('id') id: string,
+    @Param('destinoId') destinoId: string,
     @CurrentUser('username') usuario?: string,
   ) {
-    return this.ubicacionService.remove(id, usuario ?? 'desconocido');
+    return this.ubicacionService.fusionar(
+      id,
+      destinoId,
+      usuario ?? 'desconocido',
+    );
   }
 }

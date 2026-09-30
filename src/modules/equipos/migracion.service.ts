@@ -306,10 +306,13 @@ export class MigracionService {
       responsable,
     );
 
+    // Admite rutas: «Taller de flotación > Bodega 1 > Estante A». Ver
+    // `UbicacionService.findOrCreateByRuta` y la norma de carga en
+    // FormNext/mds/implementation_planUbicacionesJerarquicas.md.
     const ubicacionTexto =
       this.valor(row, cabeceras, ['ubicación', 'ubicacion']) ?? 'Sin Ubicación';
     const ubicacion =
-      await this.ubicacionService.findByNameOrCreate(ubicacionTexto);
+      await this.ubicacionService.findOrCreateByRuta(ubicacionTexto);
 
     const clasificacionTexto =
       this.clasificacionDeFila(row, cabeceras) ??

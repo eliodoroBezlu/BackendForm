@@ -41,7 +41,7 @@ export class EquiposExcelService {
       key: 'ambitoTexto',
       width: 30,
     },
-    { header: 'Ubicación', key: 'ubicacionTexto', width: 20 },
+    { header: 'Ubicación', key: 'ubicacionTexto', width: 40 },
     { header: 'Clasificación', key: 'clasificacionTexto', width: 20 },
     { header: 'Responsable', key: 'responsable', width: 20 },
     { header: 'Estado', key: 'estado', width: 14 },
@@ -131,7 +131,7 @@ export class EquiposExcelService {
         cantidad: equipo.cantidad,
         costo: equipo.costo ?? '',
         ambitoTexto: this.textoAmbito(equipo),
-        ubicacionTexto: this.nombreDe(equipo.ubicacion_id),
+        ubicacionTexto: this.rutaDe(equipo.ubicacion_id),
         clasificacionTexto: this.nombreDe(equipo.clasificacion_id),
         responsable: equipo.responsable ?? '',
         estado: equipo.estado ?? '',
@@ -167,6 +167,15 @@ export class EquiposExcelService {
       return String((ref as { nombre?: unknown }).nombre ?? '');
     }
     return '';
+  }
+
+  /** La ruta completa de la ubicación («Taller › Bodega 1 › Estante A»). */
+  private rutaDe(ref: unknown): string {
+    if (ref && typeof ref === 'object' && 'ruta' in ref) {
+      const ruta = (ref as { ruta?: unknown }).ruta;
+      if (typeof ruta === 'string' && ruta) return ruta;
+    }
+    return this.nombreDe(ref);
   }
 
   private textoAmbito(equipo: Equipo): string {

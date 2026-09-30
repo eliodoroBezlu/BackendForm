@@ -3,6 +3,8 @@ import { getModelToken } from '@nestjs/mongoose';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TemplatesService } from './templates.service';
 import { Template } from './schemas/template.schema';
+import { Instance } from '../instances/schemas/instance.schema';
+import { FILTRO_VIGENTE } from '../../common/versionado/versionado';
 
 /**
  * Las plantillas son el molde de toda inspección: su `code` es lo que enlaza
@@ -44,6 +46,10 @@ describe('TemplatesService', () => {
       providers: [
         TemplatesService,
         { provide: getModelToken(Template.name), useValue: Modelo },
+        {
+          provide: getModelToken(Instance.name),
+          useValue: { countDocuments: jest.fn(() => cadena(0)) },
+        },
       ],
     }).compile();
 
@@ -77,12 +83,13 @@ describe('TemplatesService', () => {
   });
 
   describe('findAll', () => {
-    it('sin filtros consulta todo', async () => {
+    it('sin filtros consulta solo las revisiones vigentes', async () => {
+      // Las obsoletas y los borradores no se ofrecen para inspeccionar.
       await construir([]);
 
       await servicio.findAll();
 
-      expect(modelo.find).toHaveBeenCalledWith({});
+      expect(modelo.find).toHaveBeenCalledWith(FILTRO_VIGENTE);
     });
 
     it('filtra por tipo y por estado activo', async () => {
@@ -91,6 +98,7 @@ describe('TemplatesService', () => {
       await servicio.findAll({ type: 'IRO', isActive: true });
 
       expect(modelo.find).toHaveBeenCalledWith({
+        ...FILTRO_VIGENTE,
         type: 'IRO',
         isActive: true,
       });
@@ -158,12 +166,15 @@ describe('TemplatesService', () => {
       );
     });
 
-    it('findByCode busca por el campo code, no por el id', async () => {
+    it('findByCode busca la vigente por el campo code, no por el id', async () => {
       await construir({ code: '1.02.P06.F19' });
 
       await servicio.findByCode('1.02.P06.F19');
 
-      expect(modelo.findOne).toHaveBeenCalledWith({ code: '1.02.P06.F19' });
+      expect(modelo.findOne).toHaveBeenCalledWith({
+        code: '1.02.P06.F19',
+        ...FILTRO_VIGENTE,
+      });
       expect(modelo.findById).not.toHaveBeenCalled();
     });
   });

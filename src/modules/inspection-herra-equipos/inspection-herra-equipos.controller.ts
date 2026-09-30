@@ -69,18 +69,24 @@ export class InspectionsHerraEquiposController {
   // ✅ NUEVOS ENDPOINTS DE APROBACIÓN
   // ============================================
 
+  /**
+   * Aprobar por la vía específica. Hoy ninguna pantalla la usa (el detalle
+   * resuelve por `PATCH :id`, ver `InspectionsHerraEquiposService.update`),
+   * pero queda con la misma regla: solo roles aprobadores, y quién aprueba
+   * sale de la sesión, no del cuerpo.
+   */
   @Patch(':id/approve')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
   async approveInspection(
     @Param('id') id: string,
     @Body() approveDto: ApproveInspectionDto,
+    @CurrentUser('username') usuario?: string,
   ) {
-    console.log(`✅ Aprobando inspección ${id} por ${approveDto.approvedBy}`);
+    const dto = { ...approveDto, approvedBy: usuario || approveDto.approvedBy };
+    console.log(`✅ Aprobando inspección ${id} por ${dto.approvedBy}`);
 
-    const inspection = await this.inspectionsService.approveInspection(
-      id,
-      approveDto,
-    );
+    const inspection = await this.inspectionsService.approveInspection(id, dto);
 
     return {
       success: true,
@@ -89,18 +95,19 @@ export class InspectionsHerraEquiposController {
     };
   }
 
+  /** Rechazar por la vía específica: misma regla que `approve`. */
   @Patch(':id/reject')
+  @Roles(Role.SUPER_ADMIN, Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
   @HttpCode(HttpStatus.OK)
   async rejectInspection(
     @Param('id') id: string,
     @Body() rejectDto: RejectInspectionDto,
+    @CurrentUser('username') usuario?: string,
   ) {
-    console.log(`❌ Rechazando inspección ${id} por ${rejectDto.rejectedBy}`);
+    const dto = { ...rejectDto, rejectedBy: usuario || rejectDto.rejectedBy };
+    console.log(`❌ Rechazando inspección ${id} por ${dto.rejectedBy}`);
 
-    const inspection = await this.inspectionsService.rejectInspection(
-      id,
-      rejectDto,
-    );
+    const inspection = await this.inspectionsService.rejectInspection(id, dto);
 
     return {
       success: true,
@@ -242,14 +249,24 @@ export class InspectionsHerraEquiposController {
     };
   }
 
+  /**
+   * Editar, y también resolver una inspección pendiente (aprobar/rechazar
+   * con la firma del supervisor en la misma petición). Quién resuelve se
+   * toma de la sesión; ver `InspectionsHerraEquiposService.update`.
+   */
   @Patch(':id')
   async update(
     @Param('id') id: string,
     @Body() updateDto: UpdateInspectionHerraEquipoDto,
+    @CurrentUser('username') username?: string,
+    @CurrentUser('roles') roles?: string[],
   ) {
     console.log('🔄 Actualizando inspección herramientas/equipos:', id);
 
-    const inspection = await this.inspectionsService.update(id, updateDto);
+    const inspection = await this.inspectionsService.update(id, updateDto, {
+      username,
+      roles,
+    });
 
     return {
       success: true,

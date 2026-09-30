@@ -40,7 +40,10 @@ describe('TemplateHerraEquiposController · propagación de roles', () => {
   it('findAll propaga los roles', () => {
     controller.findAll(ROLES, 'arnes');
 
-    expect(servicio.findAll).toHaveBeenCalledWith({ type: 'arnes' }, ROLES);
+    expect(servicio.findAll).toHaveBeenCalledWith(
+      { type: 'arnes', incluirBorradores: false },
+      ROLES,
+    );
   });
 
   it('search propaga los roles', () => {
@@ -74,7 +77,7 @@ describe('TemplateHerraEquiposController · propagación de roles', () => {
     controller.findAll();
 
     expect(servicio.findAll).toHaveBeenCalledWith(
-      { type: undefined },
+      { type: undefined, incluirBorradores: false },
       undefined,
     );
   });

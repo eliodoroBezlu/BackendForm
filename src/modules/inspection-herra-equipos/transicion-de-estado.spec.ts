@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InspectionsHerraEquiposService } from './inspection-herra-equipos.service';
 import { InspectionHerraEquipos } from './schemas/inspection-herra-equipos.schema';
 import { InspectionStatus } from './types/IProps';
@@ -86,21 +86,157 @@ describe('InspectionsHerraEquiposService · cambio de estado por PATCH', () => {
     ).resolves.toBeDefined();
   });
 
-  it('NO deja aprobarla editándola', async () => {
+  const SUPERVISOR = { username: 'jperez', roles: ['supervisor'] };
+  const INSPECTOR = { username: 'tecnico1', roles: ['inspector'] };
+
+  /** Lo que se mandó a escribir en el último `findByIdAndUpdate`. */
+  const escrito = () =>
+    (
+      (modelo.findByIdAndUpdate.mock.calls as unknown[][])[0][1] as {
+        $set: Record<string, unknown>;
+      }
+    ).$set;
+
+  it('un supervisor aprueba una pendiente, y quién y cuándo salen de la sesión', async () => {
+    // Es el flujo del formulario de detalle: firma del supervisor + decisión
+    // en la misma petición. Desde el 2026-09-26 esto fallaba y nadie podía
+    // aprobar.
+    await construir(InspectionStatus.PENDING_APPROVAL);
+
+    await servicio.update(
+      'id-1',
+      {
+        status: InspectionStatus.APPROVED,
+        supervisorSignature: { nombre: 'J. Pérez' },
+        approval: {
+          status: 'approved',
+          approvedBy: 'alguien-que-no-es',
+          supervisorComments: 'ok',
+        },
+      } as never,
+      SUPERVISOR,
+    );
+
+    const set = escrito();
+    expect(set.status).toBe(InspectionStatus.APPROVED);
+    expect(set.supervisorSignature).toEqual({ nombre: 'J. Pérez' });
+    expect(set.approval).toMatchObject({
+      status: 'approved',
+      approvedBy: 'jperez', // no el que mandó el navegador
+      supervisorComments: 'ok',
+    });
+  });
+
+  it('un supervisor rechaza una pendiente con su motivo', async () => {
+    await construir(InspectionStatus.PENDING_APPROVAL);
+
+    await servicio.update(
+      'id-1',
+      {
+        status: InspectionStatus.REJECTED,
+        approval: { status: 'rejected', rejectionReason: 'falta foto' },
+      } as never,
+      SUPERVISOR,
+    );
+
+    expect(escrito().approval).toMatchObject({
+      status: 'rejected',
+      approvedBy: 'jperez',
+      rejectionReason: 'falta foto',
+    });
+  });
+
+  it('NO deja aprobar a quien no tiene rol aprobador', async () => {
     await construir(InspectionStatus.PENDING_APPROVAL);
 
     await expect(
-      servicio.update('id-1', { status: InspectionStatus.APPROVED } as never),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      servicio.update(
+        'id-1',
+        { status: InspectionStatus.APPROVED } as never,
+        INSPECTOR,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(modelo.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('NO deja rechazarla editándola', async () => {
+  it('NO deja rechazar sin sesión (llamada sin actor)', async () => {
     await construir(InspectionStatus.PENDING_APPROVAL);
 
     await expect(
       servicio.update('id-1', { status: InspectionStatus.REJECTED } as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('andamio: pasar de pendiente a en curso es aprobarlo, y exige rol', async () => {
+    // Antes esta vía estaba abierta a cualquiera: `in_progress` no se
+    // consideraba una aprobación.
+    await construir(InspectionStatus.PENDING_APPROVAL);
+    await expect(
+      servicio.update(
+        'id-1',
+        { status: InspectionStatus.IN_PROGRESS } as never,
+        INSPECTOR,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    await construir(InspectionStatus.PENDING_APPROVAL);
+    await servicio.update(
+      'id-1',
+      { status: InspectionStatus.IN_PROGRESS } as never,
+      SUPERVISOR,
+    );
+    expect(escrito().approval).toMatchObject({
+      status: 'approved',
+      approvedBy: 'jperez',
+    });
+  });
+
+  it('NO deja aprobar algo que no estaba pendiente', async () => {
+    await construir(InspectionStatus.IN_PROGRESS);
+
+    await expect(
+      servicio.update(
+        'id-1',
+        { status: InspectionStatus.APPROVED } as never,
+        SUPERVISOR,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('una decisión en `approval` sin resolver la inspección se ignora', async () => {
+    // Un andamio ya aprobado que guarda su rutinaria manda de vuelta su
+    // `approval`; tampoco se puede colar una aprobación por este campo.
+    await construir(InspectionStatus.IN_PROGRESS);
+
+    await servicio.update(
+      'id-1',
+      {
+        status: InspectionStatus.IN_PROGRESS,
+        approval: { status: 'approved', approvedBy: 'yo-mismo' },
+      } as never,
+      INSPECTOR,
+    );
+
+    expect(escrito().approval).toBeUndefined();
+  });
+
+  it('si el seguimiento del equipo falla, la aprobación queda hecha igual', async () => {
+    await construir(InspectionStatus.PENDING_APPROVAL);
+    modelo.findByIdAndUpdate = jest.fn(() => ({
+      exec: jest.fn().mockResolvedValue({
+        _id: 'id-1',
+        templateCode: '3.04.P48.F03',
+        verification: {},
+      }),
+    }));
+
+    await expect(
+      servicio.update(
+        'id-1',
+        { status: InspectionStatus.APPROVED } as never,
+        SUPERVISOR,
+      ),
+    ).resolves.toMatchObject({ _id: 'id-1' });
   });
 
   it('NO reabre una ya aprobada', async () => {

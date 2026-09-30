@@ -3,6 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { TemplateHerraEquiposService } from './template-herra-equipos.service';
 import { TemplateHerraEquipos } from './schemas/template-herra-equipo.schema';
 import { Role } from '../auth/enums/role.enum';
+import { InspectionHerraEquipos } from '../inspection-herra-equipos/schemas/inspection-herra-equipos.schema';
 
 /**
  * `filtroPorRoles` decide **qué formularios ve cada rol**. Es una barrera de
@@ -33,6 +34,10 @@ describe('TemplateHerraEquiposService · visibilidad por rol', () => {
         {
           provide: getModelToken(TemplateHerraEquipos.name),
           useValue: modelo,
+        },
+        {
+          provide: getModelToken(InspectionHerraEquipos.name),
+          useValue: { countDocuments: jest.fn(() => cadena(0)) },
         },
       ],
     }).compile();

@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
+import { versionadoPlantilla } from '../../../common/versionado/versionado.plugin';
+import type { EstadoRevision } from '../../../common/versionado/versionado';
 
 export type ResponseType =
   | 'si_no_na'
@@ -271,6 +273,16 @@ export class TemplateHerraEquipos {
 
   @Prop()
   updatedAt?: Date;
+
+  // Campos del versionado: los declara `versionadoPlantilla` en el esquema.
+  numeroRevision?: number;
+  estadoRevision?: EstadoRevision;
+  revisionAnteriorId?: mongoose.Types.ObjectId | null;
+  motivoCambio?: string;
+  vigenteDesde?: Date;
+  obsoletaDesde?: Date;
+  publicadaPor?: string;
+  creadaPor?: string;
 }
 
 // ============================================
@@ -288,6 +300,9 @@ export const TemplateHerraEquiposSchema =
  * Borrarlo dejaria senalando al vacio a todo lo que lo referencia.
  */
 TemplateHerraEquiposSchema.plugin(bajaLogica);
+
+/** Borrador / vigente / obsoleta: ver `common/versionado/versionado.ts`. */
+TemplateHerraEquiposSchema.plugin(versionadoPlantilla);
 
 // ============================================
 // ÍNDICES

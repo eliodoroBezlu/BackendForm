@@ -64,6 +64,7 @@ describe('TemplatesController', () => {
         type: 'interna',
         isActive: true,
         search: 'arnes',
+        incluirBorradores: false,
       });
     });
 
@@ -74,6 +75,7 @@ describe('TemplatesController', () => {
         type: undefined,
         isActive: undefined,
         search: undefined,
+        incluirBorradores: false,
       });
     });
 

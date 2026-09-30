@@ -3,8 +3,17 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
-import type { FilterQuery, Model } from 'mongoose';
+import type { FilterQuery, Model, Types } from 'mongoose';
 import { Template, TemplateDocument } from './schemas/template.schema';
+import { Instance } from '../instances/schemas/instance.schema';
+import {
+  FILTRO_VIGENTE,
+  FILTRO_VIGENTE_O_BORRADOR,
+} from '../../common/versionado/versionado';
+import {
+  PlantillaVersionable,
+  VersionadoPlantillas,
+} from '../../common/versionado/versionado-plantillas';
 import type { CreateTemplateDto } from './dto/create-template.dto';
 import type { UpdateTemplateDto } from './dto/update-template.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -16,14 +25,36 @@ import {
 
 @Injectable()
 export class TemplatesService {
+  /** Borrador / vigente / obsoleta: ver `common/versionado/versionado.ts`. */
+  readonly versionado: VersionadoPlantillas<
+    TemplateDocument & PlantillaVersionable
+  >;
+
   constructor(
     @InjectModel(Template.name)
     private readonly templateModel: Model<TemplateDocument>,
-  ) {}
+    @InjectModel(Instance.name)
+    private readonly instanceModel: Model<Instance>,
+  ) {
+    this.versionado = new VersionadoPlantillas(
+      this.templateModel as unknown as Model<
+        TemplateDocument & PlantillaVersionable
+      >,
+      (id: Types.ObjectId) =>
+        this.instanceModel.countDocuments({ templateId: id }).exec(),
+    );
+  }
 
-  async create(createTemplateDto: CreateTemplateDto): Promise<Template> {
+  async create(
+    createTemplateDto: CreateTemplateDto,
+    usuario?: string,
+  ): Promise<Template> {
+    await this.versionado.exigirCodigoLibre(createTemplateDto.code);
     try {
-      const createdTemplate = new this.templateModel(createTemplateDto);
+      const createdTemplate = new this.templateModel({
+        ...createTemplateDto,
+        ...this.versionado.camposDeAlta(createTemplateDto.revision, usuario),
+      });
       return await createdTemplate.save();
     } catch (error) {
       if (error.code === 11000) {
@@ -37,8 +68,16 @@ export class TemplatesService {
     type?: string;
     isActive?: boolean;
     search?: string;
+    /** La pantalla de administración también ve los borradores. */
+    incluirBorradores?: boolean;
   }): Promise<Template[]> {
-    const query: FilterQuery<Template> = {};
+    // Por defecto solo la revisión vigente de cada plantilla: es lo que se
+    // ofrece para inspeccionar. Las obsoletas se ven por `historial`.
+    const query: FilterQuery<Template> = {
+      ...(filters?.incluirBorradores
+        ? FILTRO_VIGENTE_O_BORRADOR
+        : FILTRO_VIGENTE),
+    };
 
     if (filters?.type) {
       query.type = filters.type;
@@ -69,20 +108,32 @@ export class TemplatesService {
   }
 
   async findByCode(code: string): Promise<Template> {
-    const template = await this.templateModel.findOne({ code }).exec();
+    // La vigente: el código es de toda la familia de revisiones.
+    const template = await this.templateModel
+      .findOne({ code, ...FILTRO_VIGENTE })
+      .exec();
     if (!template) {
       throw new NotFoundException('Template no encontrado');
     }
     return template;
   }
 
+  /**
+   * Edita en el lugar. Solo se puede con un borrador o con una vigente que
+   * todavía no tiene inspecciones; si no, 409 con el motivo (ver
+   * `VersionadoPlantillas.estadoEdicion`).
+   */
   async update(
     id: string,
     updateTemplateDto: UpdateTemplateDto,
   ): Promise<Template> {
+    const cambios = await this.versionado.prepararEdicion(
+      id,
+      updateTemplateDto,
+    );
     try {
       const updatedTemplate = await this.templateModel
-        .findByIdAndUpdate(id, updateTemplateDto, { new: true })
+        .findByIdAndUpdate(id, cambios, { new: true })
         .exec();
 
       if (!updatedTemplate) {
@@ -149,10 +200,15 @@ export class TemplatesService {
     byType: { interna: number; externa: number };
   }> {
     const [total, active, byType] = await Promise.all([
-      this.templateModel.countDocuments().exec(),
-      this.templateModel.countDocuments({ isActive: true }).exec(),
+      this.templateModel.countDocuments(FILTRO_VIGENTE).exec(),
       this.templateModel
-        .aggregate([{ $group: { _id: '$type', count: { $sum: 1 } } }])
+        .countDocuments({ ...FILTRO_VIGENTE, isActive: true })
+        .exec(),
+      this.templateModel
+        .aggregate([
+          { $match: { activo: { $ne: false }, ...FILTRO_VIGENTE } },
+          { $group: { _id: '$type', count: { $sum: 1 } } },
+        ])
         .exec(),
     ]);
 
