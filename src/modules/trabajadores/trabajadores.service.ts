@@ -29,7 +29,8 @@ interface IamServiceUser {
   globalRoles: string[];
   serviceRoles: string[];
   trabajador: {
-    ci: string;
+    // Puede venir null: el IAM admite personal sin CI (ej. contratistas de Sync)
+    ci: string | null;
     nomina: string;
     puesto: string;
     area: string | null;
@@ -41,7 +42,8 @@ interface IamServiceUser {
 }
 
 interface IamTrabajadorEntry {
-  ci: string;
+  // Puede venir null: el IAM admite personal sin CI (ej. contratistas de Sync)
+  ci: string | null;
   nomina: string;
   puesto: string;
   superintendencia: string;
@@ -268,7 +270,14 @@ export class TrabajadoresService implements OnModuleInit {
     let creados = 0;
     const fallos: string[] = [];
 
+    let sinCi = 0;
     for (const t of trabajadoresIam) {
+      // La ficha de Mongo usa el CI como clave (obligatorio y único). Sin CI no
+      // hay con qué emparejar: buscar { ci: null } mezclaría personas distintas.
+      if (!t.ci) {
+        sinCi++;
+        continue;
+      }
       try {
         const existente = await this.trabajadorModel.findOne({ ci: t.ci });
 
@@ -326,6 +335,11 @@ export class TrabajadoresService implements OnModuleInit {
         `Sync de roster: ${fallos.length} trabajador(es) con error, omitidos: ${fallos.join(', ')}`,
       );
     }
+    if (sinCi > 0) {
+      this.logger.log(
+        `Sync de roster: ${sinCi} trabajador(es) sin CI en el IAM, no se espejan en forms`,
+      );
+    }
 
     return { actualizados, creados };
   }
@@ -373,6 +387,7 @@ export class TrabajadoresService implements OnModuleInit {
       if (!iamUser.trabajador) continue; // sin ficha de Trabajador en IAM, nada que espejar
 
       const t = iamUser.trabajador;
+      if (!t.ci) continue; // sin CI no hay con qué emparejar la ficha de Mongo
       try {
         const existente = await this.trabajadorModel.findOne({ ci: t.ci });
 
