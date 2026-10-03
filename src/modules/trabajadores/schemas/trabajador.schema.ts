@@ -4,8 +4,14 @@ import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 @Schema({ timestamps: true })
 export class Trabajador extends Document {
-  @Prop({ required: true, unique: true, index: true })
-  ci: string;
+  // Id de la ficha en el padrón del IAM (Trabajador.id): la clave con la que
+  // se empareja el espejo. El CI puede faltar (contratistas) o corregirse.
+  @Prop({ required: false })
+  iam_trabajador_id?: string;
+
+  // Único cuando existe (ver índices). Opcional: el IAM admite personal sin CI.
+  @Prop({ required: false })
+  ci?: string;
 
   @Prop({ required: true })
   nomina: string;
@@ -96,6 +102,24 @@ export const TrabajadorSchema = SchemaFactory.createForClass(Trabajador);
 TrabajadorSchema.plugin(bajaLogica);
 
 // Índices
-TrabajadorSchema.index({ ci: 1 });
+// Únicos solo entre documentos que tienen el campo: varias fichas sin CI (o
+// anteriores al id del IAM) no chocan entre sí. Reemplazan al viejo `ci_1`,
+// único para todos; el servicio lo migra al arrancar.
+TrabajadorSchema.index(
+  { ci: 1 },
+  {
+    unique: true,
+    name: 'ci_unico_si_existe',
+    partialFilterExpression: { ci: { $type: 'string' } },
+  },
+);
+TrabajadorSchema.index(
+  { iam_trabajador_id: 1 },
+  {
+    unique: true,
+    name: 'iam_trabajador_id_unico',
+    partialFilterExpression: { iam_trabajador_id: { $type: 'string' } },
+  },
+);
 TrabajadorSchema.index({ username: 1 });
 TrabajadorSchema.index({ userId: 1 });

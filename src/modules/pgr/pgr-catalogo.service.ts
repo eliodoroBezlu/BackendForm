@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   CriterioGrupo,
   EntregableSugerido,
@@ -16,7 +16,9 @@ import { Trabajador } from '../trabajadores/schemas/trabajador.schema';
 
 /** Miembro resuelto de un grupo. */
 export interface MiembroGrupo {
-  ci: string;
+  /** Id del trabajador en forms: clave estable (el CI puede faltar). */
+  id: string;
+  ci: string | null;
   nombre: string;
   puesto: string;
   area: string;
@@ -186,7 +188,8 @@ export class PgrCatalogoService implements OnModuleInit {
       .exec();
 
     return trabajadores.map((t) => ({
-      ci: t.ci,
+      id: (t._id as Types.ObjectId).toString(),
+      ci: t.ci ?? null,
       nombre: t.nomina,
       puesto: t.puesto,
       area: t.area,
