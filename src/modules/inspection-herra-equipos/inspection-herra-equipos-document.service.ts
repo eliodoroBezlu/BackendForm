@@ -16,6 +16,7 @@ import { ExcelPreUsoTecleService } from './excel-generator/preuso-tecle.service'
 import { ExcelElementosIzajeService } from './excel-generator/elementos-izaje.service';
 import { ExcelArnestService } from './excel-generator/arnes.service';
 import { ExcelInspeccionFrecuenteService } from './excel-generator/inspeccion-frecuente-equipos.service';
+import { ExcelCalefactorEstufaService } from './excel-generator/calefactorestufa.service';
 import { ExcelToPdfService } from './pdf/excel-to-pdf.service';
 import { corregirAreaDeImpresionEnBuffer } from './excel-generator/comun/area-de-impresion.util';
 
@@ -52,6 +53,7 @@ export class InspectionHerraEquiposDocumentService {
     private readonly excelElementosIzajeService: ExcelElementosIzajeService,
     private readonly excelArnestService: ExcelArnestService,
     private readonly excelInspeccionFrecuenteService: ExcelInspeccionFrecuenteService,
+    private readonly excelCalefactorEstufaService: ExcelCalefactorEstufaService,
     private readonly excelToPdfService: ExcelToPdfService,
   ) {}
 
@@ -107,6 +109,8 @@ export class InspectionHerraEquiposDocumentService {
       return this.excelElementosIzajeService.generateExcel(inspection);
     } else if (templateCode.includes('1.02.P06.F19')) {
       return this.excelArnestService.generateExcel(inspection);
+    } else if (this.excelCalefactorEstufaService.canHandle(templateCode)) {
+      return this.excelCalefactorEstufaService.generateExcel(inspection);
     } else if (this.excelInspeccionFrecuenteService.canHandle(templateCode)) {
       // Grúas AT/RT, camión grúa y montacargas telescópicos: un solo generador
       // porque las cuatro plantillas comparten formato.

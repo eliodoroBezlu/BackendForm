@@ -10,6 +10,8 @@ import { ExcelConfinadoService } from './excel-generator/excel-generator-confina
 import { ExcelElectricoCondicionesService } from './excel-generator/excel-generator-electrcio-condiciones.service';
 import { ExcelAlturav4Service } from './excel-generator/excel-generator-alturav4.service';
 import { ExcelIsopV7Service } from './excel-generator/excel-generator-isop.service';
+import { ExcelIsopRev8Service } from './excel-generator/excel-generator-isop-rev8.service';
+import { numeroDesdeTexto } from '../../common/versionado/versionado';
 import { ExcelToPdfService } from '../inspection-herra-equipos/pdf/excel-to-pdf.service';
 
 export interface DocumentFilenameParts {
@@ -39,6 +41,7 @@ export class InstancesDocumentService {
     private readonly electricCondicionesExcelService: ExcelElectricoCondicionesService,
     private readonly alturaV4ExcelService: ExcelAlturav4Service,
     private readonly isopV7ExcelService: ExcelIsopV7Service,
+    private readonly isopRev8ExcelService: ExcelIsopRev8Service,
     private readonly excelToPdfService: ExcelToPdfService,
   ) {}
 
@@ -50,6 +53,7 @@ export class InstancesDocumentService {
     inspeccion: any,
     templateCode: string,
     templateRevision: string,
+    numeroRevision = numeroDesdeTexto(templateRevision),
   ): Promise<Buffer | null> {
     if (templateCode.includes('1.02.P06.F47')) {
       return this.calienteExcelService.generateExcel(inspeccion);
@@ -70,38 +74,54 @@ export class InstancesDocumentService {
     } else if (templateCode.includes('1.02.P06.F53')) {
       return this.electricCondicionesExcelService.generateExcel(inspeccion);
     } else if (templateCode.includes('1.02.P06.F12')) {
-      return this.isopV7ExcelService.generateExcel(inspeccion);
+      // Cada inspección se descarga con el formato de la revisión con la que
+      // se hizo: la Rev 8 quitó y agregó preguntas, sus filas no son las de la 7.
+      return numeroRevision >= 8
+        ? this.isopRev8ExcelService.generateExcel(inspeccion)
+        : this.isopV7ExcelService.generateExcel(inspeccion);
     }
     return null;
   }
 
-  /** Extrae templateCode/templateRevision de la instancia (con template populado). */
+  /** Extrae código y revisión de la instancia (con template populado). */
   private resolverTemplateInfo(inspeccion: any): {
     templateCode: string;
     templateRevision: string;
+    numeroRevision: number;
   } {
     const template = inspeccion.templateId;
+    const templateRevision: string = template?.revision || '';
     return {
       templateCode: template?.code?.toUpperCase() || '',
-      templateRevision: template?.revision || '',
+      templateRevision,
+      // El número guardado manda; el texto («Revisión: 8») es el respaldo de
+      // las plantillas anteriores al versionado.
+      numeroRevision:
+        template?.numeroRevision ?? numeroDesdeTexto(templateRevision),
     };
   }
 
   /** Genera el Excel para una instancia ya cargada (para el PDF, ver `generarPdfStream`). */
   async generarDocumento(inspeccion: any): Promise<Buffer | null> {
-    const { templateCode, templateRevision } =
+    const { templateCode, templateRevision, numeroRevision } =
       this.resolverTemplateInfo(inspeccion);
-    return this.generarExcelBuffer(inspeccion, templateCode, templateRevision);
+    return this.generarExcelBuffer(
+      inspeccion,
+      templateCode,
+      templateRevision,
+      numeroRevision,
+    );
   }
 
   /** Genera el PDF de una instancia como stream (evita bufferizarlo entero en memoria). */
   async generarPdfStream(inspeccion: any): Promise<Readable | null> {
-    const { templateCode, templateRevision } =
+    const { templateCode, templateRevision, numeroRevision } =
       this.resolverTemplateInfo(inspeccion);
     const excelBuffer = await this.generarExcelBuffer(
       inspeccion,
       templateCode,
       templateRevision,
+      numeroRevision,
     );
     if (!excelBuffer) return null;
     return this.excelToPdfService.convertExcelToPdf(excelBuffer, {

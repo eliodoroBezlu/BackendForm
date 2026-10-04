@@ -10,6 +10,7 @@ import { ExcelConfinadoService } from './excel-generator-confinado.service';
 import { ExcelElectricoCondicionesService } from './excel-generator-electrcio-condiciones.service';
 import { ExcelAlturav4Service } from './excel-generator-alturav4.service';
 import { ExcelIsopV7Service } from './excel-generator-isop.service';
+import { ExcelIsopRev8Service } from './excel-generator-isop-rev8.service';
 
 @Module({
   imports: [ConfigModule], // Asegura que ConfigModule está disponible
@@ -24,6 +25,7 @@ import { ExcelIsopV7Service } from './excel-generator-isop.service';
     ExcelElectricoCondicionesService,
     ExcelAlturav4Service,
     ExcelIsopV7Service,
+    ExcelIsopRev8Service,
   ],
   exports: [
     ExcelCalienteService,
@@ -36,6 +38,7 @@ import { ExcelIsopV7Service } from './excel-generator-isop.service';
     ExcelElectricoCondicionesService,
     ExcelAlturav4Service,
     ExcelIsopV7Service,
+    ExcelIsopRev8Service,
   ],
 })
 export class ExcelIsoIroModule {}

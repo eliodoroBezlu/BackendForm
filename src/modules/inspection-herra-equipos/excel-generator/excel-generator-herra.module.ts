@@ -21,6 +21,7 @@ import {
 import { ExcelElementosIzajeService } from './elementos-izaje.service';
 import { ExcelArnestService } from './arnes.service';
 import { ExcelInspeccionFrecuenteService } from './inspeccion-frecuente-equipos.service';
+import { ExcelCalefactorEstufaService } from './calefactorestufa.service';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { ExcelInspeccionFrecuenteService } from './inspeccion-frecuente-equipos.
     ExcelElementosIzajeService,
     ExcelArnestService,
     ExcelInspeccionFrecuenteService,
+    ExcelCalefactorEstufaService,
   ],
   exports: [
     ExcelVehicleService,
@@ -67,6 +69,7 @@ import { ExcelInspeccionFrecuenteService } from './inspeccion-frecuente-equipos.
     ExcelElementosIzajeService,
     ExcelArnestService,
     ExcelInspeccionFrecuenteService,
+    ExcelCalefactorEstufaService,
   ],
 })
 export class ExcelHerraEquipoModule {}
