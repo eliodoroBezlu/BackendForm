@@ -21,6 +21,9 @@ const RECOMENDADAS = [
   'IAM_CORE_URL',
   'CORS_ORIGIN',
   'INSPECTOR_API_KEY',
+  // Clave de forms en el servicio de formularios: sin ellas no se firma su token.
+  'FORMULARIOS_KID',
+  'FORMULARIOS_SECRETO',
 ] as const;
 
 export function validarEntorno(

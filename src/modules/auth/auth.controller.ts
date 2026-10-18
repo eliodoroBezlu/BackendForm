@@ -9,6 +9,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   Req,
   Res,
@@ -16,6 +17,7 @@ import {
   HttpStatus,
   UseGuards,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -27,6 +29,7 @@ import { Publico } from '../../common/nucleo/publico.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { Role } from './enums/role.enum';
+import { CambiarClaveDto } from './dto/cambiar-clave.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -157,7 +160,61 @@ export class AuthController {
       permissions: user.permissions,
       isTwoFactorEnabled:
         iamUser?.isTwoFactorEnabled ?? user.isTwoFactorEnabled,
+      // El menú oculta «Cambiar contraseña» en la cuenta compartida.
+      cuentaCompartida: this.esCuentaCompartida(user.username),
     };
+  }
+
+  /**
+   * El acceso «Inspector Técnico» entra sin contraseña con una sola cuenta de
+   * servicio para todos. No es la cuenta de nadie: cambiarle la contraseña
+   * cerraría la sesión de todos los inspectores a la vez.
+   */
+  private esCuentaCompartida(username?: string): boolean {
+    return (
+      !!username &&
+      username ===
+        this.config.get<string>('INSPECTOR_USERNAME', 'inspector_tecnico')
+    );
+  }
+
+  // ── Cambio de contraseña propia ──────────────────────────────
+  // La contraseña es del IAM (la misma para forms, Sync y el portal): aquí
+  // solo se reenvía. El IAM toma al usuario del token, no del cuerpo, así que
+  // nadie cambia otra contraseña que la suya.
+  //
+  // Se reenvía también el refresh_token: el IAM cuenta su límite de intentos
+  // por sesión cuando lo trae, y por IP cuando no. Todas las peticiones de
+  // forms le llegan desde la IP de este servidor, así que sin él todos los
+  // usuarios compartirían un solo cupo.
+  //
+  // El IAM cierra todas las sesiones del usuario: se borran también las
+  // cookies de aquí y el frontend lo manda a iniciar sesión.
+
+  @Patch('me/password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async cambiarClave(
+    @Req() req: { cookies?: Record<string, string> },
+    @Body() body: CambiarClaveDto,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser('username') username?: string,
+  ) {
+    if (this.esCuentaCompartida(username)) {
+      throw new ForbiddenException(
+        'La cuenta compartida de inspector no tiene contraseña propia.',
+      );
+    }
+    const { data } = await this.iam.patch(
+      '/auth/me/password',
+      { currentPassword: body.currentPassword, newPassword: body.newPassword },
+      {
+        access_token: req.cookies?.access_token ?? '',
+        refresh_token: req.cookies?.refresh_token ?? '',
+      },
+    );
+    this.iam.clearCookies(res);
+    return data;
   }
 
   // ── TOTP / 2FA setup ─────────────────────────────────────────

@@ -79,6 +79,13 @@ export const RolePermissions: Record<Role, Permission[]> = {
     Permission.CREATE_FORM,
     Permission.VIEW_REPORTS,
   ],
+
+  /**
+   * Sin permisos generales a propósito: su acceso es el módulo de monitoreo,
+   * que lo exige con `@Roles`. Sumarle `READ_FORM` o `VIEW_REPORTS` le
+   * abriría pantallas de otras áreas que no le corresponden.
+   */
+  [Role.MONITOREO_CONFIABILIDAD]: [],
 };
 
 export function getPermissionsForRoles(roles: Role[]): Permission[] {

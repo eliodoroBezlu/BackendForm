@@ -42,6 +42,6 @@ import {
     EquiposExcelService,
     ResolucionOrganizacionalService,
   ],
-  exports: [EquiposService, MigracionService],
+  exports: [EquiposService, MigracionService, ResolucionOrganizacionalService],
 })
 export class EquiposModule {}

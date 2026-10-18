@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { IamProxyService } from './iam-proxy.service';
@@ -25,14 +29,25 @@ const respuestaFalsa = () =>
 describe('AuthController', () => {
   let controller: AuthController;
   let reflector: Reflector;
-  let iam: { post: jest.Mock; get: jest.Mock; forwardCookies: jest.Mock };
+  let iam: {
+    post: jest.Mock;
+    patch: jest.Mock;
+    get: jest.Mock;
+    forwardCookies: jest.Mock;
+    clearCookies: jest.Mock;
+  };
   let config: { get: jest.Mock };
 
   beforeEach(async () => {
     iam = {
       post: jest.fn().mockResolvedValue({ data: { ok: true }, rawHeaders: [] }),
+      patch: jest.fn().mockResolvedValue({
+        data: { message: 'Contraseña actualizada.', sesionesCerradas: 2 },
+        rawHeaders: [],
+      }),
       get: jest.fn().mockResolvedValue({}),
       forwardCookies: jest.fn(),
+      clearCookies: jest.fn(),
     };
     config = { get: jest.fn() };
 
@@ -148,6 +163,70 @@ describe('AuthController', () => {
 
       // Importante: la clave se comprueba ANTES de gastar una llamada a IAM.
       expect(iam.post).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cambiarClave', () => {
+    const peticion = {
+      cookies: { access_token: 'acceso', refresh_token: 'renovacion' },
+    };
+    const cuerpo = {
+      currentPassword: 'Actual@2025',
+      newPassword: 'Nueva#2026',
+    };
+
+    it('NO es anonima', () => {
+      expect(esPublica('cambiarClave')).toBe(false);
+    });
+
+    it('reenvia al IAM con las dos cookies de la sesion', async () => {
+      // Sin el refresh_token el IAM cuenta el limite por IP, y todas las
+      // peticiones de forms salen de la misma: un solo cupo para todos.
+      const res = respuestaFalsa();
+      const r = await controller.cambiarClave(peticion, cuerpo, res, 'jperez');
+
+      expect(iam.patch).toHaveBeenCalledWith('/auth/me/password', cuerpo, {
+        access_token: 'acceso',
+        refresh_token: 'renovacion',
+      });
+      expect(r).toEqual({
+        message: 'Contraseña actualizada.',
+        sesionesCerradas: 2,
+      });
+    });
+
+    it('al salir bien borra las cookies: el IAM cerro todas las sesiones', async () => {
+      const res = respuestaFalsa();
+      await controller.cambiarClave(peticion, cuerpo, res, 'jperez');
+      expect(iam.clearCookies).toHaveBeenCalledWith(res);
+    });
+
+    it('rechaza la cuenta compartida de inspector sin llamar al IAM', async () => {
+      // Cambiarle la contraseña cerraría la sesión de todos los inspectores.
+      config.get.mockImplementation(
+        (_clave: string, porDefecto?: string) => porDefecto,
+      );
+
+      await expect(
+        controller.cambiarClave(
+          peticion,
+          cuerpo,
+          respuestaFalsa(),
+          'inspector_tecnico',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(iam.patch).not.toHaveBeenCalled();
+    });
+
+    it('si el IAM lo rechaza, propaga el error y no toca las cookies', async () => {
+      iam.patch.mockRejectedValue(
+        new HttpException('Contraseña actual incorrecta', 400),
+      );
+
+      await expect(
+        controller.cambiarClave(peticion, cuerpo, respuestaFalsa(), 'jperez'),
+      ).rejects.toThrow('Contraseña actual incorrecta');
+      expect(iam.clearCookies).not.toHaveBeenCalled();
     });
   });
 });

@@ -37,6 +37,8 @@ import { ClasificacionModule } from './modules/clasificacion/clasificacion.modul
 import { ConfigBienvenidaModule } from './modules/config-bienvenida/config-bienvenida.module';
 import { ConfigFormularioModule } from './modules/config-formulario/config-formulario.module';
 import { EquiposModule } from './modules/equipos/equipos.module';
+import { ServicioFormulariosModule } from './modules/servicio-formularios/servicio-formularios.module';
+import { MonitoreoEquiposModule } from './modules/monitoreo-equipos/monitoreo-equipos.module';
 
 @Module({
   imports: [
@@ -96,6 +98,9 @@ import { EquiposModule } from './modules/equipos/equipos.module';
     AuditoriaModule,
     PrestamosSpccModule,
     LinternasModule,
+    // forms como anfitrión del servicio de formularios: firma sus tokens.
+    ServicioFormulariosModule,
+    MonitoreoEquiposModule,
   ],
   providers: [],
 })

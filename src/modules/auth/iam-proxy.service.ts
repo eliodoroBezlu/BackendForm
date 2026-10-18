@@ -9,6 +9,17 @@ import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 
+/**
+ * El mensaje de error del IAM como texto. Los errores de validación de
+ * class-validator llegan como lista (`message: string[]`); se unen para que el
+ * frontend pueda mostrarlos tal cual.
+ */
+function mensajeDe(data: unknown, porDefecto: string): string {
+  const message = (data as { message?: unknown } | null)?.message;
+  if (Array.isArray(message)) return message.join('. ');
+  return typeof message === 'string' ? message : porDefecto;
+}
+
 @Injectable()
 export class IamProxyService {
   private readonly logger = new Logger(IamProxyService.name);
@@ -32,21 +43,39 @@ export class IamProxyService {
     return headers;
   }
 
-  // ── POST genérico ──────────────────────────────────────────────
+  // ── POST / PATCH genéricos ─────────────────────────────────────
 
-  async post(
+  post(
     path: string,
     body: Record<string, unknown>,
     cookies: Record<string, string> = {},
   ): Promise<{ data: unknown; rawHeaders: string[] }> {
+    return this.enviar('POST', path, body, cookies);
+  }
+
+  patch(
+    path: string,
+    body: Record<string, unknown>,
+    cookies: Record<string, string> = {},
+  ): Promise<{ data: unknown; rawHeaders: string[] }> {
+    return this.enviar('PATCH', path, body, cookies);
+  }
+
+  private async enviar(
+    method: 'POST' | 'PATCH',
+    path: string,
+    body: Record<string, unknown>,
+    cookies: Record<string, string>,
+  ): Promise<{ data: unknown; rawHeaders: string[] }> {
     const url = `${this.iamUrl}/api${path}`;
 
     const cookieHeader = Object.entries(cookies)
+      .filter(([, v]) => v)
       .map(([k, v]) => `${k}=${v}`)
       .join('; ');
 
     const res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: this.baseHeaders({
         'Content-Type': 'application/json',
         ...(cookieHeader && { Cookie: cookieHeader }),
@@ -61,10 +90,7 @@ export class IamProxyService {
       this.logger.warn(
         `IAM Core ${path} → ${res.status}: ${JSON.stringify(data)}`,
       );
-      throw new HttpException(
-        (data as { message?: string }).message ?? res.statusText,
-        res.status,
-      );
+      throw new HttpException(mensajeDe(data, res.statusText), res.status);
     }
 
     return { data, rawHeaders };

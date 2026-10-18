@@ -17,6 +17,19 @@ export enum Role {
    * `forms` en IAM Core, de donde llega vía sync a `Trabajador.roles_iam`.
    */
   INSPECTOR_ASIGNADO = 'inspector_asignado',
+  /**
+   * Monitoreo de equipos de Confiabilidad (formato 2.03.P01.R09): reportes de
+   * termografía y desgaste de bombas, sus catálogos y la ficha de cada bomba.
+   *
+   * Es un rol **exclusivo**: lo tienen el área de Confiabilidad y quien se
+   * nombre expresamente, y ningún otro rol lo hereda —tampoco admin—. Por eso
+   * no entra en `ROLES_VISIBILIDAD_TOTAL` y el `RolesGuard` lo compara tal
+   * cual.
+   *
+   * Debe existir con este mismo valor en `availableRoles` del servicio
+   * `forms` en IAM Core.
+   */
+  MONITOREO_CONFIABILIDAD = 'monitoreo_confiabilidad',
 }
 
 /**
