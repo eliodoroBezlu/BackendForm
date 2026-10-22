@@ -34,8 +34,11 @@ export const puedeVerPlanesSinAprobar = (roles?: string[] | null): boolean =>
  * misma regla como filtro.
  */
 export const planEsVisible = (
-  plan: { estadoAprobacion?: string },
+  plan: { estadoAprobacion?: string; sinObservaciones?: boolean },
   roles?: string[] | null,
 ): boolean =>
   plan.estadoAprobacion === ESTADO_APROBACION_APROBADO ||
+  // Un plan «sin observaciones» no tiene tareas que aprobar: solo dice por
+  // qué la IRO se cerró sin plan, y eso lo puede ver el supervisor del área.
+  plan.sinObservaciones === true ||
   puedeVerPlanesSinAprobar(roles);

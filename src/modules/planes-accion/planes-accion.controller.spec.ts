@@ -89,12 +89,14 @@ describe('PlanesAccionController', () => {
   });
 
   describe('propagación de roles', () => {
-    it('findOne pasa los roles del usuario', () => {
-      controller.findOne('plan-1', [Role.SUPERVISOR]);
+    it('findOne pasa los roles y el usuario (el alcance por área sale de su ficha)', () => {
+      controller.findOne('plan-1', [Role.SUPERVISOR], 'jperez');
 
-      expect(servicio.findOne).toHaveBeenCalledWith('plan-1', [
-        Role.SUPERVISOR,
-      ]);
+      expect(servicio.findOne).toHaveBeenCalledWith(
+        'plan-1',
+        [Role.SUPERVISOR],
+        'jperez',
+      );
     });
 
     it('findAll pasa los roles ademas de los filtros', () => {

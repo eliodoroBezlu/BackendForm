@@ -99,6 +99,7 @@ export class PlanesAccionController {
     @Query('superintendencia') superintendencia?: string,
     @Query('areaFisica') areaFisica?: string,
     @CurrentUser('roles') roles?: string[],
+    @CurrentUser('username') username?: string,
   ) {
     const filters: any = {};
     if (estado) filters.estado = estado;
@@ -106,7 +107,7 @@ export class PlanesAccionController {
     if (superintendencia) filters.superintendencia = superintendencia;
     if (areaFisica) filters.areaFisica = areaFisica;
 
-    return this.planesAccionService.findAll(filters, roles);
+    return this.planesAccionService.findAll(filters, roles, username);
   }
 
   @Get('stats')
@@ -117,8 +118,12 @@ export class PlanesAccionController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Obtener un plan de acción por ID' })
-  findOne(@Param('id') id: string, @CurrentUser('roles') roles?: string[]) {
-    return this.planesAccionService.findOne(id, roles);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser('roles') roles?: string[],
+    @CurrentUser('username') username?: string,
+  ) {
+    return this.planesAccionService.findOne(id, roles, username);
   }
 
   @Patch(':id/aprobar-global')
@@ -144,9 +149,10 @@ export class PlanesAccionController {
     @Param('id') id: string,
     @Res() res: Response,
     @CurrentUser('roles') roles?: string[],
+    @CurrentUser('username') username?: string,
   ) {
     try {
-      const plan = await this.planesAccionService.findOne(id, roles);
+      const plan = await this.planesAccionService.findOne(id, roles, username);
       const buffer = await this.planesAccionExcelService.generarExcel(plan);
 
       const areaPart = (plan.areaFisica || 'Sin area').replace(

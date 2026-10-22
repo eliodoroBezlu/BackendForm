@@ -16,20 +16,21 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
+/**
+ * Puede llegar a medio llenar en un «Guardar avance». Que esté completo se
+ * exige al terminar la inspección (`domain/terminar-inspeccion.ts`).
+ */
 export class CreateInspectionTeamMemberDto {
   @ApiProperty({ description: 'Nombre del miembro del equipo' })
   @IsString()
-  @IsNotEmpty()
   nombre: string;
 
   @ApiProperty({ description: 'Cargo del miembro del equipo' })
   @IsString()
-  @IsNotEmpty()
   cargo: string;
 
   @ApiProperty({ description: 'Firma del miembro del equipo' })
   @IsString()
-  @IsNotEmpty()
   firma: string;
 }
 
@@ -173,15 +174,14 @@ export class CreateSectionResponseDto {
   sectionComment?: string;
 }
 
+/** Igual que el equipo: completo recién al terminar la inspección. */
 export class CreatePersonalInvolucradoDto {
   @ApiProperty({ description: 'Nombre completo del personal involucrado' })
   @IsString()
-  @IsNotEmpty()
   nombre: string;
 
   @ApiProperty({ description: 'Cédula de identidad (C.I.)' })
   @IsString()
-  @IsNotEmpty()
   ci: string;
 }
 

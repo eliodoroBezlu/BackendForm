@@ -46,4 +46,12 @@ describe('planEsVisible', () => {
     expect(planEsVisible({}, [Role.SUPERVISOR])).toBe(false);
     expect(planEsVisible({}, [Role.ADMIN])).toBe(true);
   });
+
+  it('un plan «sin observaciones» no espera aprobacion: lo ve el supervisor', () => {
+    expect(
+      planEsVisible({ estadoAprobacion: 'pendiente', sinObservaciones: true }, [
+        Role.SUPERVISOR,
+      ]),
+    ).toBe(true);
+  });
 });

@@ -71,6 +71,13 @@ export interface PlanMetadatosOrganizacionales {
 export interface PlanGeneradoDesdeInstancia {
   metadatosOrganizacionales: PlanMetadatosOrganizacionales;
   tareas: TareaGenerada[];
+  /**
+   * Secciones de la inspección cuyo `sectionId` ya no está en la plantilla
+   * (se editó en el lugar después de llenarla y sus secciones cambiaron de
+   * `_id`). Sus respuestas no se revisan: sin esto, el «no hay
+   * observaciones» no distingue «no hay hallazgos» de «no se pudo mirar».
+   */
+  seccionesSinPlantilla: number;
 }
 
 function convertToMap(
@@ -83,6 +90,33 @@ function convertToMap(
     return new Map(Object.entries(verificationList));
   }
   return new Map();
+}
+
+/**
+ * Cada plantilla nombra los campos a su manera: «Área», «Área Física:»,
+ * «Area Física», «Superintendencia Sénior:». Se buscan sin tildes,
+ * mayúsculas ni los dos puntos del final; si no, el plan quedaba con «Área no
+ * especificada» y nadie del área lo veía.
+ */
+const claveDeCampo = (etiqueta: string): string =>
+  etiqueta
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/:\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+function camposDeVerificacion(
+  verificationList: InstanceLike['verificationList'],
+): { get: (etiqueta: string) => string | undefined } {
+  const porClave = new Map<string, string>();
+  for (const [etiqueta, valor] of convertToMap(verificationList)) {
+    const clave = claveDeCampo(etiqueta);
+    // Si dos etiquetas dan la misma clave, gana la primera que traiga algo.
+    if (!porClave.get(clave)) porClave.set(clave, valor);
+  }
+  return { get: (etiqueta) => porClave.get(claveDeCampo(etiqueta)) };
 }
 
 function crearMapaSecciones(
@@ -157,6 +191,48 @@ export function determinarFamiliaPeligro(sectionTitle: string): string {
 }
 
 /**
+ * Por qué una inspección terminada no dio ninguna tarea: es lo que se ve en
+ * la pestaña «Sin observaciones». Se cuenta sobre las mismas respuestas y
+ * con el mismo criterio que `requierePlanDeAccion`, para que el motivo nunca
+ * contradiga a la regla.
+ */
+export function motivoSinObservaciones(
+  instance: InstanceLike,
+  opciones: GenerarPlanOpciones = {},
+): string {
+  const { incluirPuntaje3 = false } = opciones;
+  let bajos = 0;
+  let tresSinComentario = 0;
+  let respondidas = 0;
+  let noAplica = 0;
+
+  for (const section of instance.sections) {
+    for (const question of section.questions) {
+      if (question.response === 'N/A') noAplica++;
+      const puntaje = extraerPuntaje(question.response);
+      if (puntaje === null) continue;
+      respondidas++;
+      if (puntaje < 3) bajos++;
+      else if (puntaje === 3) tresSinComentario++;
+    }
+  }
+
+  const plural = (n: number, uno: string, varios: string) =>
+    n === 1 ? `1 ${uno}` : `${n} ${varios}`;
+
+  if (bajos > 0) {
+    return `${plural(bajos, 'pregunta tiene', 'preguntas tienen')} puntaje menor a 3, pero ninguna con comentario: sin comentario no se genera tarea.`;
+  }
+  if (respondidas === 0) {
+    return `Todas las preguntas se marcaron «No aplica» (${noAplica}).`;
+  }
+  if (incluirPuntaje3 && tresSinComentario > 0) {
+    return 'Ninguna pregunta con puntaje menor a 3, y las de puntaje 3 no tienen comentario.';
+  }
+  return `Ninguna pregunta con puntaje menor a 3 (${plural(respondidas, 'respondida', 'respondidas')}${noAplica > 0 ? `, ${noAplica} «No aplica»` : ''}).`;
+}
+
+/**
  * Deriva las tareas de observación (y los metadatos organizacionales del
  * plan) a partir de una instancia + su template, aplicando las reglas de
  * puntaje/clasificación. Función pura — no hace I/O ni persiste nada; el
@@ -170,12 +246,13 @@ export function generarTareasDesdeInstancia(
   opciones: GenerarPlanOpciones = {},
 ): PlanGeneradoDesdeInstancia {
   const sectionsMap = crearMapaSecciones(template.sections);
-  const verificationMap = convertToMap(instance.verificationList);
+  const verificationMap = camposDeVerificacion(instance.verificationList);
 
   const vicepresidencia =
     verificationMap.get('Vicepresidencia') ||
     verificationMap.get('Gerencia') ||
     verificationMap.get('Gerencia / Vicepresidencia') ||
+    verificationMap.get('Dirección/Gerencia') ||
     'Vicepresidencia no especificada';
 
   const superintendenciaSenior =
@@ -201,10 +278,14 @@ export function generarTareasDesdeInstancia(
 
   const tareas: TareaGenerada[] = [];
   let numeroItem = 0;
+  let seccionesSinPlantilla = 0;
 
   for (const section of instance.sections) {
     const sectionInfo = sectionsMap.get(section.sectionId);
-    if (!sectionInfo) continue;
+    if (!sectionInfo) {
+      seccionesSinPlantilla++;
+      continue;
+    }
 
     for (const question of section.questions) {
       const puntaje = extraerPuntaje(question.response);
@@ -254,5 +335,6 @@ export function generarTareasDesdeInstancia(
       empresa,
     },
     tareas,
+    seccionesSinPlantilla,
   };
 }

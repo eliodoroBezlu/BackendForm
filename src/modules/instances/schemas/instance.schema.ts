@@ -5,15 +5,17 @@ import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 
 export type InstanceDocument = Instance & Document;
 
+// Sin `required`: un borrador se guarda a medio llenar. Que esté completo lo
+// exige `faltantesParaTerminar` al terminar la inspección.
 @Schema({ timestamps: true })
 export class InspectionTeamMember {
-  @Prop({ required: true })
+  @Prop({ default: '' })
   nombre: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   cargo: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   firma: string;
 }
 
@@ -73,10 +75,10 @@ export class SectionResponse {
 
 @Schema()
 export class PersonalInvolucrado {
-  @Prop({ required: true })
+  @Prop({ default: '' })
   nombre: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   ci: string;
 }
 

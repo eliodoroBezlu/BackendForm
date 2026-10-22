@@ -19,16 +19,66 @@ import {
   marcarDadoDeBaja,
   marcarRestaurado,
 } from '../../common/baja-logica/baja-logica.plugin';
+import {
+  ESTADO_BORRADOR,
+  estadoAlGuardar,
+  faltantesParaTerminar,
+  seTermina,
+  type InspeccionPorTerminar,
+} from './domain/terminar-inspeccion';
+
+/** Lo que se hace cuando una inspección se termina (hoy: generar su plan de acción). */
+export type AlTerminarInspeccion = (instanciaId: string) => Promise<unknown>;
 
 @Injectable()
 export class InstancesService {
   private readonly logger = new Logger(InstancesService.name);
+
+  /**
+   * Quienes reaccionan a que una inspección se termine. Se registran desde
+   * fuera (`PlanesAccionService`) porque planes de acción ya depende de este
+   * módulo: importarlo de vuelta haría un ciclo.
+   */
+  private readonly oyentesAlTerminar: AlTerminarInspeccion[] = [];
 
   constructor(
     @InjectModel(Instance.name)
     private instanceModel: Model<Instance>,
     private templatesService: TemplatesService,
   ) {}
+
+  alTerminar(oyente: AlTerminarInspeccion): void {
+    this.oyentesAlTerminar.push(oyente);
+  }
+
+  /**
+   * Avisa que la inspección se terminó. Un fallo aquí no deshace el guardado:
+   * la inspección queda terminada y el plan se puede generar a mano.
+   */
+  private async avisarQueSeTermino(instanciaId: string): Promise<void> {
+    for (const oyente of this.oyentesAlTerminar) {
+      try {
+        await oyente(instanciaId);
+      } catch (error) {
+        this.logger.error(
+          `La inspección ${instanciaId} se terminó, pero falló lo que sigue: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
+  /** Terminar exige la inspección completa; si falta algo, 400 con qué falta. */
+  private exigirCompleta(
+    inspeccion: InspeccionPorTerminar,
+    template: { verificationFields?: { label: string; required?: boolean }[] },
+  ): void {
+    const faltan = faltantesParaTerminar(inspeccion, template);
+    if (faltan.length > 0) {
+      throw new BadRequestException(
+        `No se puede terminar la inspección: ${faltan.join('; ')}.`,
+      );
+    }
+  }
 
   /**
    * Crea una nueva instancia con cálculos automáticos
@@ -62,6 +112,11 @@ export class InstancesService {
 
     const instanceTotals = this.calculateInstanceTotals(calculatedSections);
 
+    const status = estadoAlGuardar(undefined, createInstanceDto.status);
+    if (status !== ESTADO_BORRADOR) {
+      this.exigirCompleta(createInstanceDto, template);
+    }
+
     const instanceData = {
       templateId: new Types.ObjectId(createInstanceDto.templateId),
       verificationList: new Map(
@@ -74,24 +129,29 @@ export class InstancesService {
       aspectosAdicionales: createInstanceDto.aspectosAdicionales || '',
       personalInvolucrado: createInstanceDto.personalInvolucrado,
       ...instanceTotals,
-      status: createInstanceDto.status || 'borrador',
+      status,
       createdBy: createInstanceDto.createdBy || 'system',
     };
 
+    let saved: Instance & { _id: Types.ObjectId };
     try {
       const createdInstance = new this.instanceModel(instanceData);
-      const saved = await createdInstance.save();
+      saved = await createdInstance.save();
       this.logger.debug({
         mensaje: 'Instance saved with calculated metrics',
         id: saved._id,
         totalObtained: saved.totalObtainedPoints,
         compliance: saved.overallCompliancePercentage,
       });
-      return saved;
     } catch (error) {
       this.logger.error(`❌ Error saving instance: ${error}`);
       throw new BadRequestException('Error al crear la instancia');
     }
+
+    if (seTermina(undefined, status)) {
+      await this.avisarQueSeTermino(saved._id.toString());
+    }
+    return saved;
   }
 
   /**
@@ -117,12 +177,42 @@ export class InstancesService {
       }
     }
 
-    if (updateInstanceDto.sections) {
-      const instance = await this.findOne(id);
+    const instance = await this.findOne(id);
+    const estadoAnterior = instance.status;
+    const status = estadoAlGuardar(estadoAnterior, updateInstanceDto.status);
+    updateInstanceDto.status = status;
 
-      // Usar el templateId ya resuelto o el de la instancia existente
-      const templateIdToUse =
-        updateInstanceDto.templateId || instance.templateId.toString();
+    // Usar el templateId ya resuelto o el de la instancia existente (que
+    // `findOne` devuelve poblado).
+    const templateDeLaInstancia = instance.templateId as unknown as
+      | Types.ObjectId
+      | { _id: Types.ObjectId };
+    const templateIdToUse =
+      updateInstanceDto.templateId ||
+      ('_id' in templateDeLaInstancia
+        ? templateDeLaInstancia._id
+        : templateDeLaInstancia
+      ).toString();
+
+    if (seTermina(estadoAnterior, status)) {
+      const template = await this.templatesService.findOne(templateIdToUse);
+      // Lo que no viene en el cuerpo se queda como estaba.
+      this.exigirCompleta(
+        {
+          verificationList:
+            updateInstanceDto.verificationList ?? instance.verificationList,
+          inspectionTeam:
+            updateInstanceDto.inspectionTeam ?? instance.inspectionTeam,
+          sections: updateInstanceDto.sections ?? instance.sections,
+          personalInvolucrado:
+            updateInstanceDto.personalInvolucrado ??
+            instance.personalInvolucrado,
+        },
+        template,
+      );
+    }
+
+    if (updateInstanceDto.sections) {
       const template = await this.templatesService.findOne(templateIdToUse);
 
       const flatSections = this.flattenSections(template.sections);
@@ -150,6 +240,9 @@ export class InstancesService {
       throw new NotFoundException('Instancia no encontrada');
     }
 
+    if (seTermina(estadoAnterior, status)) {
+      await this.avisarQueSeTermino(id);
+    }
     return updatedInstance;
   }
 
@@ -305,6 +398,20 @@ export class InstancesService {
       throw new BadRequestException('Estado inválido');
     }
 
+    // Por esta ruta también se puede terminar: misma exigencia y mismo aviso
+    // que al guardar el formulario.
+    const actual = await this.findOne(id);
+    const terminaAhora = seTermina(actual.status, status);
+    if (terminaAhora) {
+      // `findOne` devuelve la plantilla poblada.
+      this.exigirCompleta(
+        actual,
+        actual.templateId as unknown as {
+          verificationFields?: { label: string; required?: boolean }[];
+        },
+      );
+    }
+
     const updateData: any = { status };
 
     switch (status) {
@@ -327,6 +434,9 @@ export class InstancesService {
       throw new NotFoundException('Instancia no encontrada');
     }
 
+    if (terminaAhora) {
+      await this.avisarQueSeTermino(id);
+    }
     return instance;
   }
 

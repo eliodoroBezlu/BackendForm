@@ -47,7 +47,13 @@ export class InstancesController {
   @ApiOperation({ summary: 'Crear una nueva instancia de formulario' })
   @ApiResponse({ status: 201, description: 'Instancia creada exitosamente' })
   @ApiResponse({ status: 404, description: 'Template no encontrado' })
-  create(@Body() createInstanceDto: CreateInstanceDto) {
+  create(
+    @Body() createInstanceDto: CreateInstanceDto,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    // Quién la llenó sale de la sesión: «Mis inspecciones» la busca por aquí,
+    // y antes llegaba vacía y quedaba «system».
+    if (usuario) createInstanceDto.createdBy = usuario;
     return this.instancesService.create(createInstanceDto);
   }
 
@@ -135,7 +141,11 @@ export class InstancesController {
   async update(
     @Param('id') id: string,
     @Body() updateInstanceDto: UpdateInstanceDto,
+    @CurrentUser('username') usuario?: string,
   ) {
+    if (usuario) updateInstanceDto.updatedBy = usuario;
+    // El autor no cambia al editar, aunque el cuerpo traiga otro.
+    delete updateInstanceDto.createdBy;
     return await this.instancesService.update(id, updateInstanceDto);
   }
 
@@ -152,10 +162,7 @@ export class InstancesController {
 
   @Delete(':id')
   @Roles(Role.ADMIN, Role.SUPERINTENDENTE, Role.SUPERVISOR)
-  remove(
-    @Param('id') id: string,
-    @CurrentUser('username') usuario?: string,
-  ) {
+  remove(@Param('id') id: string, @CurrentUser('username') usuario?: string) {
     return this.instancesService.remove(id, usuario ?? 'desconocido');
   }
 

@@ -186,6 +186,17 @@ export class PlanDeAccion {
   @Prop({ required: true })
   fechaUltimaActualizacion: Date;
 
+  /**
+   * La inspección se terminó sin observaciones que cumplan el criterio: el
+   * plan nace cerrado y sin tareas, para que cada IRO tenga su registro y se
+   * vea por qué no hubo nada que hacer (`motivoSinObservaciones`).
+   */
+  @Prop({ default: false })
+  sinObservaciones: boolean;
+
+  @Prop()
+  motivoSinObservaciones?: string;
+
   // Baja lógica: los planes nunca se eliminan físicamente
   @Prop({ default: true })
   activo: boolean;
@@ -208,6 +219,15 @@ export class PlanDeAccion {
 
   @Prop({ type: [HistorialAprobacionSchema], default: [] })
   historialAprobacion: HistorialAprobacion[];
+}
+
+/**
+ * De qué IRO o ISOP sale el plan (la plantilla de su inspección). No se
+ * guarda: `findAll` lo agrega al listar.
+ */
+export interface TipoDeInspeccion {
+  codigo: string;
+  nombre: string;
 }
 
 export const PlanDeAccionSchema = SchemaFactory.createForClass(PlanDeAccion);

@@ -2,6 +2,7 @@ import {
   determinarFamiliaPeligro,
   extraerPuntaje,
   generarTareasDesdeInstancia,
+  motivoSinObservaciones,
   requierePlanDeAccion,
   type InstanceLike,
   type TemplateLike,
@@ -227,6 +228,27 @@ describe('generarTareasDesdeInstancia', () => {
     expect(resultado.tareas[0].responsableObservacion).toBe('jperez');
   });
 
+  it('encuentra los campos aunque la plantilla los escriba con dos puntos o sin tilde', () => {
+    // F47/F48/F51 dicen «Área Física:», «Area Física», «Superintendencia:».
+    const resultado = generarTareasDesdeInstancia(
+      instancia([{ seccion: 's1', pregunta: 'P', valor: 1, comentario: 'x' }], {
+        'Dirección/Gerencia': 'Gerencia Planta',
+        'Superintendencia Sénior:': 'Sup. Sénior Planta',
+        'Area Física': 'Flotación',
+        'Superintendencia:': 'Sup. Planta',
+      }),
+      plantilla,
+      'inst-1',
+    );
+
+    expect(resultado.metadatosOrganizacionales).toMatchObject({
+      vicepresidencia: 'Gerencia Planta',
+      superintendenciaSenior: 'Sup. Sénior Planta',
+      areaFisica: 'Flotación',
+      superintendencia: 'Sup. Planta',
+    });
+  });
+
   it('acepta la lista de verificacion como Map', () => {
     // Mongoose devuelve un Map; las pruebas y los seeds, un objeto plano.
     const resultado = generarTareasDesdeInstancia(
@@ -276,6 +298,25 @@ describe('generarTareasDesdeInstancia', () => {
     expect(resultado.tareas).toEqual([]);
   });
 
+  it('cuenta las secciones que no estan en la plantilla, para no confundirlas con «sin hallazgos»', () => {
+    const resultado = generarTareasDesdeInstancia(
+      instancia([
+        {
+          seccion: 'seccion-borrada',
+          pregunta: 'P',
+          valor: 1,
+          comentario: 'x',
+        },
+        { seccion: 's1', pregunta: 'Q', valor: 1, comentario: 'y' },
+      ]),
+      plantilla,
+      'inst-1',
+    );
+
+    expect(resultado.seccionesSinPlantilla).toBe(1);
+    expect(resultado.tareas).toHaveLength(1);
+  });
+
   it('una inspeccion sin hallazgos no genera ninguna tarea', () => {
     const resultado = generarTareasDesdeInstancia(
       instancia([{ seccion: 's1', pregunta: 'P', valor: 5 }]),
@@ -284,6 +325,7 @@ describe('generarTareasDesdeInstancia', () => {
     );
 
     expect(resultado.tareas).toEqual([]);
+    expect(resultado.seccionesSinPlantilla).toBe(0);
   });
 
   it('las preguntas marcadas N/A se ignoran', () => {
@@ -296,5 +338,35 @@ describe('generarTareasDesdeInstancia', () => {
     );
 
     expect(resultado.tareas).toEqual([]);
+  });
+});
+
+describe('motivoSinObservaciones', () => {
+  const con = (...valores: (number | string)[]) => ({
+    sections: [
+      {
+        sectionId: 's1',
+        questions: valores.map((response) => ({ questionText: 'P', response })),
+      },
+    ],
+  });
+
+  it('sin puntajes bajos lo dice, con cuantas se respondieron', () => {
+    expect(motivoSinObservaciones(con(3, 3, 'N/A'))).toBe(
+      'Ninguna pregunta con puntaje menor a 3 (2 respondidas, 1 «No aplica»).',
+    );
+  });
+
+  it('avisa cuando hubo puntajes bajos que no generaron tarea por falta de comentario', () => {
+    // Es el caso que importa ver: hay hallazgos, pero el criterio los dejo fuera.
+    expect(motivoSinObservaciones(con(0, 0, 3))).toBe(
+      '2 preguntas tienen puntaje menor a 3, pero ninguna con comentario: sin comentario no se genera tarea.',
+    );
+  });
+
+  it('todo en «No aplica»', () => {
+    expect(motivoSinObservaciones(con('N/A', 'N/A'))).toBe(
+      'Todas las preguntas se marcaron «No aplica» (2).',
+    );
   });
 });

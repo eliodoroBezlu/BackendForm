@@ -45,6 +45,27 @@ describe('InstancesController', () => {
   const filtros = () =>
     servicio.findAll.mock.calls[0][0] as Record<string, unknown>;
 
+  describe('autor de la IRO', () => {
+    it('al crear, el autor es el usuario de la sesion, no lo que diga el cuerpo', async () => {
+      await controller.create({ createdBy: 'otro' } as never, 'jperez');
+
+      expect(servicio.create.mock.calls[0][0]).toMatchObject({
+        createdBy: 'jperez',
+      });
+    });
+
+    it('al editar, queda quien edito y el autor no cambia', async () => {
+      await controller.update('id-1', { createdBy: 'otro' } as never, 'jperez');
+
+      const enviado = servicio.update.mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(enviado.updatedBy).toBe('jperez');
+      expect(enviado).not.toHaveProperty('createdBy');
+    });
+  });
+
   describe('construcción del filtro', () => {
     it('la paginacion siempre viaja en el filtro', async () => {
       // Los valores por defecto (pagina 1, 10 por pagina) los aplica

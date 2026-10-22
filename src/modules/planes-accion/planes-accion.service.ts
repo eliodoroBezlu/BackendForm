@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { CreatePlanAccionDto } from './dto/create-planes-accion.dto';
 import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
@@ -15,30 +17,172 @@ import { GenerarPlanesDto } from './dto/generar-planes.dto';
 import { InstancesService } from '../instances/instances.service';
 import { TemplatesService } from '../templates/templates.service';
 import { InjectModel } from '@nestjs/mongoose';
-import { PlanDeAccion, TareaObservacion } from './schemas/plan-accion.schema';
+import {
+  PlanDeAccion,
+  TareaObservacion,
+  type TipoDeInspeccion,
+} from './schemas/plan-accion.schema';
+import { Instance } from '../instances/schemas/instance.schema';
 import { ConfigService } from '@nestjs/config';
-import { generarTareasDesdeInstancia } from './domain/generar-plan.logic';
+import {
+  generarTareasDesdeInstancia,
+  motivoSinObservaciones,
+  type GenerarPlanOpciones,
+  type PlanGeneradoDesdeInstancia,
+} from './domain/generar-plan.logic';
 import { validarActualizacionTarea } from './domain/tarea-update.validation';
 import {
   calcularDiasRetraso,
   calcularMetadatos,
+  ESTADO_CERRADO,
   soloTareasActivas,
   type EstadisticasDePlanes,
 } from './domain/metadatos-plan';
-import { puedeVerPlanesSinAprobar } from './domain/visibilidad-plan';
+import {
+  planEsVisible,
+  puedeVerPlanesSinAprobar,
+} from './domain/visibilidad-plan';
+import {
+  alcanceDe,
+  planDentroDelAlcance,
+  type AlcanceDePlanes,
+  type AreaDelMaestro,
+} from './domain/alcance-plan';
+import { Area } from '../area/schemas/area.schema';
+import { Trabajador } from '../trabajadores/schemas/trabajador.schema';
+
+/**
+ * El criterio del plan que se crea solo al terminar una IRO: el mismo que el
+ * botón «Generar desde inspección» trae marcado por defecto.
+ */
+const CRITERIO_AL_TERMINAR: GenerarPlanOpciones = {
+  incluirPuntaje3: false,
+  incluirSoloConComentario: true,
+};
+
+/** Un plan que no está dado de baja. */
+const ACTIVO = { activo: { $ne: false } };
 
 @Injectable()
-export class PlanesAccionService {
+export class PlanesAccionService implements OnModuleInit {
   private readonly logger = new Logger(PlanesAccionService.name);
 
   constructor(
     @InjectModel(PlanDeAccion.name)
     private planDeAccionModel: Model<PlanDeAccion>,
+    @InjectModel(Area.name)
+    private readonly areaModel: Model<Area>,
+    @InjectModel(Trabajador.name)
+    private readonly trabajadorModel: Model<Trabajador>,
+    @InjectModel(Instance.name)
+    private readonly instanceModel: Model<Instance>,
 
     private readonly instancesService: InstancesService,
     private readonly templatesService: TemplatesService,
     private readonly configService: ConfigService,
   ) {}
+
+  /** Cada IRO que se termina recibe su plan (o su «sin observaciones»). */
+  onModuleInit(): void {
+    this.instancesService.alTerminar((instanceId) =>
+      this.generarAlTerminar(instanceId),
+    );
+  }
+
+  private async cargarInspeccion(instanceId: string) {
+    const instance = await this.instancesService.findOne(instanceId);
+
+    const templateId =
+      instance.templateId instanceof Types.ObjectId
+        ? instance.templateId.toString()
+        : instance.templateId;
+
+    const template = await this.templatesService.findOne(templateId);
+    return { instance, template, templateId };
+  }
+
+  /** Una IRO tiene un solo plan: el que se creó al terminarla o a mano. */
+  private planDeLaInspeccion(instanceId: string) {
+    return this.planDeAccionModel.findOne({ instanceId, ...ACTIVO }).exec();
+  }
+
+  private guardarPlan(
+    instanceId: string,
+    {
+      metadatosOrganizacionales: {
+        vicepresidencia,
+        superintendenciaSenior,
+        superintendencia,
+        areaFisica,
+      },
+      tareas,
+    }: PlanGeneradoDesdeInstancia,
+    motivoSinObs?: string,
+  ): Promise<PlanDeAccion> {
+    const metadatos = calcularMetadatos(
+      tareas as unknown as TareaObservacion[],
+    );
+
+    const plan = new this.planDeAccionModel({
+      vicepresidencia,
+      superintendenciaSenior,
+      superintendencia,
+      areaFisica,
+      instanceId,
+      tareas,
+      ...metadatos,
+      // Sin tareas, `calcularMetadatos` lo daría por «abierto»: este nace
+      // cerrado, no hay nada que hacer.
+      ...(motivoSinObs && {
+        estado: ESTADO_CERRADO,
+        sinObservaciones: true,
+        motivoSinObservaciones: motivoSinObs,
+      }),
+      fechaCreacion: new Date(),
+      fechaUltimaActualizacion: new Date(),
+    });
+    return plan.save();
+  }
+
+  /**
+   * Lo que pasa al terminar una IRO: si tiene observaciones que cumplen el
+   * criterio se crea el plan con sus tareas; si no, un plan cerrado «sin
+   * observaciones» que dice por qué. Idempotente: si ya tiene plan, no hace
+   * nada.
+   *
+   * Devuelve `null` cuando no puede decidir: si alguna sección de la
+   * inspección ya no está en su plantilla, un «sin observaciones» podría
+   * ocultar hallazgos que no se pudieron leer.
+   */
+  async generarAlTerminar(instanceId: string): Promise<PlanDeAccion | null> {
+    const existente = await this.planDeLaInspeccion(instanceId);
+    if (existente) return existente;
+
+    const { instance, template, templateId } =
+      await this.cargarInspeccion(instanceId);
+    const resultado = generarTareasDesdeInstancia(
+      instance,
+      template,
+      instanceId,
+      CRITERIO_AL_TERMINAR,
+    );
+
+    if (resultado.seccionesSinPlantilla > 0) {
+      this.logger.warn(
+        `IRO ${instanceId} terminada: ${resultado.seccionesSinPlantilla} de ${instance.sections.length} secciones no existen en la plantilla ${templateId} (reparar con scripts/reparar-secciones-inspecciones.cjs)`,
+      );
+      if (resultado.tareas.length === 0) return null;
+    }
+
+    if (resultado.tareas.length > 0) {
+      return this.guardarPlan(instanceId, resultado);
+    }
+    return this.guardarPlan(
+      instanceId,
+      resultado,
+      motivoSinObservaciones(instance, CRITERIO_AL_TERMINAR),
+    );
+  }
 
   /**
    * 🔥 Genera UN PLAN con múltiples tareas desde una instancia
@@ -51,25 +195,33 @@ export class PlanesAccionService {
       throw new BadRequestException('ID de instancia inválido');
     }
 
-    const instance = await this.instancesService.findOne(instanceId);
+    if (await this.planDeLaInspeccion(instanceId)) {
+      throw new ConflictException('Esta inspección ya tiene su plan de acción');
+    }
 
-    const templateId =
-      instance.templateId instanceof Types.ObjectId
-        ? instance.templateId.toString()
-        : instance.templateId;
-
-    const template = await this.templatesService.findOne(templateId);
+    const { instance, template, templateId } =
+      await this.cargarInspeccion(instanceId);
 
     // Reglas de puntaje/clasificación puras — no tocan Mongoose.
-    const {
-      metadatosOrganizacionales: {
-        vicepresidencia,
-        superintendenciaSenior,
-        superintendencia,
-        areaFisica,
-      },
-      tareas: tareasGeneradas,
-    } = generarTareasDesdeInstancia(instance, template, instanceId, opciones);
+    const resultado = generarTareasDesdeInstancia(
+      instance,
+      template,
+      instanceId,
+      opciones,
+    );
+    const { tareas: tareasGeneradas, seccionesSinPlantilla } = resultado;
+
+    if (seccionesSinPlantilla > 0) {
+      const total = instance.sections.length;
+      if (tareasGeneradas.length === 0) {
+        throw new BadRequestException(
+          `${seccionesSinPlantilla} de ${total} secciones de esta inspección ya no existen en su plantilla (la plantilla se editó después de llenarla), así que no se pudieron revisar. Pida al administrador del sistema que repare la inspección.`,
+        );
+      }
+      this.logger.warn(
+        `Plan de la inspección ${instanceId}: ${seccionesSinPlantilla} de ${total} secciones no existen en la plantilla ${templateId} y no se revisaron (reparar con scripts/reparar-secciones-inspecciones.cjs)`,
+      );
+    }
 
     if (tareasGeneradas.length === 0) {
       throw new BadRequestException(
@@ -77,24 +229,7 @@ export class PlanesAccionService {
       );
     }
 
-    const metadatos = calcularMetadatos(
-      tareasGeneradas as unknown as TareaObservacion[],
-    );
-
-    const planData = {
-      vicepresidencia,
-      superintendenciaSenior,
-      superintendencia,
-      areaFisica,
-      instanceId: instanceId,
-      tareas: tareasGeneradas,
-      ...metadatos,
-      fechaCreacion: new Date(),
-      fechaUltimaActualizacion: new Date(),
-    };
-
-    const plan = new this.planDeAccionModel(planData);
-    return plan.save();
+    return this.guardarPlan(instanceId, resultado);
   }
 
   /**
@@ -131,6 +266,10 @@ export class PlanesAccionService {
     } as TareaObservacion;
 
     plan.tareas.push(nuevaTarea);
+    // Con una tarea deja de ser «sin observaciones»: vuelve a ser un plan como
+    // los demás, con su estado según sus tareas.
+    plan.sinObservaciones = false;
+    plan.motivoSinObservaciones = undefined;
 
     const metadatos = calcularMetadatos(soloTareasActivas(plan.tareas));
     Object.assign(plan, metadatos);
@@ -494,6 +633,7 @@ export class PlanesAccionService {
       areaFisica?: string;
     },
     requesterRoles?: string[],
+    username?: string,
   ): Promise<PlanDeAccion[]> {
     const query: FilterQuery<PlanDeAccion> = { activo: { $ne: false } };
 
@@ -511,20 +651,128 @@ export class PlanesAccionService {
     }
 
     // 🔒 Barrera de seguridad server-side: quien no sea Admin/Superintendente
-    // nunca recibe planes pendientes de aprobación global.
+    // nunca recibe planes pendientes de aprobación global (los «sin
+    // observaciones» no esperan aprobación: ver `planEsVisible`).
     if (!puedeVerPlanesSinAprobar(requesterRoles)) {
-      query.estadoAprobacion = 'aprobado';
+      query.$or = [
+        { estadoAprobacion: 'aprobado' },
+        { sinObservaciones: true },
+      ];
     }
 
-    const planes = await this.planDeAccionModel
-      .find(query)
-      .sort({ fechaCreacion: -1 })
-      .exec();
+    const [planes, alcance] = await Promise.all([
+      this.planDeAccionModel.find(query).sort({ fechaCreacion: -1 }).exec(),
+      this.alcanceDe(requesterRoles, username),
+    ]);
 
-    return planes.map((p) => this.sanitizeTareas(p));
+    // 🔒 Segunda barrera: solo los planes de su lugar en la organización.
+    // Se filtra aquí y no en la consulta porque el área del plan es texto
+    // libre y se compara normalizado.
+    const visibles = planes.filter((p) => planDentroDelAlcance(p, alcance));
+    const tipos = await this.tiposDeInspeccion(visibles);
+    return visibles.map((p) =>
+      this.sanitizeTareas({
+        ...p.toObject(),
+        tipoInspeccion: p.instanceId ? tipos.get(p.instanceId) : undefined,
+      }),
+    );
   }
 
-  async findOne(id: string, requesterRoles?: string[]): Promise<PlanDeAccion> {
+  /**
+   * De qué IRO o ISOP sale cada plan: la plantilla de su inspección. Se
+   * deduce al listar (una consulta para todos) y no se guarda en el plan, así
+   * los planes que ya existen lo tienen sin migrar nada.
+   */
+  private async tiposDeInspeccion(
+    planes: { instanceId?: string }[],
+  ): Promise<Map<string, TipoDeInspeccion>> {
+    const ids = [
+      ...new Set(
+        planes
+          .map((p) => p.instanceId)
+          .filter((id): id is string => !!id && Types.ObjectId.isValid(id)),
+      ),
+    ];
+    if (ids.length === 0) return new Map();
+
+    const instancias = await this.instanceModel
+      .find({ _id: { $in: ids } })
+      .select('templateId')
+      .populate({ path: 'templateId', select: 'code name' })
+      .lean()
+      .exec();
+
+    const tipos = new Map<string, TipoDeInspeccion>();
+    for (const i of instancias) {
+      const plantilla = i.templateId as unknown as {
+        code?: string;
+        name?: string;
+      } | null;
+      if (plantilla?.code) {
+        tipos.set(String(i._id), {
+          codigo: plantilla.code,
+          nombre: plantilla.name ?? plantilla.code,
+        });
+      }
+    }
+    return tipos;
+  }
+
+  /**
+   * Qué planes le tocan a quien pregunta: su área y superintendencia salen de
+   * su ficha de trabajador; las áreas de una superintendencia, del maestro.
+   */
+  private async alcanceDe(
+    roles?: string[],
+    username?: string,
+  ): Promise<AlcanceDePlanes> {
+    const sinMaestro = alcanceDe({ roles, username }, []);
+    if (sinMaestro.todo) return sinMaestro;
+
+    const [trabajador, areas] = await Promise.all([
+      username
+        ? this.trabajadorModel
+            .findOne({ username })
+            .select('area superintendencia')
+            .lean()
+            .exec()
+        : null,
+      this.areaModel
+        .find({ activo: { $ne: false } })
+        .select('nombre superintendencia')
+        .populate({ path: 'superintendencia', select: 'nombre' })
+        .lean()
+        .exec(),
+    ]);
+
+    if (!trabajador) {
+      this.logger.warn(
+        `«${username ?? 'sin usuario'}» no tiene ficha de trabajador: solo ve los planes con tareas a su cargo`,
+      );
+    }
+
+    const maestro: AreaDelMaestro[] = areas.map((a) => ({
+      area: a.nombre,
+      superintendencia:
+        (a.superintendencia as unknown as { nombre?: string } | null)?.nombre ??
+        null,
+    }));
+    return alcanceDe(
+      {
+        roles,
+        username,
+        area: trabajador?.area,
+        superintendencia: trabajador?.superintendencia,
+      },
+      maestro,
+    );
+  }
+
+  async findOne(
+    id: string,
+    requesterRoles?: string[],
+    username?: string,
+  ): Promise<PlanDeAccion> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('ID inválido');
     }
@@ -535,14 +783,19 @@ export class PlanesAccionService {
       throw new NotFoundException('Plan no encontrado');
     }
 
-    // 🔒 Misma barrera que en findAll, aplicada al acceso directo por ID.
-    if (
-      !puedeVerPlanesSinAprobar(requesterRoles) &&
-      plan.estadoAprobacion !== 'aprobado'
-    ) {
+    // 🔒 Mismas barreras que en findAll, aplicadas al acceso directo por ID.
+    if (!planEsVisible(plan, requesterRoles)) {
       throw new ForbiddenException(
         'Este plan aún no fue aprobado por el Superintendente',
       );
+    }
+    if (
+      !planDentroDelAlcance(
+        plan,
+        await this.alcanceDe(requesterRoles, username),
+      )
+    ) {
+      throw new ForbiddenException('Este plan no es de su área');
     }
 
     return this.sanitizeTareas(plan);
@@ -591,7 +844,12 @@ export class PlanesAccionService {
    * Obtener estadísticas globales
    */
   async getStats(): Promise<EstadisticasDePlanes> {
-    const activoFilter = { activo: { $ne: false } };
+    // Los «sin observaciones» no cuentan: nacen cerrados sin que nadie cerrara
+    // nada, e inflarían la tasa de cierre.
+    const activoFilter = {
+      activo: { $ne: false },
+      sinObservaciones: { $ne: true },
+    };
     const [total, abiertos, enProgreso, cerrados] = await Promise.all([
       this.planDeAccionModel.countDocuments(activoFilter).exec(),
       this.planDeAccionModel

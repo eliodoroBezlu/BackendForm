@@ -243,3 +243,79 @@ describe('InstancesService · cálculo de puntaje', () => {
     });
   });
 });
+
+describe('InstancesService · terminar la inspeccion', () => {
+  const plantilla = {
+    sections: [seccionPlantilla('s1', 6)],
+    verificationFields: [{ label: 'Área', required: true }],
+  };
+
+  const construir = async () => {
+    const ModeloSimulado = function (this: unknown, datos: never) {
+      Object.assign(this as object, datos);
+      (this as { save: () => unknown }).save = () =>
+        Promise.resolve({ ...(datos as object), _id: 'id-instancia' });
+    } as unknown as new (datos: unknown) => unknown;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        InstancesService,
+        { provide: getModelToken(Instance.name), useValue: ModeloSimulado },
+        {
+          provide: TemplatesService,
+          useValue: { findOne: jest.fn().mockResolvedValue(plantilla) },
+        },
+      ],
+    }).compile();
+    const servicio = module.get<InstancesService>(InstancesService);
+    const oyente = jest.fn().mockResolvedValue(undefined);
+    servicio.alTerminar(oyente);
+    return { servicio, oyente };
+  };
+
+  const crear = (
+    servicio: InstancesService,
+    valores: (number | string)[],
+    status?: string,
+  ) =>
+    servicio.create({
+      templateId: '507f1f77bcf86cd799439011',
+      verificationList: { Área: 'Flotación' },
+      inspectionTeam: [{ nombre: 'Ana', cargo: 'Supervisora', firma: 'f' }],
+      sections: [respuestas('s1', valores)],
+      status,
+    } as unknown as CreateInstanceDto);
+
+  it('guardar avance acepta preguntas sin responder y no genera nada', async () => {
+    const { servicio, oyente } = await construir();
+
+    await crear(servicio, [3, ''], 'borrador');
+
+    expect(oyente).not.toHaveBeenCalled();
+  });
+
+  it('terminar con preguntas sin responder da 400 y dice cuantas faltan', async () => {
+    const { servicio, oyente } = await construir();
+
+    await expect(crear(servicio, [3, ''], 'completado')).rejects.toThrow(
+      'Falta responder 1 pregunta',
+    );
+    expect(oyente).not.toHaveBeenCalled();
+  });
+
+  it('terminar completa avisa una vez, con el id de la inspeccion', async () => {
+    const { servicio, oyente } = await construir();
+
+    await crear(servicio, [3, 'N/A'], 'completado');
+
+    expect(oyente).toHaveBeenCalledTimes(1);
+    expect(oyente).toHaveBeenCalledWith('id-instancia');
+  });
+
+  it('si lo que sigue falla, la inspeccion se guarda igual', async () => {
+    const { servicio, oyente } = await construir();
+    oyente.mockRejectedValue(new Error('sin plantilla'));
+
+    await expect(crear(servicio, [3, 3], 'completado')).resolves.toBeDefined();
+  });
+});
