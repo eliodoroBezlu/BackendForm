@@ -32,6 +32,13 @@ import {
 } from './domain/generar-plan.logic';
 import { validarActualizacionTarea } from './domain/tarea-update.validation';
 import {
+  cambiosDeTarea,
+  faltantesParaEstado,
+  mensajeDeFaltantes,
+  type CambioDeCampo,
+} from './domain/requisitos-tarea';
+import { CorregirTareaDto } from './dto/corregir-tarea.dto';
+import {
   calcularDiasRetraso,
   calcularMetadatos,
   ESTADO_CERRADO,
@@ -287,6 +294,7 @@ export class PlanesAccionService implements OnModuleInit {
     planId: string,
     tareaId: string,
     updateDto: UpdateTareaDto,
+    usuario = 'desconocido',
   ): Promise<PlanDeAccion> {
     if (!Types.ObjectId.isValid(planId)) {
       throw new BadRequestException('ID de plan inválido');
@@ -311,9 +319,11 @@ export class PlanesAccionService implements OnModuleInit {
     }
 
     // Validación de estado/campos bloqueados + normalización — función pura,
-    // no toca Mongoose.
+    // no toca Mongoose. Recibe un objeto plano: al copiar un subdocumento con
+    // `...` no vienen sus campos, sino los internos de Mongoose.
+    const antes = this.comoObjeto(tareaActual);
     const { error, actualizacionProcesada } = validarActualizacionTarea(
-      tareaActual,
+      antes,
       updateDto,
     );
     if (error) {
@@ -324,6 +334,12 @@ export class PlanesAccionService implements OnModuleInit {
 
     // Aplicar cambios
     Object.assign(plan.tareas[tareaIndex], actualizacionProcesada);
+    this.anotarEnHistorial(
+      plan.tareas[tareaIndex],
+      'avance',
+      usuario,
+      cambiosDeTarea(antes, actualizacionProcesada),
+    );
 
     // Calcular días de retraso
     const tareaActualizada = plan.tareas[tareaIndex];
@@ -477,7 +493,11 @@ export class PlanesAccionService implements OnModuleInit {
   /**
    * 🆕 Aprobar una tarea
    */
-  async approveTarea(planId: string, tareaId: string): Promise<PlanDeAccion> {
+  async approveTarea(
+    planId: string,
+    tareaId: string,
+    usuario = 'desconocido',
+  ): Promise<PlanDeAccion> {
     if (!Types.ObjectId.isValid(planId)) {
       throw new BadRequestException('ID de plan inválido');
     }
@@ -516,7 +536,11 @@ export class PlanesAccionService implements OnModuleInit {
     }
 
     tarea.aprobado = true;
+    this.anotarEnHistorial(tarea, 'aprobacion', usuario, [
+      { campo: 'aprobado', antes: 'No', despues: 'Sí' },
+    ]);
     plan.tareas[tareaIndex] = tarea;
+    plan.markModified('tareas');
 
     plan.fechaUltimaActualizacion = new Date();
 
@@ -582,6 +606,109 @@ export class PlanesAccionService implements OnModuleInit {
    * antes de devolver el plan al frontend — nunca se eliminan físicamente,
    * solo dejan de mostrarse.
    */
+  /**
+   * Corrección del admin: cambia los datos de la tarea y su estado, también
+   * hacia atrás (si se cargó mal, se puede volver a «abierto» o «en
+   * progreso»). Pide un motivo y queda en el historial con lo que había antes.
+   *
+   * Lo que no puede es dejar la tarea en un estado sin los datos que ese
+   * estado exige: corregir no es saltarse las reglas. Si la tarea estaba
+   * aprobada y deja de estar cerrada, pierde la aprobación.
+   */
+  async corregirTarea(
+    planId: string,
+    tareaId: string,
+    dto: CorregirTareaDto,
+    usuario = 'desconocido',
+  ): Promise<PlanDeAccion> {
+    if (!Types.ObjectId.isValid(planId)) {
+      throw new BadRequestException('ID de plan inválido');
+    }
+    const plan = await this.planDeAccionModel.findById(planId);
+    if (!plan || plan.activo === false) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+    const indice = plan.tareas.findIndex(
+      (t) => t._id?.toString() === tareaId && t.activo !== false,
+    );
+    if (indice === -1) {
+      throw new NotFoundException('Tarea no encontrada');
+    }
+
+    const tarea = plan.tareas[indice];
+    const antes = this.comoObjeto(tarea);
+    const { motivo, ...campos } = dto;
+
+    const cambiosPedidos: Record<string, unknown> = { ...campos };
+    for (const fecha of [
+      'fechaCumplimientoAcordada',
+      'fechaCumplimientoEfectiva',
+    ] as const) {
+      if (campos[fecha] === '') cambiosPedidos[fecha] = undefined;
+      else if (campos[fecha]) cambiosPedidos[fecha] = new Date(campos[fecha]);
+    }
+
+    const destino = campos.estado ?? antes.estado;
+    const faltan = faltantesParaEstado(
+      { ...antes, ...cambiosPedidos },
+      destino,
+    );
+    if (faltan.length > 0) {
+      throw new BadRequestException(mensajeDeFaltantes(destino, faltan));
+    }
+    if (antes.aprobado && destino !== 'cerrado') {
+      cambiosPedidos.aprobado = false;
+    }
+
+    const cambios = cambiosDeTarea(antes, cambiosPedidos);
+    if (cambios.length === 0) {
+      throw new BadRequestException('La corrección no cambia nada');
+    }
+
+    Object.assign(tarea, cambiosPedidos);
+    tarea.diasRetraso = tarea.fechaCumplimientoAcordada
+      ? calcularDiasRetraso(
+          new Date(tarea.fechaCumplimientoAcordada),
+          tarea.fechaCumplimientoEfectiva
+            ? new Date(tarea.fechaCumplimientoEfectiva)
+            : undefined,
+        )
+      : 0;
+    this.anotarEnHistorial(tarea, 'correccion', usuario, cambios, motivo);
+
+    Object.assign(plan, calcularMetadatos(soloTareasActivas(plan.tareas)));
+    plan.fechaUltimaActualizacion = new Date();
+    plan.markModified('tareas');
+    await plan.save();
+
+    this.logger.log(
+      `Tarea ${tareaId} del plan ${planId} corregida por ${usuario}: ${cambios.map((c) => c.campo).join(', ')}`,
+    );
+    return this.sanitizeTareas(plan);
+  }
+
+  /** La tarea como objeto plano (sin los internos de Mongoose). */
+  private comoObjeto(tarea: TareaObservacion): TareaObservacion {
+    const conToObject = tarea as TareaObservacion & {
+      toObject?: () => TareaObservacion;
+    };
+    return conToObject.toObject ? conToObject.toObject() : { ...tarea };
+  }
+
+  private anotarEnHistorial(
+    tarea: TareaObservacion,
+    tipo: 'avance' | 'correccion' | 'aprobacion',
+    usuario: string,
+    cambios: CambioDeCampo[],
+    motivo?: string,
+  ): void {
+    if (cambios.length === 0) return;
+    tarea.historial = [
+      ...(tarea.historial ?? []),
+      { fecha: new Date(), usuario, tipo, cambios, motivo },
+    ];
+  }
+
   private sanitizeTareas<T extends { tareas: TareaObservacion[] }>(plan: T): T {
     plan.tareas = soloTareasActivas(plan.tareas);
     return plan;

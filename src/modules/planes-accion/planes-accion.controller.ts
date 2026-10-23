@@ -19,6 +19,7 @@ import { CreatePlanAccionDto } from './dto/create-planes-accion.dto';
 import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
 import { AddTareaDto } from './dto/add-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
+import { CorregirTareaDto } from './dto/corregir-tarea.dto';
 import { AprobarPlanDto } from './dto/aprobar-plan.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -215,11 +216,35 @@ export class PlanesAccionController {
     @Param('planId') planId: string,
     @Param('tareaId') tareaId: string,
     @Body() updateTareaDto: UpdateTareaDto,
+    @CurrentUser('username') usuario?: string,
   ) {
     return this.planesAccionService.updateTarea(
       planId,
       tareaId,
       updateTareaDto,
+      usuario,
+    );
+  }
+
+  @Patch(':planId/tareas/:tareaId/corregir')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Corregir una tarea (solo Admin): datos y estado, también hacia atrás, con motivo',
+  })
+  @ApiParam({ name: 'planId', description: 'ID del plan' })
+  @ApiParam({ name: 'tareaId', description: 'ID de la tarea' })
+  corregirTarea(
+    @Param('planId') planId: string,
+    @Param('tareaId') tareaId: string,
+    @Body() dto: CorregirTareaDto,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.planesAccionService.corregirTarea(
+      planId,
+      tareaId,
+      dto,
+      usuario,
     );
   }
 
@@ -236,13 +261,17 @@ export class PlanesAccionController {
   }
 
   @Patch(':planId/tareas/:tareaId/aprobar')
+  // La pantalla ya lo decía («Solo Admin/Superintendente»), pero la ruta no
+  // lo exigía: cualquiera con sesión podía aprobar.
+  @Roles(Role.ADMIN, Role.SUPERINTENDENTE)
   @ApiOperation({ summary: 'Aprobar una tarea cerrada' })
   @ApiParam({ name: 'planId', description: 'ID del plan' })
   @ApiParam({ name: 'tareaId', description: 'ID de la tarea' })
   approveTarea(
     @Param('planId') planId: string,
     @Param('tareaId') tareaId: string,
+    @CurrentUser('username') usuario?: string,
   ) {
-    return this.planesAccionService.approveTarea(planId, tareaId);
+    return this.planesAccionService.approveTarea(planId, tareaId, usuario);
   }
 }

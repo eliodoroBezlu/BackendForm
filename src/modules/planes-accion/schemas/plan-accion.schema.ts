@@ -31,6 +31,47 @@ export class MLMetadata {
 
 export const MLMetadataSchema = SchemaFactory.createForClass(MLMetadata);
 
+@Schema({ _id: false })
+export class CampoCambiado {
+  @Prop({ required: true })
+  campo: string;
+
+  @Prop({ default: '' })
+  antes: string;
+
+  @Prop({ default: '' })
+  despues: string;
+}
+
+export const CampoCambiadoSchema = SchemaFactory.createForClass(CampoCambiado);
+
+/**
+ * Una entrada del historial de una tarea. `tipo`:
+ * - `avance`: lo que se va cargando en el flujo normal;
+ * - `correccion`: el admin cambió datos o estado (incluso hacia atrás), con
+ *   su motivo;
+ * - `aprobacion`: se aprobó la tarea cerrada.
+ */
+@Schema({ _id: false })
+export class CambioDeTarea {
+  @Prop({ required: true })
+  fecha: Date;
+
+  @Prop({ required: true })
+  usuario: string;
+
+  @Prop({ required: true, enum: ['avance', 'correccion', 'aprobacion'] })
+  tipo: string;
+
+  @Prop({ type: [CampoCambiadoSchema], default: [] })
+  cambios: CampoCambiado[];
+
+  @Prop()
+  motivo?: string;
+}
+
+export const CambioDeTareaSchema = SchemaFactory.createForClass(CambioDeTarea);
+
 // 🆕 Subdocumento para las tareas/observaciones
 @Schema({})
 export class TareaObservacion {
@@ -106,6 +147,10 @@ export class TareaObservacion {
 
   @Prop({ default: true })
   activo: boolean;
+
+  /** Quién cambió qué y cuándo: cada avance, corrección y aprobación. */
+  @Prop({ type: [CambioDeTareaSchema], default: [] })
+  historial?: CambioDeTarea[];
 }
 
 export const TareaObservacionSchema =

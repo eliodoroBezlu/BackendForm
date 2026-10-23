@@ -4,7 +4,17 @@
  * planos y devuelve el resultado (error o actualización normalizada) para
  * que el llamador (`PlanesAccionService.updateTarea`) decida cómo mutar y
  * persistir el subdocumento.
+ *
+ * Qué datos exige cada estado vive en `requisitos-tarea.ts` (lo comparte con
+ * la corrección del admin). Aquí se agrega el orden: por esta vía una tarea
+ * solo avanza, de a un paso. Volver atrás es una corrección del admin.
  */
+import {
+  faltantesParaEstado,
+  mensajeDeFaltantes,
+  NOMBRE_DEL_ESTADO,
+  posicionDelEstado,
+} from './requisitos-tarea';
 
 export const CAMPOS_BLOQUEADOS_DESDE_INSPECCION = [
   'fechaHallazgo',
@@ -22,8 +32,10 @@ export interface TareaActualLike {
   familiaPeligro?: string;
   accionPropuesta?: string;
   responsableAreaCierre?: string;
+  fechaHallazgo?: Date;
   fechaCumplimientoAcordada?: Date;
   fechaCumplimientoEfectiva?: Date;
+  evidencias?: EvidenciaInput[];
 }
 
 export interface EvidenciaInput {
@@ -49,7 +61,9 @@ export type TareaUpdateErrorType =
   | 'aprobada'
   | 'campos-bloqueados'
   | 'en-progreso-incompleto'
-  | 'cerrado-sin-fecha';
+  | 'cerrado-incompleto'
+  | 'retroceso'
+  | 'salto';
 
 export interface TareaUpdateError {
   type: TareaUpdateErrorType;
@@ -100,6 +114,8 @@ export function validarActualizacionTarea(
   }
 
   const actualizacionProcesada: Record<string, unknown> = { ...updateDto };
+  // Aprobar es de `approveTarea` (con su rol): por aquí no se aprueba.
+  delete actualizacionProcesada.aprobado;
 
   if (updateDto.fechaCumplimientoAcordada) {
     actualizacionProcesada.fechaCumplimientoAcordada = new Date(
@@ -126,35 +142,40 @@ export function validarActualizacionTarea(
       ...actualizacionProcesada,
     } as TareaActualLike;
 
-    if (updateDto.estado === 'en-progreso') {
-      if (
-        !tareaConCambios.familiaPeligro ||
-        !tareaConCambios.accionPropuesta ||
-        !tareaConCambios.responsableAreaCierre ||
-        !tareaConCambios.fechaCumplimientoAcordada
-      ) {
-        return {
-          error: {
-            type: 'en-progreso-incompleto',
-            message:
-              'Para pasar a "en-progreso", la tarea debe tener: Familia de Peligro, Acción Propuesta, Responsable y Fecha Acordada',
-          },
-          actualizacionProcesada,
-        };
-      }
+    const desde = posicionDelEstado(tareaActual.estado);
+    const hacia = posicionDelEstado(updateDto.estado);
+    if (hacia < desde) {
+      return {
+        error: {
+          type: 'retroceso',
+          message: `Una tarea en ${NOMBRE_DEL_ESTADO[tareaActual.estado]} no vuelve a ${NOMBRE_DEL_ESTADO[updateDto.estado]}: solo el administrador puede corregirla.`,
+        },
+        actualizacionProcesada,
+      };
+    }
+    if (hacia - desde > 1) {
+      return {
+        error: {
+          type: 'salto',
+          message:
+            'La tarea tiene que pasar por En progreso antes de cerrarse.',
+        },
+        actualizacionProcesada,
+      };
     }
 
-    if (updateDto.estado === 'cerrado') {
-      if (!tareaConCambios.fechaCumplimientoEfectiva) {
-        return {
-          error: {
-            type: 'cerrado-sin-fecha',
-            message:
-              'Para cerrar la tarea, debe tener una Fecha de Cumplimiento Efectiva',
-          },
-          actualizacionProcesada,
-        };
-      }
+    const faltan = faltantesParaEstado(tareaConCambios, updateDto.estado);
+    if (faltan.length > 0) {
+      return {
+        error: {
+          type:
+            updateDto.estado === 'cerrado'
+              ? 'cerrado-incompleto'
+              : 'en-progreso-incompleto',
+          message: mensajeDeFaltantes(updateDto.estado, faltan),
+        },
+        actualizacionProcesada,
+      };
     }
   }
 

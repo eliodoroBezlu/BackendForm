@@ -413,3 +413,128 @@ describe('PlanesAccionService · tipo de inspeccion al listar', () => {
     expect(planes.find((p) => p._id === 'p2')?.tipoInspeccion).toBeUndefined();
   });
 });
+
+describe('PlanesAccionService · correccion del admin e historial', () => {
+  const programada = (
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    _id: { toString: () => 't1' },
+    numeroItem: 1,
+    activo: true,
+    aprobado: false,
+    estado: 'en-progreso',
+    familiaPeligro: 'Sustancias peligrosas',
+    accionPropuesta: 'Rotular los bidones según la hoja SDS',
+    responsableAreaCierre: 'Jhonny Eugenio',
+    fechaHallazgo: new Date(2026, 9, 1),
+    fechaCumplimientoAcordada: new Date(2026, 9, 10),
+    evidencias: [],
+    historial: [],
+    ...extra,
+  });
+
+  const construirCon = async (tarea: Record<string, unknown>) => {
+    const doc = {
+      _id: ID_VALIDO,
+      activo: true,
+      tareas: [tarea],
+      fechaUltimaActualizacion: new Date(2020, 0, 1),
+      markModified: jest.fn(),
+      save: jest.fn(),
+    };
+    doc.save = jest.fn().mockResolvedValue(doc);
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PlanesAccionService,
+        {
+          provide: getModelToken(PlanDeAccion.name),
+          useValue: { findById: jest.fn().mockResolvedValue(doc) },
+        },
+        { provide: InstancesService, useValue: {} },
+        { provide: TemplatesService, useValue: {} },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        ...modelosDelAlcance,
+      ],
+    }).compile();
+    return { servicio: module.get(PlanesAccionService), doc };
+  };
+
+  it('el admin devuelve una tarea cerrada a en progreso y queda en el historial con su motivo', async () => {
+    const tarea = programada({
+      estado: 'cerrado',
+      aprobado: true,
+      fechaCumplimientoEfectiva: new Date(2026, 9, 9),
+      evidencias: [{ nombre: 'foto.jpg', url: '/uploads/foto.jpg' }],
+    });
+    const { servicio } = await construirCon(tarea);
+
+    await servicio.corregirTarea(
+      ID_VALIDO,
+      't1',
+      {
+        estado: 'en-progreso',
+        fechaCumplimientoEfectiva: '',
+        motivo: 'La evidencia era de otra tarea',
+      },
+      'eliodoro',
+    );
+
+    expect(tarea.estado).toBe('en-progreso');
+    expect(tarea.aprobado).toBe(false);
+    expect(tarea.fechaCumplimientoEfectiva).toBeUndefined();
+    const entrada = (tarea.historial as Record<string, unknown>[])[0];
+    expect(entrada).toMatchObject({
+      tipo: 'correccion',
+      usuario: 'eliodoro',
+      motivo: 'La evidencia era de otra tarea',
+    });
+    expect(
+      (entrada.cambios as { campo: string }[]).map((c) => c.campo),
+    ).toEqual(['estado', 'fechaCumplimientoEfectiva', 'aprobado']);
+  });
+
+  it('corregir no deja una tarea cerrada sin lo que exige el cierre', async () => {
+    const { servicio } = await construirCon(programada());
+
+    await expect(
+      servicio.corregirTarea(ID_VALIDO, 't1', {
+        estado: 'cerrado',
+        fechaCumplimientoEfectiva: '2026-10-09',
+        motivo: 'Se cerró en campo y faltó cargarlo',
+      }),
+    ).rejects.toThrow('al menos una evidencia del cierre');
+  });
+
+  it('una correccion que no cambia nada se rechaza', async () => {
+    const { servicio } = await construirCon(programada());
+
+    await expect(
+      servicio.corregirTarea(ID_VALIDO, 't1', {
+        estado: 'en-progreso',
+        motivo: 'Revisión sin cambios reales',
+      }),
+    ).rejects.toThrow('no cambia nada');
+  });
+
+  it('cada avance normal tambien queda en el historial, con quien lo hizo', async () => {
+    const tarea = programada({ estado: 'abierto' });
+    const { servicio } = await construirCon(tarea);
+
+    await servicio.updateTarea(
+      ID_VALIDO,
+      't1',
+      { estado: 'en-progreso' },
+      'jhonnya',
+    );
+
+    expect(tarea.historial).toEqual([
+      expect.objectContaining({
+        tipo: 'avance',
+        usuario: 'jhonnya',
+        cambios: [
+          { campo: 'estado', antes: 'abierto', despues: 'en-progreso' },
+        ],
+      }),
+    ]);
+  });
+});

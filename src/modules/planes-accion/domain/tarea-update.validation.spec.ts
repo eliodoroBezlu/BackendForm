@@ -83,21 +83,65 @@ describe('validarActualizacionTarea — transiciones de estado', () => {
     expect(error).toBeUndefined();
   });
 
-  it('no se cierra una tarea sin fecha de cumplimiento efectiva', () => {
-    const { error } = validarActualizacionTarea(tareaCompleta(), {
-      estado: 'cerrado',
-    });
+  it('no se cierra una tarea sin fecha efectiva ni evidencia', () => {
+    const { error } = validarActualizacionTarea(
+      tareaCompleta({ estado: 'en-progreso' }),
+      { estado: 'cerrado' },
+    );
 
-    expect(error?.type).toBe('cerrado-sin-fecha');
+    expect(error?.type).toBe('cerrado-incompleto');
+    expect(error?.message).toContain('fecha de cumplimiento efectiva');
+    expect(error?.message).toContain('evidencia');
   });
 
-  it('se cierra si la fecha efectiva llega en la propia actualizacion', () => {
+  it('se cierra si la fecha efectiva y la evidencia llegan en la propia actualizacion', () => {
+    const { error } = validarActualizacionTarea(
+      tareaCompleta({ estado: 'en-progreso' }),
+      {
+        estado: 'cerrado',
+        fechaCumplimientoEfectiva: '2026-01-22',
+        evidencias: [{ nombre: 'foto.jpg', url: '/uploads/foto.jpg' }],
+      },
+    );
+
+    expect(error).toBeUndefined();
+  });
+
+  it('no se salta de abierto a cerrado', () => {
     const { error } = validarActualizacionTarea(tareaCompleta(), {
       estado: 'cerrado',
       fechaCumplimientoEfectiva: '2026-01-22',
+      evidencias: [{ nombre: 'foto.jpg', url: '/uploads/foto.jpg' }],
     });
 
-    expect(error).toBeUndefined();
+    expect(error?.type).toBe('salto');
+  });
+
+  it('por esta via no se vuelve atras: eso es una correccion del admin', () => {
+    const { error } = validarActualizacionTarea(
+      tareaCompleta({ estado: 'en-progreso' }),
+      { estado: 'abierto' },
+    );
+
+    expect(error?.type).toBe('retroceso');
+  });
+
+  it('una accion propuesta de pocas letras no pasa a en progreso', () => {
+    const { error } = validarActualizacionTarea(
+      tareaCompleta({ accionPropuesta: 'ok' }),
+      { estado: 'en-progreso' },
+    );
+
+    expect(error?.type).toBe('en-progreso-incompleto');
+  });
+
+  it('aprobar no se cuela por la edicion', () => {
+    const { actualizacionProcesada } = validarActualizacionTarea(
+      tareaCompleta(),
+      { aprobado: true } as never,
+    );
+
+    expect(actualizacionProcesada).not.toHaveProperty('aprobado');
   });
 });
 
