@@ -19,7 +19,13 @@ describe('faltantesParaTerminar', () => {
       { nombre: 'Ana', cargo: 'Supervisora', firma: 'data:image/png' },
     ],
     sections: [
-      { questions: [{ response: 3 }, { response: 'N/A' }, { response: 0 }] },
+      {
+        questions: [
+          { response: 3 },
+          { response: 'N/A' },
+          { response: 0, comment: 'Falta señalización' },
+        ],
+      },
     ],
     personalInvolucrado: [],
   });
@@ -35,7 +41,13 @@ describe('faltantesParaTerminar', () => {
   it('cuenta las preguntas sin responder', () => {
     const inspeccion = completa();
     inspeccion.sections = [
-      { questions: [{ response: '' }, { response: null }, { response: 2 }] },
+      {
+        questions: [
+          { response: '' },
+          { response: null },
+          { response: 2, comment: 'Pasillo obstruido' },
+        ],
+      },
     ];
 
     expect(faltantesParaTerminar(inspeccion, plantilla)).toEqual([
@@ -72,6 +84,45 @@ describe('faltantesParaTerminar', () => {
     };
 
     expect(faltantesParaTerminar(inspeccion, plantilla)).toHaveLength(1);
+  });
+});
+
+describe('faltantesParaTerminar · justificacion de puntajes bajos', () => {
+  const plantilla = { verificationFields: [] };
+  const equipo = [{ nombre: 'Ana', cargo: 'Supervisora', firma: 'f' }];
+
+  it('un 0, 1 o 2 sin comentario no deja terminar', () => {
+    const faltan = faltantesParaTerminar(
+      {
+        inspectionTeam: equipo,
+        sections: [
+          {
+            questions: [
+              { response: 0 },
+              { response: '2', comment: '  ' },
+              { response: 3 },
+            ],
+          },
+        ],
+      },
+      plantilla,
+    );
+
+    expect(faltan).toEqual([
+      'Faltan justificar 2 preguntas con puntaje 0, 1 o 2',
+    ]);
+  });
+
+  it('con su comentario, si', () => {
+    const faltan = faltantesParaTerminar(
+      {
+        inspectionTeam: equipo,
+        sections: [{ questions: [{ response: 1, comment: 'Falta baranda' }] }],
+      },
+      plantilla,
+    );
+
+    expect(faltan).toEqual([]);
   });
 });
 

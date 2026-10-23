@@ -25,7 +25,9 @@ const ORDEN_DE_ESTADOS = [
 export interface InspeccionPorTerminar {
   verificationList?: Map<string, string> | Record<string, string> | null;
   inspectionTeam?: { nombre?: string; cargo?: string; firma?: string }[];
-  sections?: { questions?: { response?: string | number | null }[] }[];
+  sections?: {
+    questions?: { response?: string | number | null; comment?: string }[];
+  }[];
   personalInvolucrado?: { nombre?: string; ci?: string }[];
 }
 
@@ -65,6 +67,27 @@ export function faltantesParaTerminar(
       sinResponder === 1
         ? 'Falta responder 1 pregunta'
         : `Faltan responder ${sinResponder} preguntas`,
+    );
+  }
+
+  // Un 0, 1 o 2 es una observación: se justifica siempre (es, además, la
+  // descripción de la tarea del plan de acción). Mismo criterio que el
+  // formulario: `comentarioObligatorio.ts` en el frontend.
+  const sinJustificar = (inspeccion.sections ?? []).reduce(
+    (total, seccion) =>
+      total +
+      (seccion.questions ?? []).filter(
+        (p) =>
+          ['0', '1', '2'].includes(String(p.response ?? '')) &&
+          vacio(p.comment),
+      ).length,
+    0,
+  );
+  if (sinJustificar > 0) {
+    faltan.push(
+      sinJustificar === 1
+        ? 'Falta justificar 1 pregunta con puntaje 0, 1 o 2'
+        : `Faltan justificar ${sinJustificar} preguntas con puntaje 0, 1 o 2`,
     );
   }
 

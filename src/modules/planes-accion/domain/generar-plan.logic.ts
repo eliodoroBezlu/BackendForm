@@ -101,7 +101,7 @@ function convertToMap(
 const claveDeCampo = (etiqueta: string): string =>
   etiqueta
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/:\s*$/, '')
     .replace(/\s+/g, ' ')
     .trim()

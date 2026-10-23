@@ -23,7 +23,7 @@ const ROLES_QUE_VEN_TODO: readonly string[] = [Role.ADMIN, Role.SUPER_ADMIN];
 export const normalizarNombre = (texto?: string | null): string =>
   String(texto ?? '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
