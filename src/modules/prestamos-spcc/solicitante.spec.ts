@@ -63,7 +63,10 @@ describe('PrestamosSpccService - a nombre de quien queda la solicitud', () => {
     const modulo: TestingModule = await Test.createTestingModule({
       providers: [
         PrestamosSpccService,
-        { provide: getModelToken(SolicitudPrestamo.name), useValue: solicitudes },
+        {
+          provide: getModelToken(SolicitudPrestamo.name),
+          useValue: solicitudes,
+        },
         { provide: getModelToken(PrestamoSpcc.name), useValue: {} },
         {
           // `nombreDeTrabajador` y `resolverSolicitante` consultan la

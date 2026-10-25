@@ -53,10 +53,7 @@ export class ClasificacionController {
   @Delete(':id')
   @Permissions(Permission.MANAGE_SETTINGS)
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(
-    @Param('id') id: string,
-    @CurrentUser('username') usuario?: string,
-  ) {
+  remove(@Param('id') id: string, @CurrentUser('username') usuario?: string) {
     return this.clasificacionService.remove(id, usuario ?? 'desconocido');
   }
 }

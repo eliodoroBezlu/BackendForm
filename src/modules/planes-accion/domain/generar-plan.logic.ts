@@ -66,6 +66,8 @@ export interface PlanMetadatosOrganizacionales {
   superintendencia: string;
   areaFisica: string;
   empresa: string;
+  /** Quien figura como supervisor en la IRO: responsable de la observación. */
+  supervisor: string;
 }
 
 export interface PlanGeneradoDesdeInstancia {
@@ -276,6 +278,8 @@ export function generarTareasDesdeInstancia(
   const empresa =
     verificationMap.get('Empresa') || verificationMap.get('Compañía') || 'MSC';
 
+  const supervisor = verificationMap.get('Supervisor') || 'No asignado';
+
   const tareas: TareaGenerada[] = [];
   let numeroItem = 0;
   let seccionesSinPlantilla = 0;
@@ -303,8 +307,7 @@ export function generarTareasDesdeInstancia(
       tareas.push({
         numeroItem,
         fechaHallazgo: instance.createdAt || new Date(),
-        responsableObservacion:
-          verificationMap.get('Supervisor') || 'No asignado',
+        responsableObservacion: supervisor,
         empresa,
         lugarFisico: areaFisica,
         actividad: template.name || 'Actividad no especificada',
@@ -313,8 +316,7 @@ export function generarTareasDesdeInstancia(
         // La acción propuesta viene vacía: el usuario la completa
         // manualmente con ayuda de las recomendaciones de ML.
         accionPropuesta: '',
-        responsableAreaCierre:
-          verificationMap.get('Supervisor') || 'No asignado',
+        responsableAreaCierre: supervisor,
         diasRetraso: 0,
         estado: 'abierto',
         aprobado: false,
@@ -333,6 +335,7 @@ export function generarTareasDesdeInstancia(
       superintendencia,
       areaFisica,
       empresa,
+      supervisor,
     },
     tareas,
     seccionesSinPlantilla,

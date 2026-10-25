@@ -206,6 +206,7 @@ describe('PlanesAccionService · generar desde una inspeccion', () => {
           useValue: {
             findOne: jest.fn().mockResolvedValue(instancia),
             alTerminar,
+            alCambiarDatos: jest.fn(),
           },
         },
         {
@@ -536,5 +537,69 @@ describe('PlanesAccionService · correccion del admin e historial', () => {
         ],
       }),
     ]);
+  });
+});
+
+describe('PlanesAccionService · cascada desde la IRO', () => {
+  it('el supervisor corregido en la IRO llega a la tarea y queda en su historial', async () => {
+    const tarea: Record<string, unknown> = {
+      _id: { toString: () => 't1' },
+      instanceId: ID_VALIDO,
+      activo: true,
+      aprobado: false,
+      responsableObservacion: 'Prueba Supervisor',
+      responsableAreaCierre: 'Prueba Supervisor',
+      empresa: 'MSC',
+      lugarFisico: 'Filtros',
+      historial: [],
+    };
+    const plan = {
+      _id: 'p1',
+      areaFisica: 'Filtros',
+      tareas: [tarea],
+      markModified: jest.fn(),
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PlanesAccionService,
+        {
+          provide: getModelToken(PlanDeAccion.name),
+          useValue: {
+            findOne: jest.fn(() => ({ exec: () => Promise.resolve(plan) })),
+          },
+        },
+        {
+          provide: InstancesService,
+          useValue: {
+            findOne: jest.fn().mockResolvedValue({
+              templateId: ID_VALIDO,
+              verificationList: {
+                Supervisor: 'Jhonny Eugenio',
+                Area: 'Filtros',
+              },
+              sections: [],
+            }),
+          },
+        },
+        {
+          provide: TemplatesService,
+          useValue: { findOne: jest.fn().mockResolvedValue({ sections: [] }) },
+        },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        ...modelosDelAlcance,
+      ],
+    }).compile();
+
+    await module
+      .get(PlanesAccionService)
+      .sincronizarConInspeccion(ID_VALIDO, 'eliodoro');
+
+    expect(tarea.responsableObservacion).toBe('Jhonny Eugenio');
+    expect(tarea.responsableAreaCierre).toBe('Jhonny Eugenio');
+    expect(tarea.historial).toEqual([
+      expect.objectContaining({ tipo: 'inspeccion', usuario: 'eliodoro' }),
+    ]);
+    expect(plan.save).toHaveBeenCalled();
   });
 });

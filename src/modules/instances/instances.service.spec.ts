@@ -319,3 +319,84 @@ describe('InstancesService · terminar la inspeccion', () => {
     await expect(crear(servicio, [3, 3], 'completado')).resolves.toBeDefined();
   });
 });
+
+describe('InstancesService · filtro por plantilla y templateId', () => {
+  const REV7 = '68ed4f7f4348e057d29cadfa';
+  const REV8 = '6abbcf5b9eaa242f68c2f982';
+
+  const construir = async () => {
+    const cadena = (valor: unknown) => {
+      const c: Record<string, jest.Mock> = {};
+      for (const m of ['populate', 'sort', 'skip', 'limit']) {
+        c[m] = jest.fn(() => c);
+      }
+      c.exec = jest.fn().mockResolvedValue(valor);
+      return c;
+    };
+    const modelo = {
+      find: jest.fn(() => cadena([])),
+      countDocuments: jest.fn(() => cadena(0)),
+      findById: jest.fn(() =>
+        cadena({ status: 'borrador', templateId: { _id: REV8 } }),
+      ),
+      findByIdAndUpdate: jest.fn(() => cadena({ _id: 'i1' })),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        InstancesService,
+        { provide: getModelToken(Instance.name), useValue: modelo },
+        {
+          provide: TemplatesService,
+          useValue: {
+            idsDeLasRevisiones: jest.fn().mockResolvedValue([REV7, REV8]),
+            findOne: jest.fn().mockResolvedValue({ sections: [] }),
+          },
+        },
+      ],
+    }).compile();
+    return { servicio: module.get(InstancesService), modelo };
+  };
+
+  it('por código trae todas las revisiones, con el id como ObjectId o como texto', async () => {
+    // La ISOP rev. 7 (obsoleta) tiene las inspecciones; la vigente es la 8.
+    const { servicio, modelo } = await construir();
+
+    await servicio.findAll({ templateCode: '1.02.P06.F12' });
+
+    const query = (modelo.find.mock.calls as unknown[][])[0][0] as {
+      templateId: { $in: unknown[] };
+    };
+    const ids = query.templateId.$in.map((v) => String(v));
+    expect(ids).toEqual([REV7, REV7, REV8, REV8]);
+    expect(query.templateId.$in.some((v) => typeof v === 'string')).toBe(true);
+  });
+
+  it('al editar, el templateId se guarda como ObjectId y no como texto', async () => {
+    const { servicio, modelo } = await construir();
+
+    await servicio.update('507f1f77bcf86cd799439011', {
+      templateId: REV8,
+    } as never);
+
+    const cambios = (
+      modelo.findByIdAndUpdate.mock.calls as unknown[][]
+    )[0][1] as {
+      templateId: unknown;
+    };
+    expect(typeof cambios.templateId).toBe('object');
+    expect(String(cambios.templateId)).toBe(REV8);
+  });
+
+  it('al corregir los datos de la IRO avisa a su plan, con quien la edito', async () => {
+    const { servicio } = await construir();
+    const oyente = jest.fn().mockResolvedValue(undefined);
+    servicio.alCambiarDatos(oyente);
+
+    await servicio.update('507f1f77bcf86cd799439011', {
+      verificationList: { Supervisor: 'Jhonny Eugenio' },
+      updatedBy: 'eliodoro',
+    } as never);
+
+    expect(oyente).toHaveBeenCalledWith('507f1f77bcf86cd799439011', 'eliodoro');
+  });
+});

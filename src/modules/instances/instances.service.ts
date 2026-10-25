@@ -30,6 +30,12 @@ import {
 /** Lo que se hace cuando una inspección se termina (hoy: generar su plan de acción). */
 export type AlTerminarInspeccion = (instanciaId: string) => Promise<unknown>;
 
+/** Lo que se hace cuando se editan los datos de una inspección (hoy: su plan). */
+export type AlCambiarDatosDeInspeccion = (
+  instanciaId: string,
+  usuario: string,
+) => Promise<unknown>;
+
 @Injectable()
 export class InstancesService {
   private readonly logger = new Logger(InstancesService.name);
@@ -41,6 +47,9 @@ export class InstancesService {
    */
   private readonly oyentesAlTerminar: AlTerminarInspeccion[] = [];
 
+  /** Quienes reaccionan a que se editen los datos de una inspección (su plan). */
+  private readonly oyentesAlCambiar: AlCambiarDatosDeInspeccion[] = [];
+
   constructor(
     @InjectModel(Instance.name)
     private instanceModel: Model<Instance>,
@@ -49,6 +58,26 @@ export class InstancesService {
 
   alTerminar(oyente: AlTerminarInspeccion): void {
     this.oyentesAlTerminar.push(oyente);
+  }
+
+  alCambiarDatos(oyente: AlCambiarDatosDeInspeccion): void {
+    this.oyentesAlCambiar.push(oyente);
+  }
+
+  /** Como `avisarQueSeTermino`: un fallo aquí no deshace la edición. */
+  private async avisarQueCambio(
+    instanciaId: string,
+    usuario: string,
+  ): Promise<void> {
+    for (const oyente of this.oyentesAlCambiar) {
+      try {
+        await oyente(instanciaId, usuario);
+      } catch (error) {
+        this.logger.error(
+          `La inspección ${instanciaId} se editó, pero no se pudo actualizar su plan: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -176,6 +205,16 @@ export class InstancesService {
         updateInstanceDto.templateId = templateId._id.toString();
       }
     }
+    // Se guarda como ObjectId, igual que al crear: como texto, el filtro por
+    // plantilla y el populate dejaban de encontrar la inspección.
+    if (
+      updateInstanceDto.templateId &&
+      Types.ObjectId.isValid(updateInstanceDto.templateId)
+    ) {
+      (
+        updateInstanceDto as unknown as { templateId: Types.ObjectId }
+      ).templateId = new Types.ObjectId(updateInstanceDto.templateId);
+    }
 
     const instance = await this.findOne(id);
     const estadoAnterior = instance.status;
@@ -242,12 +281,18 @@ export class InstancesService {
 
     if (seTermina(estadoAnterior, status)) {
       await this.avisarQueSeTermino(id);
+    } else if (updateInstanceDto.verificationList) {
+      // Recién terminada, el plan nace con los datos al día; si no, se
+      // propagan al plan que ya tenga (supervisor, área…).
+      await this.avisarQueCambio(id, updateInstanceDto.updatedBy ?? 'system');
     }
     return updatedInstance;
   }
 
   async findAll(filters?: {
     templateId?: string;
+    /** Todas las revisiones de una plantilla (su código). */
+    templateCode?: string;
     status?: string;
     createdBy?: string;
     dateFrom?: Date;
@@ -267,8 +312,20 @@ export class InstancesService {
   }> {
     const query: any = {};
 
-    if (filters?.templateId) {
-      query.templateId = new Types.ObjectId(filters.templateId);
+    // Algunas inspecciones guardaron `templateId` como texto (la edición no
+    // lo convertía a ObjectId): se buscan las dos formas, si no, quedan fuera
+    // del filtro. `scripts/reparar-templateid-texto.cjs` las convierte.
+    const conAmbasFormas = (ids: string[]) =>
+      ids.flatMap((id) =>
+        Types.ObjectId.isValid(id) ? [new Types.ObjectId(id), id] : [id],
+      );
+    if (filters?.templateCode) {
+      const ids = await this.templatesService.idsDeLasRevisiones(
+        filters.templateCode,
+      );
+      query.templateId = { $in: conAmbasFormas(ids) };
+    } else if (filters?.templateId) {
+      query.templateId = { $in: conAmbasFormas([filters.templateId]) };
     }
 
     if (filters?.status) {

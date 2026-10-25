@@ -61,6 +61,12 @@ export class InstancesController {
   @ApiOperation({ summary: 'Obtener todas las instancias' })
   @ApiQuery({ name: 'templateId', required: false, type: String })
   @ApiQuery({
+    name: 'templateCode',
+    required: false,
+    type: String,
+    description: 'Todas las revisiones de una plantilla',
+  })
+  @ApiQuery({
     name: 'status',
     required: false,
     enum: ['borrador', 'completado', 'revisado', 'aprobado'],
@@ -85,12 +91,14 @@ export class InstancesController {
     maxCompliance?: number,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit?: number,
+    @Query('templateCode') templateCode?: string,
   ) {
     const filters: any = {
       page,
       limit,
     };
     if (templateId) filters.templateId = templateId;
+    if (templateCode) filters.templateCode = templateCode;
     if (status) filters.status = status;
     if (createdBy) filters.createdBy = createdBy;
     if (dateFrom) filters.dateFrom = new Date(dateFrom);

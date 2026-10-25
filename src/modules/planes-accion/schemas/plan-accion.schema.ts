@@ -50,7 +50,8 @@ export const CampoCambiadoSchema = SchemaFactory.createForClass(CampoCambiado);
  * - `avance`: lo que se va cargando en el flujo normal;
  * - `correccion`: el admin cambió datos o estado (incluso hacia atrás), con
  *   su motivo;
- * - `aprobacion`: se aprobó la tarea cerrada.
+ * - `aprobacion`: se aprobó la tarea cerrada;
+ * - `inspeccion`: se corrigió la IRO y el dato bajó en cascada.
  */
 @Schema({ _id: false })
 export class CambioDeTarea {
@@ -60,7 +61,10 @@ export class CambioDeTarea {
   @Prop({ required: true })
   usuario: string;
 
-  @Prop({ required: true, enum: ['avance', 'correccion', 'aprobacion'] })
+  @Prop({
+    required: true,
+    enum: ['avance', 'correccion', 'aprobacion', 'inspeccion'],
+  })
   tipo: string;
 
   @Prop({ type: [CampoCambiadoSchema], default: [] })

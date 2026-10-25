@@ -49,6 +49,7 @@ import {
   planEsVisible,
   puedeVerPlanesSinAprobar,
 } from './domain/visibilidad-plan';
+import { cambiosDesdeLaInspeccion } from './domain/sincronizar-con-inspeccion';
 import {
   alcanceDe,
   planDentroDelAlcance,
@@ -93,6 +94,64 @@ export class PlanesAccionService implements OnModuleInit {
   onModuleInit(): void {
     this.instancesService.alTerminar((instanceId) =>
       this.generarAlTerminar(instanceId),
+    );
+    this.instancesService.alCambiarDatos((instanceId, usuario) =>
+      this.sincronizarConInspeccion(instanceId, usuario),
+    );
+  }
+
+  /**
+   * Se editó la IRO: su plan toma los datos nuevos de la cabecera y sus
+   * tareas el supervisor, la empresa y el área (ver
+   * `sincronizar-con-inspeccion.ts`). Cada tarea que cambia lo anota en su
+   * historial. Sin plan, no hace nada.
+   */
+  async sincronizarConInspeccion(
+    instanceId: string,
+    usuario = 'desconocido',
+  ): Promise<void> {
+    const plan = await this.planDeAccionModel
+      .findOne({ instanceId, ...ACTIVO })
+      .exec();
+    if (!plan) return;
+
+    const { instance, template } = await this.cargarInspeccion(instanceId);
+    const { metadatosOrganizacionales } = generarTareasDesdeInstancia(
+      instance,
+      template,
+      instanceId,
+    );
+    const { cabecera, tareas } = cambiosDesdeLaInspeccion(
+      {
+        vicepresidencia: plan.vicepresidencia,
+        superintendenciaSenior: plan.superintendenciaSenior,
+        superintendencia: plan.superintendencia,
+        areaFisica: plan.areaFisica,
+        tareas: plan.tareas.map((t) => this.comoObjeto(t)),
+      },
+      instanceId,
+      metadatosOrganizacionales,
+    );
+    if (Object.keys(cabecera).length === 0 && tareas.length === 0) return;
+
+    Object.assign(plan, cabecera);
+    for (const { indice, cambios } of tareas) {
+      const tarea = plan.tareas[indice];
+      const antes = this.comoObjeto(tarea);
+      Object.assign(tarea, cambios);
+      this.anotarEnHistorial(
+        tarea,
+        'inspeccion',
+        usuario,
+        cambiosDeTarea(antes, cambios),
+        'Se corrigió la inspección de origen',
+      );
+    }
+    plan.fechaUltimaActualizacion = new Date();
+    plan.markModified('tareas');
+    await plan.save();
+    this.logger.log(
+      `Plan ${String(plan._id)} sincronizado con la IRO ${instanceId}: ${Object.keys(cabecera).length} datos de cabecera, ${tareas.length} tareas`,
     );
   }
 
@@ -640,6 +699,9 @@ export class PlanesAccionService implements OnModuleInit {
     const { motivo, ...campos } = dto;
 
     const cambiosPedidos: Record<string, unknown> = { ...campos };
+    if (campos.fechaHallazgo) {
+      cambiosPedidos.fechaHallazgo = new Date(campos.fechaHallazgo);
+    }
     for (const fecha of [
       'fechaCumplimientoAcordada',
       'fechaCumplimientoEfectiva',
@@ -697,7 +759,7 @@ export class PlanesAccionService implements OnModuleInit {
 
   private anotarEnHistorial(
     tarea: TareaObservacion,
-    tipo: 'avance' | 'correccion' | 'aprobacion',
+    tipo: 'avance' | 'correccion' | 'aprobacion' | 'inspeccion',
     usuario: string,
     cambios: CambioDeCampo[],
     motivo?: string,

@@ -34,7 +34,12 @@ type Respuesta = { value?: unknown; observacion?: string };
 @Injectable()
 export class ExcelCalefactorEstufaService {
   private readonly logger = new Logger(ExcelCalefactorEstufaService.name);
-  private readonly templatePath = path.join(process.cwd(), 'src', 'templates', 'CalefactoresEstufas.xlsx');
+  private readonly templatePath = path.join(
+    process.cwd(),
+    'src',
+    'templates',
+    'CalefactoresEstufas.xlsx',
+  );
 
   canHandle(templateCode: string): boolean {
     return templateCode.toUpperCase().includes('1.02.P06.F72');
@@ -59,17 +64,29 @@ export class ExcelCalefactorEstufaService {
   }
 
   /** Encabezado: el valor va a la derecha de cada etiqueta del formato. */
-  private llenarVerificacion(hoja: ExcelJS.Worksheet, inspection: InspectionHerraEquipos) {
+  private llenarVerificacion(
+    hoja: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
     const v = (inspection.verification ?? {}) as Record<string, unknown>;
-    const texto = (clave: string) => (v[clave] === undefined || v[clave] === null ? '' : String(v[clave]));
+    const texto = (clave: string) =>
+      v[clave] === undefined || v[clave] === null ? '' : String(v[clave]);
     hoja.getCell('C4').value = texto('EMPRESA');
     hoja.getCell('H4').value = texto('SUPERINTENDENCIA');
     hoja.getCell('C5').value = texto('FECHA DE INSPECCIÓN');
-    hoja.getCell('H5').value = texto('ÁREA FÍSICA DE UBICACIÓN DE LA CALENTADOR O ESTUFA');
+    hoja.getCell('H5').value = texto(
+      'ÁREA FÍSICA DE UBICACIÓN DE LA CALENTADOR O ESTUFA',
+    );
   }
 
-  private llenarRespuestas(hoja: ExcelJS.Worksheet, inspection: InspectionHerraEquipos) {
-    const respuestas = (inspection.responses ?? {}) as Record<string, Record<string, Record<string, Respuesta>>>;
+  private llenarRespuestas(
+    hoja: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
+    const respuestas = (inspection.responses ?? {}) as Record<
+      string,
+      Record<string, Record<string, Respuesta>>
+    >;
     for (const bloque of BLOQUES) {
       const seccion = respuestas[bloque.seccion];
       const codigo = seccion?.sub0?.q0?.value;
@@ -84,22 +101,37 @@ export class ExcelCalefactorEstufaService {
           const fila = bloque.primeraFila + indice;
           if (fila > bloque.ultimaFila) return;
           const r = preguntas[clave];
-          const valor = String(r?.value ?? '').toLowerCase().trim();
+          const valor = String(r?.value ?? '')
+            .toLowerCase()
+            .trim();
           const columna =
-            valor === 'si' || valor === 'bueno' ? COLUMNAS.si : valor === 'no' || valor === 'malo' ? COLUMNAS.no : valor === 'na' || valor === 'n/a' ? COLUMNAS.na : null;
+            valor === 'si' || valor === 'bueno'
+              ? COLUMNAS.si
+              : valor === 'no' || valor === 'malo'
+                ? COLUMNAS.no
+                : valor === 'na' || valor === 'n/a'
+                  ? COLUMNAS.na
+                  : null;
           if (columna) hoja.getCell(`${columna}${fila}`).value = 'X';
-          if (r?.observacion?.trim()) hoja.getCell(`${COLUMNAS.observaciones}${fila}`).value = r.observacion;
+          if (r?.observacion?.trim())
+            hoja.getCell(`${COLUMNAS.observaciones}${fila}`).value =
+              r.observacion;
         });
     }
   }
 
-  private async llenarFirmas(hoja: ExcelJS.Worksheet, inspection: InspectionHerraEquipos) {
+  private async llenarFirmas(
+    hoja: ExcelJS.Worksheet,
+    inspection: InspectionHerraEquipos,
+  ) {
     const firma = async (imagen: unknown, celda: string) => {
       if (typeof imagen === 'string' && imagen.startsWith('data:image/')) {
         try {
           await insertarImagenEnCelda(hoja, imagen, celda, { altoDeFila: 25 });
         } catch (error) {
-          this.logger.error(`No se pudo insertar la firma en ${celda}: ${(error as Error).message}`);
+          this.logger.error(
+            `No se pudo insertar la firma en ${celda}: ${(error as Error).message}`,
+          );
         }
       }
     };

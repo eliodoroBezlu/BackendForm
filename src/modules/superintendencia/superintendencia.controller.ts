@@ -88,9 +88,6 @@ export class SuperintendenciaController {
     @Param('id') id: string,
     @CurrentUser('username') usuario?: string,
   ) {
-    return this.superintendenciaService.remove(
-      id,
-      usuario ?? 'desconocido',
-    );
+    return this.superintendenciaService.remove(id, usuario ?? 'desconocido');
   }
 }

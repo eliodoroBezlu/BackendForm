@@ -108,6 +108,12 @@ export const posicionDelEstado = (estado?: string): number =>
 /** Los campos que se siguen en el historial, con cómo se llaman en pantalla. */
 export const CAMPOS_DEL_HISTORIAL: Record<string, string> = {
   estado: 'Estado',
+  fechaHallazgo: 'Fecha del hallazgo',
+  responsableObservacion: 'Responsable de la observación',
+  empresa: 'Empresa',
+  lugarFisico: 'Lugar físico',
+  actividad: 'Actividad',
+  descripcionObservacion: 'Descripción de la observación',
   familiaPeligro: 'Familia de peligro',
   accionPropuesta: 'Acción propuesta',
   responsableAreaCierre: 'Responsable de área',

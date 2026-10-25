@@ -224,7 +224,10 @@ export class PrestamosSpccService {
   ): Promise<SolicitudPrestamo> {
     const { inicio, devolucion } = this.validarPlazo(dto);
     const solicitado = this.validarSolicitado(dto.solicitado);
-    const solicitante = await this.resolverSolicitante(dto.solicitanteId, actor);
+    const solicitante = await this.resolverSolicitante(
+      dto.solicitanteId,
+      actor,
+    );
 
     const solicitud = await this.solicitudes.create({
       numero: await this.siguienteNumero(),

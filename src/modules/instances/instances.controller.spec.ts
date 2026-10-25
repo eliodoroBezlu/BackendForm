@@ -89,6 +89,25 @@ describe('InstancesController', () => {
       expect(filtros().limit).toBe(25);
     });
 
+    it('el codigo de plantilla viaja como templateCode', async () => {
+      await controller.findAll(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        0,
+        100,
+        1,
+        10,
+        '1.02.P06.F12',
+      );
+
+      expect(filtros().templateCode).toBe('1.02.P06.F12');
+    });
+
     it('los filtros ausentes NO se incluyen en el objeto', async () => {
       await controller.findAll();
 

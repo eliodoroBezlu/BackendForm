@@ -200,10 +200,7 @@ export class PgrController {
 
   @Delete(':id')
   @Roles(Role.ADMIN)
-  remove(
-    @Param('id') id: string,
-    @CurrentUser('username') usuario?: string,
-  ) {
+  remove(@Param('id') id: string, @CurrentUser('username') usuario?: string) {
     return this.pgrService.remove(id, usuario ?? 'desconocido');
   }
 }

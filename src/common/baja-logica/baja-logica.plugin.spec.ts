@@ -118,9 +118,12 @@ describe('bajaLogica', () => {
       // inactivo para poder reactivarlo. Y la única que devuelve de verdad
       // todo: `$exists: true` dejaría fuera los documentos anteriores al
       // campo, que no lo tienen.
-      const consulta = aplicarGancho({ area: 'Chancado' }, {
-        [INCLUIR_DADOS_DE_BAJA]: true,
-      });
+      const consulta = aplicarGancho(
+        { area: 'Chancado' },
+        {
+          [INCLUIR_DADOS_DE_BAJA]: true,
+        },
+      );
 
       expect(consulta.where).not.toHaveBeenCalled();
       expect(consulta.filtroFinal()).toEqual({ area: 'Chancado' });
@@ -167,18 +170,14 @@ describe('bajaLogica', () => {
     it('antepone el $match a la tubería', () => {
       // Sin esto las estadísticas seguirían contando lo dado de baja, que es
       // el número que a nadie se le ocurre revisar.
-      const tuberia = aplicarGanchoAgregacion([
-        { $group: { _id: '$area' } },
-      ]);
+      const tuberia = aplicarGanchoAgregacion([{ $group: { _id: '$area' } }]);
 
       expect(tuberia[0]).toEqual({ $match: { activo: { $ne: false } } });
       expect(tuberia).toHaveLength(2);
     });
 
     it('no lo antepone si la primera etapa ya habla de activo', () => {
-      const tuberia = aplicarGanchoAgregacion([
-        { $match: { activo: false } },
-      ]);
+      const tuberia = aplicarGanchoAgregacion([{ $match: { activo: false } }]);
 
       expect(tuberia).toHaveLength(1);
     });

@@ -258,7 +258,7 @@ describe('PgrService', () => {
       const result = await service.remove('some-id', 'jperez');
 
       expect(result).toEqual(mockPgr);
-      const cambios = findByIdAndUpdate.mock.calls[0][1] as unknown as {
+      const cambios = findByIdAndUpdate.mock.calls[0][1] as {
         activo: boolean;
         eliminadaPor: string;
       };

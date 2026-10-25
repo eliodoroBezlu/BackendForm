@@ -107,6 +107,20 @@ export class TemplatesService {
     return template;
   }
 
+  /**
+   * Los `_id` de todas las revisiones de un código (vigente, obsoletas y
+   * borrador). Para filtrar inspecciones «de la ISOP» sin importar con qué
+   * revisión se llenaron: cada una conserva la suya.
+   */
+  async idsDeLasRevisiones(code: string): Promise<string[]> {
+    const docs = await this.templateModel
+      .find({ code })
+      .select('_id')
+      .lean()
+      .exec();
+    return docs.map((d) => String(d._id));
+  }
+
   async findByCode(code: string): Promise<Template> {
     // La vigente: el código es de toda la familia de revisiones.
     const template = await this.templateModel
