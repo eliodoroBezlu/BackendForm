@@ -84,6 +84,16 @@ export class AddTareaDto {
   @IsString()
   responsableAreaCierreUsername?: string;
 
+  @ApiProperty({
+    required: false,
+    type: [String],
+    description: 'Usernames de todos los responsables de cierre',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  responsablesAreaCierreUsernames?: string[];
+
   @ApiProperty()
   @IsString()
   fechaCumplimientoAcordada: string;

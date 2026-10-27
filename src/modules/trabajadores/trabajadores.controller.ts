@@ -156,6 +156,23 @@ export class TrabajadoresController {
   }
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
+  @Get('responsables-cierre')
+  @Roles(
+    Role.ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+  )
+  @ApiOperation({
+    summary:
+      'Supervisores y superintendentes que pueden ser responsables de cierre (roles al día con el IAM)',
+  })
+  responsablesDeCierre() {
+    return this.trabajadoresService.responsablesDeCierre();
+  }
+
+  // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('completos')
   @Roles(
     Role.ADMIN,

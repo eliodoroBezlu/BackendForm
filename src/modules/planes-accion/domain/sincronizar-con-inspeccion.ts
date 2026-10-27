@@ -21,6 +21,7 @@
  * TypeScript puro, sin Mongoose: se prueba sin base de datos.
  */
 
+import { usuariosDeCierre } from './responsables-cierre';
 import type { PlanMetadatosOrganizacionales } from './generar-plan.logic';
 
 export interface PlanParaSincronizar {
@@ -40,6 +41,7 @@ export interface TareaParaSincronizar {
   lugarFisico?: string;
   responsableAreaCierre?: string;
   responsableAreaCierreUsername?: string;
+  responsablesAreaCierreUsernames?: string[];
 }
 
 export interface CambiosDesdeLaInspeccion {
@@ -89,7 +91,7 @@ export function cambiosDesdeLaInspeccion(
     poner('lugarFisico', datos.areaFisica);
 
     const cierreLoPusoLaIro =
-      !tarea.responsableAreaCierreUsername &&
+      usuariosDeCierre(tarea).length === 0 &&
       tarea.responsableAreaCierre === tarea.responsableObservacion;
     if (cierreLoPusoLaIro) poner('responsableAreaCierre', datos.supervisor);
 

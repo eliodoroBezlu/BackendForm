@@ -236,3 +236,66 @@ describe('TrabajadoresService', () => {
     });
   });
 });
+
+describe('TrabajadoresService · responsables de cierre', () => {
+  const construir = async (enMongo: unknown[], usuariosIam: unknown[] = []) => {
+    const modelo = cadena(enMongo);
+    modelo.updateMany = jest.fn().mockResolvedValue({ modifiedCount: 0 });
+    const fetchSimulado = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ users: usuariosIam }),
+    });
+    global.fetch = fetchSimulado as unknown as typeof fetch;
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        TrabajadoresService,
+        { provide: getModelToken(Trabajador.name), useValue: modelo },
+        { provide: getModelToken(User.name), useValue: cadena(null) },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+      ],
+    }).compile();
+    return {
+      servicio: module.get(TrabajadoresService),
+      modelo,
+      fetchSimulado,
+    };
+  };
+
+  it('quien ya no tiene el rol en el IAM lo pierde en el espejo', async () => {
+    const { servicio, modelo } = await construir([]);
+
+    await servicio.syncRolFromIam('supervisor');
+
+    expect(modelo.updateMany).toHaveBeenCalledWith(
+      { roles_iam: 'supervisor', iam_trabajador_id: { $nin: [] } },
+      { $pull: { roles_iam: 'supervisor' } },
+    );
+  });
+
+  it('ofrece supervisores y superintendentes, y refresca el IAM a lo sumo una vez por minuto', async () => {
+    const { servicio, fetchSimulado } = await construir([
+      {
+        nomina: 'Ana',
+        puesto: 'Sup',
+        username: 'ana',
+        roles_iam: ['supervisor'],
+      },
+      {
+        nomina: 'Luis',
+        puesto: 'Supte',
+        username: 'luis',
+        roles_iam: ['supervisor', 'superintendente'],
+      },
+    ]);
+
+    const lista = await servicio.responsablesDeCierre();
+    await servicio.responsablesDeCierre();
+
+    expect(lista.map((r) => [r.username, r.rol])).toEqual([
+      ['ana', 'supervisor'],
+      ['luis', 'superintendente'],
+    ]);
+    // Una consulta por rol (supervisor y superintendente), y solo la primera vez.
+    expect(fetchSimulado).toHaveBeenCalledTimes(2);
+  });
+});

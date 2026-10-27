@@ -1,4 +1,8 @@
 import { Role } from '../../auth/enums/role.enum';
+import {
+  type ConResponsablesDeCierre,
+  usuariosDeCierre,
+} from './responsables-cierre';
 
 /**
  * Qué planes le tocan a cada quien según su lugar en la organización.
@@ -85,7 +89,7 @@ export function alcanceDe(
 export interface PlanConLugar {
   areaFisica?: string;
   superintendencia?: string;
-  tareas?: { responsableAreaCierreUsername?: string; activo?: boolean }[];
+  tareas?: (ConResponsablesDeCierre & { activo?: boolean })[];
 }
 
 export function planDentroDelAlcance(
@@ -101,8 +105,7 @@ export function planDentroDelAlcance(
     !!alcance.username &&
     (plan.tareas ?? []).some(
       (t) =>
-        t.activo !== false &&
-        t.responsableAreaCierreUsername === alcance.username,
+        t.activo !== false && usuariosDeCierre(t).includes(alcance.username!),
     )
   );
 }

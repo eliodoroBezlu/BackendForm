@@ -113,6 +113,14 @@ export class TareaObservacion {
   @Prop()
   responsableAreaCierreUsername?: string;
 
+  /**
+   * Todos los responsables de cierre (sus usuarios). `responsableAreaCierre`
+   * lleva sus nombres separados por coma y `responsableAreaCierreUsername` el
+   * primero; ver `domain/responsables-cierre.ts`.
+   */
+  @Prop({ type: [String], default: undefined })
+  responsablesAreaCierreUsernames?: string[];
+
   @Prop()
   fechaCumplimientoAcordada?: Date;
 

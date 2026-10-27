@@ -50,6 +50,7 @@ import {
   puedeVerPlanesSinAprobar,
 } from './domain/visibilidad-plan';
 import { cambiosDesdeLaInspeccion } from './domain/sincronizar-con-inspeccion';
+import { conResponsablesDeCierre } from './domain/responsables-cierre';
 import {
   alcanceDe,
   planDentroDelAlcance,
@@ -312,7 +313,7 @@ export class PlanesAccionService implements OnModuleInit {
     }
 
     const nuevaTarea: TareaObservacion = {
-      ...tareaDto,
+      ...conResponsablesDeCierre(tareaDto),
       numeroItem: plan.tareas.length + 1,
       fechaHallazgo: new Date(tareaDto.fechaHallazgo),
       fechaCumplimientoAcordada: new Date(tareaDto.fechaCumplimientoAcordada),
@@ -383,7 +384,7 @@ export class PlanesAccionService implements OnModuleInit {
     const antes = this.comoObjeto(tareaActual);
     const { error, actualizacionProcesada } = validarActualizacionTarea(
       antes,
-      updateDto,
+      conResponsablesDeCierre(updateDto),
     );
     if (error) {
       throw new BadRequestException(error.message);
@@ -698,7 +699,9 @@ export class PlanesAccionService implements OnModuleInit {
     const antes = this.comoObjeto(tarea);
     const { motivo, ...campos } = dto;
 
-    const cambiosPedidos: Record<string, unknown> = { ...campos };
+    const cambiosPedidos: Record<string, unknown> = {
+      ...conResponsablesDeCierre(campos),
+    };
     if (campos.fechaHallazgo) {
       cambiosPedidos.fechaHallazgo = new Date(campos.fechaHallazgo);
     }

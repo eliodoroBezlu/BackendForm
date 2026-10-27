@@ -66,9 +66,28 @@ interface IamTrabajadorEntry {
   username: string | null;
 }
 
+/** Los roles que pueden recibir una tarea como responsables de cierre. */
+export const ROLES_DE_CIERRE = ['supervisor', 'superintendente'] as const;
+
+/** Cada cuánto, como mucho, se vuelve a preguntar al IAM por esos roles. */
+const REFRESCO_DE_ROLES_MS = 60_000;
+
+export interface ResponsableDeCierre {
+  nomina: string;
+  puesto: string;
+  username: string;
+  area: string;
+  superintendencia: string;
+  /** Si tiene los dos, cuenta como superintendente. */
+  rol: (typeof ROLES_DE_CIERRE)[number];
+}
+
 @Injectable()
 export class TrabajadoresService implements OnModuleInit {
   private readonly logger = new Logger(TrabajadoresService.name);
+
+  /** Cuándo se refrescaron por última vez los roles de cierre (0: nunca). */
+  private rolesDeCierreRefrescados = 0;
 
   constructor(
     @InjectModel(Trabajador.name) private trabajadorModel: Model<Trabajador>,
@@ -496,7 +515,66 @@ export class TrabajadoresService implements OnModuleInit {
       );
     }
 
+    // El IAM es la fuente de verdad también para quitar: quien ya no tiene
+    // el rol lo pierde aquí. Antes solo se agregaba, y alguien que pasó de
+    // supervisor a técnico seguía apareciendo como supervisor.
+    const vigentes = usuarios
+      .map((u) => u.trabajador?.id)
+      .filter((id): id is string => !!id);
+    await this.trabajadorModel.updateMany(
+      { roles_iam: role, iam_trabajador_id: { $nin: vigentes } },
+      { $pull: { roles_iam: role } },
+    );
+
     return { actualizados, creados };
+  }
+
+  /**
+   * Quiénes se ofrecen como responsables de área para el cierre de una tarea:
+   * supervisores y superintendentes activos, con acceso al sistema y usuario.
+   *
+   * Antes de responder refresca esos dos roles desde el IAM (como mucho una
+   * vez por minuto): así un cambio de rol en el portal se ve al abrir el
+   * formulario, sin esperar a que un admin sincronice. Si el IAM no responde
+   * se usa lo último sincronizado.
+   */
+  async responsablesDeCierre(): Promise<ResponsableDeCierre[]> {
+    if (Date.now() - this.rolesDeCierreRefrescados > REFRESCO_DE_ROLES_MS) {
+      const resultados = await Promise.all(
+        ROLES_DE_CIERRE.map((rol) => this.syncRolFromIam(rol)),
+      );
+      const fallo = resultados.find((r) => r.error);
+      if (fallo) {
+        this.logger.warn(
+          `No se pudieron refrescar los roles de cierre desde el IAM: ${fallo.error}. Se usa lo último sincronizado.`,
+        );
+      } else {
+        this.rolesDeCierreRefrescados = Date.now();
+      }
+    }
+
+    const trabajadores = await this.trabajadorModel
+      .find({
+        activo: true,
+        tiene_acceso_sistema: true,
+        username: { $nin: [null, ''] },
+        roles_iam: { $in: [...ROLES_DE_CIERRE] },
+      })
+      .select('nomina puesto username area superintendencia roles_iam')
+      .sort({ nomina: 1 })
+      .lean()
+      .exec();
+
+    return trabajadores.map((t) => ({
+      nomina: t.nomina,
+      puesto: t.puesto,
+      username: t.username as string,
+      area: t.area,
+      superintendencia: t.superintendencia,
+      rol: t.roles_iam.includes('superintendente')
+        ? 'superintendente'
+        : 'supervisor',
+    }));
   }
 
   // ==================== CREAR TRABAJADOR CON USUARIO ====================

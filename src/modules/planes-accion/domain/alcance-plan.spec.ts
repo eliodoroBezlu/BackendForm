@@ -90,6 +90,23 @@ describe('alcance de los planes', () => {
     expect(planDentroDelAlcance(dadaDeBaja, alcance)).toBe(false);
   });
 
+  it('con varios responsables de cierre, cualquiera de ellos ve el plan', () => {
+    const alcance = alcanceDe(
+      { roles: [Role.SUPERVISOR], area: 'Flotación', username: 'mlopez' },
+      maestro,
+    );
+    const compartido = plan('Chancado', {
+      tareas: [
+        {
+          responsableAreaCierreUsername: 'jperez',
+          responsablesAreaCierreUsernames: ['jperez', 'mlopez'],
+        },
+      ],
+    });
+
+    expect(planDentroDelAlcance(compartido, alcance)).toBe(true);
+  });
+
   it('sin ficha de trabajador solo ve sus tareas', () => {
     const alcance = alcanceDe({ roles: [Role.SUPERINTENDENTE] }, maestro);
 
