@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
+  origenDelAnfitrion,
   rolesParaElServicio,
   ServicioFormulariosService,
   VIDA_DEL_TOKEN_SEGUNDOS,
@@ -88,6 +89,30 @@ describe('ServicioFormulariosService', () => {
         FORMULARIOS_SECRETO: SECRETO,
       }).emitirToken({ id: 'u', roles: [] }),
     ).toThrow(ServiceUnavailableException);
+  });
+});
+
+describe('el origen del anfitrión en el token', () => {
+  const jwt = new JwtService();
+  const firmar = (origen?: string) => {
+    const { token } = conEntorno({
+      FORMULARIOS_KID: KID,
+      FORMULARIOS_SECRETO: SECRETO,
+      FORMULARIOS_ORIGEN_ANFITRION: origen,
+    }).emitirToken({ id: 'u', roles: [] });
+    return jwt.verify<{ origen?: string }>(token, { secret: SECRETO });
+  };
+
+  it('va solo el origen, sin ruta ni barra final', () => {
+    expect(firmar('http://localhost:3001/dashboard/').origen).toBe(
+      'http://localhost:3001',
+    );
+  });
+
+  it('sin la variable, o si no es una URL, no se manda', () => {
+    expect(firmar(undefined).origen).toBeUndefined();
+    expect(firmar('localhost:3001').origen).toBeUndefined();
+    expect(origenDelAnfitrion('ftp://forms')).toBeNull();
   });
 });
 

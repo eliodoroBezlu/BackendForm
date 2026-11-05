@@ -226,6 +226,23 @@ export class PlanesAccionController {
     );
   }
 
+  @Post(':planId/sincronizar-inspeccion')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Traer al plan lo que su IRO dice ahora: cabecera, supervisor, empresa, área y observaciones (solo Admin)',
+  })
+  @ApiParam({ name: 'planId', description: 'ID del plan' })
+  sincronizarConSuInspeccion(
+    @Param('planId') planId: string,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    return this.planesAccionService.sincronizarPlanConSuInspeccion(
+      planId,
+      usuario,
+    );
+  }
+
   @Patch(':planId/tareas/:tareaId/corregir')
   @Roles(Role.ADMIN)
   @ApiOperation({

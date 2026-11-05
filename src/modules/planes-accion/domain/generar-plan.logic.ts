@@ -121,7 +121,7 @@ function camposDeVerificacion(
   return { get: (etiqueta) => porClave.get(claveDeCampo(etiqueta)) };
 }
 
-function crearMapaSecciones(
+export function crearMapaSecciones(
   sections: TemplateSectionLike[],
 ): Map<string, TemplateSectionLike> {
   const map = new Map<string, TemplateSectionLike>();

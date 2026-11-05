@@ -82,6 +82,38 @@ export class PersonalInvolucrado {
   ci: string;
 }
 
+/**
+ * Un comentario que se cambió desde el plan de acción (al corregir la
+ * descripción de su tarea). Queda aparte de `sections` porque el formulario
+ * de la IRO reescribe las secciones enteras al guardar.
+ */
+@Schema({ _id: false })
+export class CambioDesdePlan {
+  @Prop({ required: true })
+  fecha: Date;
+
+  @Prop({ required: true })
+  usuario: string;
+
+  @Prop({ required: true })
+  planId: string;
+
+  @Prop({ required: true })
+  seccion: string;
+
+  @Prop({ required: true })
+  pregunta: string;
+
+  @Prop({ default: '' })
+  antes: string;
+
+  @Prop({ required: true })
+  despues: string;
+
+  @Prop()
+  motivo?: string;
+}
+
 @Schema({ timestamps: true })
 export class Instance {
   @Prop({ type: Types.ObjectId, ref: 'Template', required: true })
@@ -108,6 +140,10 @@ export class Instance {
 
   @Prop({ type: [PersonalInvolucrado] })
   personalInvolucrado?: PersonalInvolucrado[];
+
+  /** Comentarios corregidos desde el plan de acción: quién, cuándo y qué. */
+  @Prop({ type: [CambioDesdePlan], default: undefined })
+  cambiosDesdePlan?: CambioDesdePlan[];
 
   // Campos calculados automáticamente para toda la instancia
   @Prop({ required: true, type: Number })

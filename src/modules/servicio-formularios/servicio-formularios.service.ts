@@ -35,6 +35,23 @@ export function rolesParaElServicio(roles: readonly string[]): string[] {
   return [...resultado];
 }
 
+/**
+ * El origen (`esquema://host:puerto`) del frontend de forms, o null si la
+ * variable falta o no es una URL: se ignora en vez de firmar algo que la web
+ * nunca va a poder igualar.
+ */
+export function origenDelAnfitrion(valor?: string): string | null {
+  if (!valor?.trim()) return null;
+  try {
+    const url = new URL(valor.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 @Injectable()
 export class ServicioFormulariosService {
   private readonly jwt = new JwtService();
@@ -49,12 +66,19 @@ export class ServicioFormulariosService {
         'El servicio de formularios no está configurado en este servidor: faltan FORMULARIOS_KID o FORMULARIOS_SECRETO',
       );
     }
+    const origen = origenDelAnfitrion(
+      this.config.get<string>('FORMULARIOS_ORIGEN_ANFITRION'),
+    );
 
     const token = this.jwt.sign(
       {
         sub: usuario.id,
         ...(usuario.username ? { nombre: usuario.username } : {}),
         roles: rolesParaElServicio(usuario.roles),
+        // La web del servicio solo le pide un token nuevo a la ventana de
+        // este origen (docs/integracion.md §5). Sin él, el token sirve igual
+        // pero no se renueva: a los 15 minutos hay que volver a abrirla.
+        ...(origen ? { origen } : {}),
       },
       {
         secret: secreto,

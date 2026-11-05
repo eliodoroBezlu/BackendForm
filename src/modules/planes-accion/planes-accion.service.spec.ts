@@ -603,3 +603,103 @@ describe('PlanesAccionService · cascada desde la IRO', () => {
     expect(plan.save).toHaveBeenCalled();
   });
 });
+
+describe('PlanesAccionService · cascada hacia la IRO', () => {
+  it('la descripción corregida en el plan se escribe en el comentario de la IRO y queda anotado quién lo hizo', async () => {
+    const tarea: Record<string, unknown> = {
+      _id: { toString: () => 't1' },
+      instanceId: ID_VALIDO,
+      activo: true,
+      aprobado: false,
+      estado: 'abierto',
+      sectionTitle: 'GENERAL',
+      questionText: '¿Están rotulados?',
+      descripcionObservacion: 'Bidones sin rotular',
+      historial: [],
+    };
+    const doc = {
+      _id: ID_VALIDO,
+      activo: true,
+      tareas: [tarea],
+      markModified: jest.fn(),
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const updateOne = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PlanesAccionService,
+        {
+          provide: getModelToken(PlanDeAccion.name),
+          useValue: { findById: jest.fn().mockResolvedValue(doc) },
+        },
+        {
+          provide: InstancesService,
+          useValue: {
+            findOne: jest.fn().mockResolvedValue({
+              templateId: ID_VALIDO,
+              sections: [
+                {
+                  sectionId: 's1',
+                  questions: [
+                    {
+                      questionText: '¿Están rotulados?',
+                      response: 1,
+                      comment: 'Bidones sin rotular',
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        },
+        {
+          provide: TemplatesService,
+          useValue: {
+            findOne: jest.fn().mockResolvedValue({
+              sections: [{ _id: 's1', title: 'GENERAL' }],
+            }),
+          },
+        },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        ...modelosDelAlcance.filter(
+          (m) => m.provide !== getModelToken(Instance.name),
+        ),
+        { provide: getModelToken(Instance.name), useValue: { updateOne } },
+      ],
+    }).compile();
+
+    await module.get(PlanesAccionService).corregirTarea(
+      ID_VALIDO,
+      't1',
+      {
+        descripcionObservacion: 'Tres bidones de thinner sin etiqueta\n',
+        motivo: 'Mejor descripción',
+      },
+      'eliodoro',
+    );
+
+    expect(tarea.descripcionObservacion).toBe(
+      'Tres bidones de thinner sin etiqueta',
+    );
+    expect(updateOne).toHaveBeenCalledWith(
+      { _id: ID_VALIDO },
+      {
+        $set: {
+          'sections.0.questions.0.comment':
+            'Tres bidones de thinner sin etiqueta',
+        },
+        $push: {
+          cambiosDesdePlan: expect.objectContaining({
+            usuario: 'eliodoro',
+            planId: ID_VALIDO,
+            seccion: 'GENERAL',
+            antes: 'Bidones sin rotular',
+            despues: 'Tres bidones de thinner sin etiqueta',
+            motivo: 'Mejor descripción',
+          }),
+        },
+      },
+    );
+    expect(doc.save).toHaveBeenCalled();
+  });
+});

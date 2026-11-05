@@ -387,7 +387,7 @@ describe('InstancesService · filtro por plantilla y templateId', () => {
     expect(String(cambios.templateId)).toBe(REV8);
   });
 
-  it('al corregir los datos de la IRO avisa a su plan, con quien la edito', async () => {
+  it('al corregir los datos de la IRO avisa a su plan, con quien la editó y cómo estaba', async () => {
     const { servicio } = await construir();
     const oyente = jest.fn().mockResolvedValue(undefined);
     servicio.alCambiarDatos(oyente);
@@ -397,6 +397,11 @@ describe('InstancesService · filtro por plantilla y templateId', () => {
       updatedBy: 'eliodoro',
     } as never);
 
-    expect(oyente).toHaveBeenCalledWith('507f1f77bcf86cd799439011', 'eliodoro');
+    // Con cómo estaba antes: el plan toma solo lo que cambió en esta edición.
+    expect(oyente).toHaveBeenCalledWith(
+      '507f1f77bcf86cd799439011',
+      'eliodoro',
+      expect.objectContaining({ verificationList: undefined }),
+    );
   });
 });

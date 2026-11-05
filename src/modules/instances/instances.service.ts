@@ -30,10 +30,21 @@ import {
 /** Lo que se hace cuando una inspección se termina (hoy: generar su plan de acción). */
 export type AlTerminarInspeccion = (instanciaId: string) => Promise<unknown>;
 
-/** Lo que se hace cuando se editan los datos de una inspección (hoy: su plan). */
+/** Cómo estaba la inspección antes de una edición. */
+export interface InspeccionAnterior {
+  verificationList?: Map<string, string> | Record<string, string> | null;
+  sections: Instance['sections'];
+  createdAt?: Date;
+}
+
+/**
+ * Lo que se hace cuando se editan los datos de una inspección (hoy: su plan).
+ * Recibe también cómo estaba antes, para que el plan tome solo lo que cambió.
+ */
 export type AlCambiarDatosDeInspeccion = (
   instanciaId: string,
   usuario: string,
+  anterior: InspeccionAnterior,
 ) => Promise<unknown>;
 
 @Injectable()
@@ -68,10 +79,11 @@ export class InstancesService {
   private async avisarQueCambio(
     instanciaId: string,
     usuario: string,
+    anterior: InspeccionAnterior,
   ): Promise<void> {
     for (const oyente of this.oyentesAlCambiar) {
       try {
-        await oyente(instanciaId, usuario);
+        await oyente(instanciaId, usuario, anterior);
       } catch (error) {
         this.logger.error(
           `La inspección ${instanciaId} se editó, pero no se pudo actualizar su plan: ${error instanceof Error ? error.message : String(error)}`,
@@ -218,6 +230,13 @@ export class InstancesService {
 
     const instance = await this.findOne(id);
     const estadoAnterior = instance.status;
+    // Antes de pisarla: el plan compara contra esto para tomar solo lo que
+    // cambió en esta edición (ver planes-accion/domain/sincronizar-con-inspeccion).
+    const anterior: InspeccionAnterior = {
+      verificationList: instance.verificationList,
+      sections: instance.sections,
+      createdAt: (instance as unknown as { createdAt?: Date }).createdAt,
+    };
     const status = estadoAlGuardar(estadoAnterior, updateInstanceDto.status);
     updateInstanceDto.status = status;
 
@@ -281,10 +300,17 @@ export class InstancesService {
 
     if (seTermina(estadoAnterior, status)) {
       await this.avisarQueSeTermino(id);
-    } else if (updateInstanceDto.verificationList) {
+    } else if (
+      updateInstanceDto.verificationList ||
+      updateInstanceDto.sections
+    ) {
       // Recién terminada, el plan nace con los datos al día; si no, se
-      // propagan al plan que ya tenga (supervisor, área…).
-      await this.avisarQueCambio(id, updateInstanceDto.updatedBy ?? 'system');
+      // propagan al plan que ya tenga (supervisor, área, observaciones…).
+      await this.avisarQueCambio(
+        id,
+        updateInstanceDto.updatedBy ?? 'system',
+        anterior,
+      );
     }
     return updatedInstance;
   }

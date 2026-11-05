@@ -49,8 +49,13 @@ import {
   planEsVisible,
   puedeVerPlanesSinAprobar,
 } from './domain/visibilidad-plan';
-import { cambiosDesdeLaInspeccion } from './domain/sincronizar-con-inspeccion';
+import {
+  cambiosDesdeLaInspeccion,
+  datosDeLaInspeccion,
+} from './domain/sincronizar-con-inspeccion';
+import type { InspeccionAnterior } from '../instances/instances.service';
 import { conResponsablesDeCierre } from './domain/responsables-cierre';
+import { comentarioALaInspeccion } from './domain/descripcion-a-la-inspeccion';
 import {
   alcanceDe,
   planDentroDelAlcance,
@@ -96,8 +101,8 @@ export class PlanesAccionService implements OnModuleInit {
     this.instancesService.alTerminar((instanceId) =>
       this.generarAlTerminar(instanceId),
     );
-    this.instancesService.alCambiarDatos((instanceId, usuario) =>
-      this.sincronizarConInspeccion(instanceId, usuario),
+    this.instancesService.alCambiarDatos((instanceId, usuario, anterior) =>
+      this.sincronizarConInspeccion(instanceId, usuario, anterior),
     );
   }
 
@@ -110,18 +115,26 @@ export class PlanesAccionService implements OnModuleInit {
   async sincronizarConInspeccion(
     instanceId: string,
     usuario = 'desconocido',
-  ): Promise<void> {
+    anterior?: InspeccionAnterior,
+  ): Promise<{ cabecera: number; tareas: number }> {
     const plan = await this.planDeAccionModel
       .findOne({ instanceId, ...ACTIVO })
       .exec();
-    if (!plan) return;
+    if (!plan) return { cabecera: 0, tareas: 0 };
 
     const { instance, template } = await this.cargarInspeccion(instanceId);
-    const { metadatosOrganizacionales } = generarTareasDesdeInstancia(
-      instance,
-      template,
-      instanceId,
+    const nuevo = datosDeLaInspeccion(
+      generarTareasDesdeInstancia(instance, template, instanceId),
     );
+    const viejo = anterior
+      ? datosDeLaInspeccion(
+          generarTareasDesdeInstancia(
+            { ...anterior, sections: anterior.sections ?? [] },
+            template,
+            instanceId,
+          ),
+        )
+      : undefined;
     const { cabecera, tareas } = cambiosDesdeLaInspeccion(
       {
         vicepresidencia: plan.vicepresidencia,
@@ -131,9 +144,14 @@ export class PlanesAccionService implements OnModuleInit {
         tareas: plan.tareas.map((t) => this.comoObjeto(t)),
       },
       instanceId,
-      metadatosOrganizacionales,
+      nuevo,
+      viejo,
     );
-    if (Object.keys(cabecera).length === 0 && tareas.length === 0) return;
+    const resumen = {
+      cabecera: Object.keys(cabecera).length,
+      tareas: tareas.length,
+    };
+    if (resumen.cabecera === 0 && resumen.tareas === 0) return resumen;
 
     Object.assign(plan, cabecera);
     for (const { indice, cambios } of tareas) {
@@ -145,15 +163,43 @@ export class PlanesAccionService implements OnModuleInit {
         'inspeccion',
         usuario,
         cambiosDeTarea(antes, cambios),
-        'Se corrigió la inspección de origen',
+        anterior
+          ? 'Se corrigió la inspección de origen'
+          : 'Se trajeron los datos de la inspección de origen',
       );
     }
     plan.fechaUltimaActualizacion = new Date();
     plan.markModified('tareas');
     await plan.save();
     this.logger.log(
-      `Plan ${String(plan._id)} sincronizado con la IRO ${instanceId}: ${Object.keys(cabecera).length} datos de cabecera, ${tareas.length} tareas`,
+      `Plan ${String(plan._id)} sincronizado con la IRO ${instanceId}: ${resumen.cabecera} datos de cabecera, ${resumen.tareas} tareas`,
     );
+    return resumen;
+  }
+
+  /**
+   * El admin trae a un plan lo que su IRO dice ahora (por ejemplo, las
+   * observaciones que se reescribieron antes de que existiera la cascada).
+   * Sin la IRO de antes no hay con qué comparar: se trae todo, y lo que se
+   * pisa queda en el historial de cada tarea.
+   */
+  async sincronizarPlanConSuInspeccion(
+    planId: string,
+    usuario = 'desconocido',
+  ): Promise<{ cabecera: number; tareas: number }> {
+    if (!Types.ObjectId.isValid(planId)) {
+      throw new BadRequestException('ID de plan inválido');
+    }
+    const plan = await this.planDeAccionModel.findById(planId).exec();
+    if (!plan || plan.activo === false) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+    if (!plan.instanceId) {
+      throw new BadRequestException(
+        'Este plan se creó a mano: no tiene inspección de la que traer datos',
+      );
+    }
+    return this.sincronizarConInspeccion(plan.instanceId, usuario);
   }
 
   private async cargarInspeccion(instanceId: string) {
@@ -702,6 +748,10 @@ export class PlanesAccionService implements OnModuleInit {
     const cambiosPedidos: Record<string, unknown> = {
       ...conResponsablesDeCierre(campos),
     };
+    if (typeof campos.descripcionObservacion === 'string') {
+      cambiosPedidos.descripcionObservacion =
+        campos.descripcionObservacion.trim();
+    }
     if (campos.fechaHallazgo) {
       cambiosPedidos.fechaHallazgo = new Date(campos.fechaHallazgo);
     }
@@ -741,6 +791,10 @@ export class PlanesAccionService implements OnModuleInit {
       : 0;
     this.anotarEnHistorial(tarea, 'correccion', usuario, cambios, motivo);
 
+    if (cambios.some((c) => c.campo === 'descripcionObservacion')) {
+      await this.descripcionALaInspeccion(planId, tarea, usuario, motivo);
+    }
+
     Object.assign(plan, calcularMetadatos(soloTareasActivas(plan.tareas)));
     plan.fechaUltimaActualizacion = new Date();
     plan.markModified('tareas');
@@ -750,6 +804,55 @@ export class PlanesAccionService implements OnModuleInit {
       `Tarea ${tareaId} del plan ${planId} corregida por ${usuario}: ${cambios.map((c) => c.campo).join(', ')}`,
     );
     return this.sanitizeTareas(plan);
+  }
+
+  /**
+   * La descripción corregida en el plan vuelve al comentario de su pregunta
+   * en la IRO (ver `descripcion-a-la-inspeccion.ts`), y la IRO anota quién lo
+   * cambió. Se escribe directo, sin pasar por `InstancesService.update`: así
+   * no rebota al plan ni vuelve a validar una IRO ya terminada.
+   */
+  private async descripcionALaInspeccion(
+    planId: string,
+    tarea: TareaObservacion,
+    usuario: string,
+    motivo?: string,
+  ): Promise<void> {
+    if (!tarea.instanceId) return;
+    const { instance, template } = await this.cargarInspeccion(
+      tarea.instanceId,
+    );
+    const destino = comentarioALaInspeccion(
+      this.comoObjeto(tarea),
+      instance.sections,
+      template,
+    );
+    if (!destino) return;
+
+    await this.instanceModel.updateOne(
+      { _id: tarea.instanceId },
+      {
+        $set: {
+          [`sections.${destino.seccion}.questions.${destino.pregunta}.comment`]:
+            destino.despues,
+        },
+        $push: {
+          cambiosDesdePlan: {
+            fecha: new Date(),
+            usuario,
+            planId,
+            seccion: tarea.sectionTitle ?? '',
+            pregunta: tarea.questionText ?? '',
+            antes: destino.antes,
+            despues: destino.despues,
+            motivo,
+          },
+        },
+      },
+    );
+    this.logger.log(
+      `Comentario de la IRO ${tarea.instanceId} corregido desde el plan ${planId} por ${usuario}`,
+    );
   }
 
   /** La tarea como objeto plano (sin los internos de Mongoose). */
@@ -861,23 +964,26 @@ export class PlanesAccionService implements OnModuleInit {
     // Se filtra aquí y no en la consulta porque el área del plan es texto
     // libre y se compara normalizado.
     const visibles = planes.filter((p) => planDentroDelAlcance(p, alcance));
-    const tipos = await this.tiposDeInspeccion(visibles);
-    return visibles.map((p) =>
-      this.sanitizeTareas({
+    const deLaIro = await this.datosDeSusInspecciones(visibles);
+    return visibles.map((p) => {
+      const iro = p.instanceId ? deLaIro.get(p.instanceId) : undefined;
+      return this.sanitizeTareas({
         ...p.toObject(),
-        tipoInspeccion: p.instanceId ? tipos.get(p.instanceId) : undefined,
-      }),
-    );
+        tipoInspeccion: iro?.tipo,
+        itemsCriticos: iro?.itemsCriticos,
+      });
+    });
   }
 
   /**
-   * De qué IRO o ISOP sale cada plan: la plantilla de su inspección. Se
-   * deduce al listar (una consulta para todos) y no se guarda en el plan, así
-   * los planes que ya existen lo tienen sin migrar nada.
+   * Lo que cada plan muestra de su IRO o ISOP: la plantilla (el tipo) y los
+   * ítems críticos que anotó el inspector en las conclusiones. Se deduce al
+   * listar (una consulta para todos) y no se guarda en el plan: los planes que
+   * ya existen lo tienen sin migrar nada, y siempre al día con la IRO.
    */
-  private async tiposDeInspeccion(
+  private async datosDeSusInspecciones(
     planes: { instanceId?: string }[],
-  ): Promise<Map<string, TipoDeInspeccion>> {
+  ): Promise<Map<string, { tipo?: TipoDeInspeccion; itemsCriticos?: string }>> {
     const ids = [
       ...new Set(
         planes
@@ -889,25 +995,30 @@ export class PlanesAccionService implements OnModuleInit {
 
     const instancias = await this.instanceModel
       .find({ _id: { $in: ids } })
-      .select('templateId')
+      .select('templateId aspectosAdicionales')
       .populate({ path: 'templateId', select: 'code name' })
       .lean()
       .exec();
 
-    const tipos = new Map<string, TipoDeInspeccion>();
+    const datos = new Map<
+      string,
+      { tipo?: TipoDeInspeccion; itemsCriticos?: string }
+    >();
     for (const i of instancias) {
       const plantilla = i.templateId as unknown as {
         code?: string;
         name?: string;
       } | null;
-      if (plantilla?.code) {
-        tipos.set(String(i._id), {
-          codigo: plantilla.code,
-          nombre: plantilla.name ?? plantilla.code,
-        });
-      }
+      // «2. Ítems críticos / aspectos adicionales» de las conclusiones de la IRO.
+      const itemsCriticos = i.aspectosAdicionales?.trim() || undefined;
+      datos.set(String(i._id), {
+        tipo: plantilla?.code
+          ? { codigo: plantilla.code, nombre: plantilla.name ?? plantilla.code }
+          : undefined,
+        itemsCriticos,
+      });
     }
-    return tipos;
+    return datos;
   }
 
   /**
