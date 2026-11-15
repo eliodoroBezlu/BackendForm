@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PlanesAccionService } from './planes-accion.service';
 import { PlanesAccionExcelService } from './planes-accion-excel.service';
+import { PlanesAccionPlanillaService } from './planes-accion-planilla.service';
 import { PlanesAccionController } from './planes-accion.controller';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PlanDeAccion, PlanDeAccionSchema } from './schemas/plan-accion.schema';
@@ -32,7 +33,11 @@ import {
     TemplatesModule,
   ],
   controllers: [PlanesAccionController],
-  providers: [PlanesAccionService, PlanesAccionExcelService],
+  providers: [
+    PlanesAccionService,
+    PlanesAccionExcelService,
+    PlanesAccionPlanillaService,
+  ],
   exports: [PlanesAccionService],
 })
 export class PlanesAccionModule {}

@@ -10,10 +10,15 @@ import {
   Res,
   UseGuards,
   ForbiddenException,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { PlanesAccionService } from './planes-accion.service';
 import { PlanesAccionExcelService } from './planes-accion-excel.service';
+import { PlanesAccionPlanillaService } from './planes-accion-planilla.service';
 import { ApiOperation, ApiQuery, ApiTags, ApiParam } from '@nestjs/swagger';
 import { CreatePlanAccionDto } from './dto/create-planes-accion.dto';
 import { UpdatePlanAccionDto } from './dto/update-planes-accion.dto';
@@ -28,6 +33,13 @@ import { Role } from '../auth/enums/role.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { buildContentDispositionHeader } from '../../common/utils/download-filename.util';
 
+/**
+ * La planilla lleva las fotos de evidencia incrustadas. El mismo tope que la
+ * acción de servidor del frontend (`bodySizeLimit`); si pesa más, se pueden
+ * borrar las fotos: al subirla no se leen.
+ */
+const TAMANO_MAXIMO_PLANILLA = 10 * 1024 * 1024;
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiTags('planes-accion')
 @Controller('planes-accion')
@@ -35,6 +47,7 @@ export class PlanesAccionController {
   constructor(
     private readonly planesAccionService: PlanesAccionService,
     private readonly planesAccionExcelService: PlanesAccionExcelService,
+    private readonly planesAccionPlanillaService: PlanesAccionPlanillaService,
   ) {}
 
   // ==========================================
@@ -179,6 +192,42 @@ export class PlanesAccionController {
             : 'Error al generar el Excel del plan',
       });
     }
+  }
+
+  /**
+   * Sube la planilla descargada y editada. **Sin `?aplicar=true` solo la
+   * revisa** y responde qué haría con cada fila; con él aplica las filas
+   * válidas. Por ahora solo el admin.
+   */
+  @Post(':id/planilla')
+  @Roles(Role.ADMIN)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: TAMANO_MAXIMO_PLANILLA } }),
+  )
+  @ApiOperation({
+    summary:
+      'Actualizar las tareas desde la planilla descargada (solo Admin; sin ?aplicar=true solo revisa)',
+  })
+  cargarPlanilla(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Query('aplicar') aplicar: string | undefined,
+    @CurrentUser('username') usuario?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Falta la planilla (campo «file»)');
+    }
+    if (!/\.xlsx$/i.test(file.originalname)) {
+      throw new BadRequestException(
+        'La planilla tiene que ser un archivo .xlsx (la que se descarga del plan).',
+      );
+    }
+    return this.planesAccionPlanillaService.cargar(id, file.buffer, {
+      aplicar: aplicar === 'true',
+      usuario: usuario ?? 'desconocido',
+      // Multer entrega el nombre en latin1.
+      archivo: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+    });
   }
 
   @Patch(':id')

@@ -55,6 +55,7 @@ import {
 } from './domain/sincronizar-con-inspeccion';
 import type { InspeccionAnterior } from '../instances/instances.service';
 import { conResponsablesDeCierre } from './domain/responsables-cierre';
+import { fechaDeLaInspeccion } from './domain/fecha-de-la-inspeccion';
 import { comentarioALaInspeccion } from './domain/descripcion-a-la-inspeccion';
 import {
   alcanceDe,
@@ -970,20 +971,27 @@ export class PlanesAccionService implements OnModuleInit {
       return this.sanitizeTareas({
         ...p.toObject(),
         tipoInspeccion: iro?.tipo,
+        fechaInspeccion: iro?.fecha,
         itemsCriticos: iro?.itemsCriticos,
       });
     });
   }
 
   /**
-   * Lo que cada plan muestra de su IRO o ISOP: la plantilla (el tipo) y los
-   * ítems críticos que anotó el inspector en las conclusiones. Se deduce al
+   * Lo que cada plan muestra de su IRO o ISOP: la plantilla (el tipo), el día
+   * en que se hizo y los ítems críticos que anotó el inspector en las
+   * conclusiones. Se deduce al
    * listar (una consulta para todos) y no se guarda en el plan: los planes que
    * ya existen lo tienen sin migrar nada, y siempre al día con la IRO.
    */
   private async datosDeSusInspecciones(
     planes: { instanceId?: string }[],
-  ): Promise<Map<string, { tipo?: TipoDeInspeccion; itemsCriticos?: string }>> {
+  ): Promise<
+    Map<
+      string,
+      { tipo?: TipoDeInspeccion; fecha?: string; itemsCriticos?: string }
+    >
+  > {
     const ids = [
       ...new Set(
         planes
@@ -995,14 +1003,14 @@ export class PlanesAccionService implements OnModuleInit {
 
     const instancias = await this.instanceModel
       .find({ _id: { $in: ids } })
-      .select('templateId aspectosAdicionales')
+      .select('templateId aspectosAdicionales verificationList createdAt')
       .populate({ path: 'templateId', select: 'code name' })
       .lean()
       .exec();
 
     const datos = new Map<
       string,
-      { tipo?: TipoDeInspeccion; itemsCriticos?: string }
+      { tipo?: TipoDeInspeccion; fecha?: string; itemsCriticos?: string }
     >();
     for (const i of instancias) {
       const plantilla = i.templateId as unknown as {
@@ -1015,6 +1023,10 @@ export class PlanesAccionService implements OnModuleInit {
         tipo: plantilla?.code
           ? { codigo: plantilla.code, nombre: plantilla.name ?? plantilla.code }
           : undefined,
+        fecha: fechaDeLaInspeccion(
+          i.verificationList as unknown as Record<string, unknown>,
+          (i as { createdAt?: Date }).createdAt,
+        ),
         itemsCriticos,
       });
     }

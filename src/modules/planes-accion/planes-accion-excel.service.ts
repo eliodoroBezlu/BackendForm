@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { PlanDeAccion, TareaObservacion } from './schemas/plan-accion.schema';
 import { resizeImageBuffer } from '../../common/utils/image-resize.util';
+import { PLANILLA } from './planilla-seguimiento';
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif']);
 
@@ -68,6 +69,12 @@ export class PlanesAccionExcelService {
     worksheet.getCell('E7').value = plan.superintendenciaSenior ?? '';
     worksheet.getCell('E8').value = plan.superintendencia ?? '';
     worksheet.getCell('E9').value = plan.areaFisica ?? '';
+    // Para volver a subir la planilla: de qué plan es (ver `planilla-seguimiento.ts`).
+    worksheet.getCell(PLANILLA.celdaPlan).value =
+      (plan as unknown as { _id?: { toString(): string } })._id?.toString() ??
+      '';
+    worksheet.getCell(`${PLANILLA.columnaId}11`).value = 'ID TAREA';
+    worksheet.getCell(`${PLANILLA.columnaVersion}11`).value = 'VERSIÓN';
 
     worksheet.getCell('K8').value =
       (plan.tareasAbiertas ?? 0) + (plan.tareasEnProgreso ?? 0);
@@ -125,6 +132,10 @@ export class PlanesAccionExcelService {
     row.getCell('N').value = tarea.fechaCumplimientoEfectiva
       ? new Date(tarea.fechaCumplimientoEfectiva)
       : null;
+    // Q y R (ocultas): la tarea y cuántos cambios tenía al descargar, para
+    // reconocerla al subir la planilla y saber si cambió entre medio.
+    row.getCell(PLANILLA.columnaId).value = String(tarea._id ?? '');
+    row.getCell(PLANILLA.columnaVersion).value = tarea.historial?.length ?? 0;
     // P (estado) queda con la fórmula original de la plantilla. O (días de
     // retraso) se fuerza explícitamente — ver comentario de clase.
     const fila = row.number;

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PlanesAccionController } from './planes-accion.controller';
 import { PlanesAccionService } from './planes-accion.service';
 import { PlanesAccionExcelService } from './planes-accion-excel.service';
+import { PlanesAccionPlanillaService } from './planes-accion-planilla.service';
 import { Role } from '../auth/enums/role.enum';
 
 /**
@@ -39,6 +40,10 @@ describe('PlanesAccionController', () => {
         {
           provide: PlanesAccionExcelService,
           useValue: { generar: jest.fn() },
+        },
+        {
+          provide: PlanesAccionPlanillaService,
+          useValue: { cargar: jest.fn() },
         },
       ],
     }).compile();

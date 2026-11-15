@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 import * as path from 'path';
 import { InspectionHerraEquipos } from '../schemas/inspection-herra-equipos.schema';
 import { insertarImagenEnCelda } from './comun/imagen-excel.util';
+import { ordenarComoLaPlantilla } from './escaleras-orden';
 
 @Injectable()
 export class ExcelEscaleraService {
@@ -370,8 +371,9 @@ export class ExcelEscaleraService {
       this.logger.log(`  📋 Analizando grupo: "${key.substring(0, 50)}..."`);
       this.logger.log(`  📋 Selecciones disponibles: ${selections.length}`);
 
-      if (subIndex < selections.length) {
-        const selectedOption = selections[subIndex];
+      const enOrden = ordenarComoLaPlantilla(selections, subsectionMapping);
+      if (subIndex < enOrden.length) {
+        const selectedOption = enOrden[subIndex];
         this.logger.log(`  ✅ ${subId} corresponde a: "${selectedOption}"`);
 
         // Buscar match con keywords
