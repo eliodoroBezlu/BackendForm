@@ -43,29 +43,6 @@ interface IamServiceUser {
   } | null;
 }
 
-interface IamTrabajadorEntry {
-  /** Id de la ficha en el IAM: clave del espejo. */
-  id: string;
-  // Puede venir null: el IAM admite personal sin CI (ej. contratistas de Sync)
-  ci: string | null;
-  nomina: string;
-  puesto: string;
-  superintendencia: string;
-  area: string | null;
-  areaCodigo: string | null;
-  jde: string | null;
-  disciplina: string | null;
-  esContratista: boolean;
-  celular: string | null;
-  residencia: string | null;
-  noBloque: string | null;
-  noHabitacion: string | null;
-  fechaIngreso: string | null;
-  tieneAccesoSistema: boolean;
-  activo: boolean;
-  username: string | null;
-}
-
 /** Los roles que pueden recibir una tarea como responsables de cierre. */
 export const ROLES_DE_CIERRE = ['supervisor', 'superintendente'] as const;
 
@@ -103,12 +80,10 @@ export class TrabajadoresService implements OnModuleInit {
    * dejaba el arranque colgando de que el IAM respondiera: era best-effort,
    * pero igualmente esperaba a que fallase.
    *
-   * La sincronización sigue disponible, ahora cuando alguien la decide:
-   *
-   *     POST /trabajadores/sync?role=supervisor      (solo admin)
-   *
-   * Ese endpoint hace las dos cosas que hacía el arranque: el roster y los
-   * roles del servicio.
+   * La sincronización la decide un admin desde la pantalla de trabajadores:
+   * primero ve qué cambiaría (`GET /trabajadores/sync/vista-previa`) y
+   * después aplica lo que eligió (`POST /trabajadores/sync`). Ver
+   * `SincronizacionIamService`.
    */
   async onModuleInit(): Promise<void> {
     this.logger.log(
@@ -183,7 +158,7 @@ export class TrabajadoresService implements OnModuleInit {
   // ==================== CRUD BÁSICO ====================
   // ── Creación y edición del perfil delegadas al IAM Core ──────────────
   // El roster local (nomina, puesto, área, superintendencia, etc.) es un
-  // espejo de solo lectura, refrescado por `syncTrabajadoresFromIam`.
+  // espejo de solo lectura, refrescado por SincronizacionIamService.
   // Crear o editar trabajadores se hace en el IAM Portal.
 
   async create(_createDto: CreateTrabajadorDto): Promise<Trabajador> {
@@ -310,118 +285,6 @@ export class TrabajadoresService implements OnModuleInit {
   }
 
   // ==================== SINCRONIZACIÓN CON IAM CORE ====================
-
-  /**
-   * Trae del IAM Core (fuente de verdad) el roster COMPLETO de trabajadores
-   * activos — tengan o no usuario/acceso al sistema — y lo espeja en Mongo,
-   * emparejando por el id de la ficha del IAM (y, para documentos anteriores,
-   * por `ci`). Preserva siempre los campos propios de BackendForm
-   * (`creado_por_usuario`, `user_disabled*`, `user_unlinked*`, `userId` del
-   * sistema legacy de auth local, `roles_iam` — ese lo mantiene aparte
-   * `syncRolFromIam`).
-   */
-  async syncTrabajadoresFromIam(): Promise<{
-    actualizados: number;
-    creados: number;
-    error?: string;
-  }> {
-    const base = (
-      this.configService.get<string>('IAM_CORE_URL') || 'http://localhost:4000'
-    ).replace(/\/+$/, '');
-    const apiKey = this.configService.get<string>('IAM_CORE_API_KEY') || '';
-
-    let trabajadoresIam: IamTrabajadorEntry[];
-    try {
-      const response = await fetch(
-        `${base}/api/rbac/trabajadores?activo=true`,
-        {
-          headers: { 'X-Api-Key': apiKey },
-          cache: 'no-store',
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`IAM respondió con estado ${response.status}`);
-      }
-      const data = (await response.json()) as {
-        trabajadores?: IamTrabajadorEntry[];
-      };
-      trabajadoresIam = data.trabajadores ?? [];
-    } catch (error) {
-      return {
-        actualizados: 0,
-        creados: 0,
-        error: error instanceof Error ? error.message : 'Error desconocido',
-      };
-    }
-
-    let actualizados = 0;
-    let creados = 0;
-    const fallos: string[] = [];
-
-    for (const t of trabajadoresIam) {
-      try {
-        const existente = await this.buscarEspejo(t);
-
-        if (existente) {
-          existente.iam_trabajador_id = t.id;
-          existente.ci = await this.ciParaEspejo(t, existente.ci);
-          existente.nomina = t.nomina || existente.nomina;
-          existente.puesto = t.puesto || existente.puesto;
-          existente.superintendencia =
-            t.superintendencia || existente.superintendencia;
-          existente.area = t.area || existente.area || 'Sin área';
-          existente.jde = t.jde || existente.jde;
-          existente.no_bloque = t.noBloque || existente.no_bloque;
-          existente.no_habitacion = t.noHabitacion || existente.no_habitacion;
-          existente.residencia = t.residencia || existente.residencia;
-          existente.celular = t.celular || existente.celular;
-          if (t.fechaIngreso)
-            existente.fecha_ingreso = new Date(t.fechaIngreso);
-          if (t.username) existente.username = t.username;
-          existente.tiene_acceso_sistema = t.tieneAccesoSistema;
-          existente.activo = t.activo;
-          await existente.save();
-          actualizados++;
-        } else {
-          await new this.trabajadorModel({
-            iam_trabajador_id: t.id,
-            ci: await this.ciParaEspejo(t),
-            nomina: t.nomina,
-            puesto: t.puesto,
-            fecha_ingreso: t.fechaIngreso
-              ? new Date(t.fechaIngreso)
-              : new Date(),
-            superintendencia: t.superintendencia || 'Sin superintendencia',
-            area: t.area || 'Sin área',
-            jde: t.jde || undefined,
-            no_bloque: t.noBloque || undefined,
-            no_habitacion: t.noHabitacion || undefined,
-            residencia: t.residencia || undefined,
-            celular: t.celular || undefined,
-            username: t.username || undefined,
-            tiene_acceso_sistema: t.tieneAccesoSistema,
-            activo: t.activo,
-          }).save();
-          creados++;
-        }
-      } catch (error) {
-        // Un registro con datos incompletos/legado no debe abortar el resto
-        // de la sincronización.
-        this.logger.warn(
-          `No se pudo sincronizar el trabajador ${t.nomina} (${t.id}): ${error instanceof Error ? error.message : 'error desconocido'}`,
-        );
-        fallos.push(t.nomina);
-      }
-    }
-
-    if (fallos.length > 0) {
-      this.logger.warn(
-        `Sync de roster: ${fallos.length} trabajador(es) con error, omitidos: ${fallos.join(', ')}`,
-      );
-    }
-
-    return { actualizados, creados };
-  }
 
   /**
    * Trae del IAM Core (fuente de verdad) los usuarios que tienen `role` en

@@ -177,8 +177,11 @@ export class AreaService implements OnModuleInit {
 
     let areas: IamAreaCatalogEntry[];
     try {
+      // Con su X-Api-Key: el IAM la va a exigir (RBAC_REQUIERE_API_KEY).
+      const apiKey = this.configService.get<string>('IAM_CORE_API_KEY');
       const response = await fetch(`${base}/api/rbac/catalog/areas`, {
         cache: 'no-store',
+        headers: apiKey ? { 'X-Api-Key': apiKey } : {},
       });
       if (!response.ok) {
         throw new Error(`IAM respondió con estado ${response.status}`);

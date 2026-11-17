@@ -36,7 +36,11 @@ export class RbacCacheService {
       .get<string>('IAM_CORE_URL', 'http://localhost:4000')
       .replace(/\/+$/, '');
     try {
-      const res = await fetch(`${base}/api/rbac/${this.serviceKey}`);
+      // Con su X-Api-Key: el IAM la va a exigir (RBAC_REQUIERE_API_KEY).
+      const apiKey = this.config.get<string>('IAM_CORE_API_KEY');
+      const res = await fetch(`${base}/api/rbac/${this.serviceKey}`, {
+        headers: apiKey ? { 'X-Api-Key': apiKey } : {},
+      });
       if (res.ok) {
         const data = (await res.json()) as {
           rolePermissions?: Record<string, string[]>;

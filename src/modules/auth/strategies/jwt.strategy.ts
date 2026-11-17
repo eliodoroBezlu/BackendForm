@@ -26,6 +26,31 @@ interface IamJwtPayload {
   aud: string | string[];
   exp: number;
   iat: number;
+  /** Solo en los tokens temporales del login. */
+  type?: string;
+}
+
+/** Destinatario de los tokens temporales del login en IAM Core. */
+const AUD_PASO_LOGIN = 'iam-core:paso-login';
+
+/**
+ * Lo que firma IAM Core y no es un access token:
+ *  - el token temporal del login (`type`, o su `aud` propio);
+ *  - el id_token (`auth_time`), que un client OIDC guarda y lleva `aud=forms`;
+ *  - el logout_token del back-channel (`events`).
+ * Los access tokens nunca traen esos claims.
+ */
+export function noEsAccessToken(payload: {
+  type?: unknown;
+  aud?: unknown;
+}): boolean {
+  const auds = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  return (
+    payload.type !== undefined ||
+    auds.includes(AUD_PASO_LOGIN) ||
+    'auth_time' in payload ||
+    'events' in payload
+  );
 }
 
 @Injectable()
@@ -39,6 +64,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       'http://localhost:4000',
     );
     const jwksUri = `${iamCoreUrl}/api/auth/.well-known/jwks.json`;
+    const audiencia = configService.get<string>('IAM_CORE_JWT_AUDIENCE');
 
     super({
       // ── Extraer JWT desde cookie o Bearer header ────────────────
@@ -62,6 +88,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
       algorithms: ['RS256'],
       issuer: configService.get<string>('IAM_CORE_JWT_ISSUER', 'iam-core'),
+      // Con IAM_CORE_JWT_AUDIENCE=forms solo pasan los tokens emitidos para
+      // forms: uno de Sync o del portal, firmado por el mismo IAM, ya no.
+      // Se activa después de desplegar el IAM que pone el aud por servicio
+      // (los tokens anteriores viven 15 minutos).
+      ...(audiencia && { audience: audiencia }),
     });
   }
 
@@ -73,6 +104,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: IamJwtPayload) {
     if (!payload?.sub) {
       throw new UnauthorizedException('Token inválido');
+    }
+    // El token temporal del login (falta el 2FA o cambiar la clave) va firmado
+    // con la misma clave: sin esto, la contraseña sola daba una sesión. Lo
+    // mismo el id_token y el logout_token.
+    if (noEsAccessToken(payload)) {
+      throw new UnauthorizedException('Termine el inicio de sesión');
     }
 
     // Roles del usuario EN forms (RBAC por servicio); fallback a roles globales
