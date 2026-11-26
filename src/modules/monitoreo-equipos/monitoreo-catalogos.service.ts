@@ -11,7 +11,11 @@ import {
   marcarRestaurado,
 } from '../../common/baja-logica/baja-logica.plugin';
 import { ConfigFormularioService } from '../config-formulario/config-formulario.service';
-import { CAMPOS_FICHA_BOMBA, TIPO_EQUIPO_BOMBA } from './domain/bomba';
+import {
+  CAMPOS_FICHA_BOMBA,
+  ESPECIFICACIONES_RETIRADAS,
+  TIPO_EQUIPO_BOMBA,
+} from './domain/bomba';
 import {
   CATALOGOS_INICIALES,
   normalizarValor,
@@ -211,15 +215,47 @@ export class MonitoreoCatalogosService {
       });
       return true;
     } catch (error) {
-      // Ya existe, activa o dada de baja: en los dos casos no se pisa.
+      // Ya existe, activa o dada de baja: no se pisa, solo se ajusta.
       if (
         error instanceof ConflictException ||
         (error as { code?: number }).code === 11000
       ) {
+        await this.ajustarFichaBomba();
         return false;
       }
       throw error;
     }
+  }
+
+  /**
+   * En una ficha que ya existe, quita los campos que Confiabilidad pidió
+   * sacar (TMEF, bombas pares, servicio / proceso) y agrega los que falten
+   * (Alcance). Los campos que alguien haya agregado desde el panel quedan.
+   */
+  private async ajustarFichaBomba(): Promise<void> {
+    let ficha;
+    try {
+      ficha = await this.configFormularios.findOne(TIPO_EQUIPO_BOMBA);
+    } catch (error) {
+      if (error instanceof NotFoundException) return; // dada de baja: no se toca
+      throw error;
+    }
+    if (!ficha) return;
+    const retirados = new Set<string>(ESPECIFICACIONES_RETIRADAS);
+    const actuales = (ficha.campos ?? []).filter((c) => !retirados.has(c.name));
+    const faltan = CAMPOS_FICHA_BOMBA.filter(
+      (c) => !actuales.some((a) => a.name === c.name),
+    );
+    if (
+      faltan.length === 0 &&
+      actuales.length === (ficha.campos ?? []).length
+    ) {
+      return;
+    }
+    await this.configFormularios.update(TIPO_EQUIPO_BOMBA, {
+      tipo_equipo: TIPO_EQUIPO_BOMBA,
+      campos: [...faltan, ...actuales],
+    } as never);
   }
 
   private async siguienteOrden(tipo: TipoCatalogoMonitoreo): Promise<number> {

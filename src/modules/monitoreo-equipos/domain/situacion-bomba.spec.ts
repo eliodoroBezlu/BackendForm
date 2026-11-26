@@ -9,14 +9,12 @@ const dia = (a: number, m: number, d: number) =>
   new Date(Date.UTC(a, m - 1, d));
 const HOY = dia(2026, 10, 15);
 
-/** COTEM137: 06-oct-26, fecha tentativa 10-nov-26 (856 h después). */
+/** COTEM137: emitido el 06-oct-26. */
 const COTEM137: UltimoReporte = {
   id: '1',
   codigo_interno: 'COTEM-0137',
   fecha: dia(2026, 10, 6),
   resultado: 'NORMAL',
-  fecha_tentativa: new Date(Date.UTC(2026, 10, 10, 16)),
-  horas_restantes: 856,
 };
 
 describe('situación de una bomba', () => {
@@ -28,16 +26,20 @@ describe('situación de una bomba', () => {
     expect(diasEntre(dia(2026, 10, 15), dia(2026, 10, 14))).toBe(-1);
   });
 
-  it('230PP013: próximo monitoreo a los 28 días del último reporte, intervención al día', () => {
+  it('230PP013: próximo monitoreo a los 28 días del último reporte', () => {
     const s = situacionDeBomba(COTEM137, 28, HOY);
     expect(s.proximo_monitoreo).toEqual(dia(2026, 11, 3));
     expect(s.dias_para_monitoreo).toBe(19);
-    expect(s.dias_para_intervencion).toBe(26);
-    expect(s).toMatchObject({
-      alerta_monitoreo: 'al_dia',
-      alerta_intervencion: 'al_dia',
-      alerta: 'al_dia',
-    });
+    expect(s).toMatchObject({ alerta_monitoreo: 'al_dia', alerta: 'al_dia' });
+  });
+
+  it('ya no hay fecha tentativa ni alerta de intervención (se quitó el TMEF)', () => {
+    const s = situacionDeBomba(COTEM137, 28, HOY) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(s).not.toHaveProperty('alerta_intervencion');
+    expect(s).not.toHaveProperty('dias_para_intervencion');
   });
 
   it('el monitoreo pasa a próximo una semana antes y a vencido al día siguiente', () => {
@@ -52,38 +54,12 @@ describe('situación de una bomba', () => {
     ).toBe('vencida');
   });
 
-  it('la intervención avisa con dos semanas, porque se planifica en JDE', () => {
-    expect(
-      situacionDeBomba(COTEM137, 70, dia(2026, 10, 27)).alerta_intervencion,
-    ).toBe('proxima');
-    expect(
-      situacionDeBomba(COTEM137, 70, dia(2026, 10, 26)).alerta_intervencion,
-    ).toBe('al_dia');
-  });
-
-  it('la alerta general es la peor de las dos', () => {
-    // Monitoreo al día (70 días) pero la intervención ya pasó.
-    const s = situacionDeBomba(COTEM137, 70, dia(2026, 11, 20));
-    expect(s.alerta_monitoreo).toBe('al_dia');
-    expect(s.alerta_intervencion).toBe('vencida');
-    expect(s.alerta).toBe('vencida');
-  });
-
-  it('sin reportes emitidos no hay fechas que inventar', () => {
+  it('sin reportes emitidos o sin frecuencia no hay fechas que inventar', () => {
     expect(situacionDeBomba(undefined, 28, HOY)).toMatchObject({
       alerta: 'sin_datos',
       proximo_monitoreo: undefined,
     });
-    // Sin TMEF en la ficha no hay fecha tentativa, pero sí próximo monitoreo.
-    const sinTmef = situacionDeBomba(
-      { ...COTEM137, fecha_tentativa: undefined },
-      28,
-      HOY,
-    );
-    expect(sinTmef).toMatchObject({
-      alerta_intervencion: 'sin_datos',
-      alerta: 'al_dia',
-    });
+    expect(situacionDeBomba(COTEM137, undefined, HOY).alerta).toBe('sin_datos');
   });
 
   it('ordena lo vencido primero y, dentro de cada grupo, lo más cercano', () => {

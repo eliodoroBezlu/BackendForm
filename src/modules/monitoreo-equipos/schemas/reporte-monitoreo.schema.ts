@@ -5,6 +5,8 @@ import { bajaLogica } from '../../../common/baja-logica/baja-logica.plugin';
 import {
   AntecedentesReporte,
   EstadoReporte,
+  MedicionDelReporte,
+  PiezaDelReporte,
   TareaDeReporte,
 } from '../domain/reporte';
 
@@ -32,6 +34,14 @@ export class LecturasReporte {
   /** Emisividad configurada en la cámara (FLIR: 0,95). */
   @Prop({ type: Number })
   emisividad?: number;
+
+  /** Ultrasonido: velocidad del sonido calibrada en el equipo (5920 m/s). */
+  @Prop({ type: Number })
+  velocidad_ms?: number;
+
+  /** Ultrasonido: frecuencia del sensor (7,5 MHz). */
+  @Prop({ type: Number })
+  frecuencia_mhz?: number;
 }
 
 @Schema({ _id: false })
@@ -86,13 +96,16 @@ export class ReporteMonitoreo extends Document {
   @Prop({ type: String, required: true })
   tipo_equipo: string;
 
+  /**
+   * El equipo del inventario. Falta cuando el tag se habilitó solo por su
+   * plantilla de medición (p. ej. un muestreador que no está en el inventario).
+   */
   @Prop({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Equipo',
-    required: true,
     index: true,
   })
-  equipo_id: Types.ObjectId;
+  equipo_id?: Types.ObjectId;
 
   @Prop({ type: String, required: true, index: true })
   tag: string;
@@ -109,6 +122,21 @@ export class ReporteMonitoreo extends Document {
   @Prop({ type: String })
   alcance?: string;
 
+  /** Enlace al informe anterior, pegado por el analista. */
+  @Prop({ type: String })
+  informe_anterior_url?: string;
+
+  /** ANTECEDENTES en texto libre: lo usa el reporte con medición de espesores. */
+  @Prop({ type: String })
+  antecedentes_texto?: string;
+
+  /**
+   * Las piezas como las completó el analista. Vacío: las de la ficha de la
+   * bomba. Los antecedentes se arman con esto (`armarAntecedentes`).
+   */
+  @Prop({ type: [Object], default: undefined })
+  piezas?: PiezaDelReporte[];
+
   @Prop({ type: LecturasReporte, default: {} })
   lecturas: LecturasReporte;
 
@@ -121,6 +149,17 @@ export class ReporteMonitoreo extends Document {
   /** El gráfico de PI, de ancho completo. */
   @Prop({ type: ImagenReporte })
   grafico?: ImagenReporte;
+
+  /**
+   * La medición de espesores, si el tag y la técnica tienen plantilla de
+   * medición: grilla y diagramas copiados al crear, más los valores.
+   */
+  @Prop({ type: Object })
+  medicion?: MedicionDelReporte;
+
+  /** Imágenes que no entran en la recopilación: van al final del PDF. */
+  @Prop({ type: [ImagenReporte], default: [] })
+  anexos: ImagenReporte[];
 
   /** Copiado de la plantilla al crear: cambiarla no redistribuye reportes viejos. */
   @Prop({ type: Number, required: true })

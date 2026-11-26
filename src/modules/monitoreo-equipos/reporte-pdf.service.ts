@@ -35,13 +35,16 @@ export class ReportePdfService {
 
   async generar(id: string): Promise<{ pdf: Buffer; nombre: string }> {
     const r = await this.reportes.obtener(id);
-    const [nombres, colorResultado, fotos, grafico, logo] = await Promise.all([
-      this.nombres([r.elaboradoPor, r.revisadoPor]),
-      this.colorDe(r.resultado),
-      Promise.all((r.fotos ?? []).map((f) => this.imagen(f))),
-      r.grafico ? this.imagen(r.grafico) : Promise.resolve(undefined),
-      fs.readFile(RUTA_LOGO).catch(() => undefined),
-    ]);
+    const [nombres, colorResultado, fotos, grafico, anexos, diagramas, logo] =
+      await Promise.all([
+        this.nombres([r.elaboradoPor, r.revisadoPor]),
+        this.colorDe(r.resultado),
+        Promise.all((r.fotos ?? []).map((f) => this.imagen(f))),
+        r.grafico ? this.imagen(r.grafico) : Promise.resolve(undefined),
+        Promise.all((r.anexos ?? []).map((f) => this.imagen(f))),
+        Promise.all((r.medicion?.diagramas ?? []).map((d) => this.imagen(d))),
+        fs.readFile(RUTA_LOGO).catch(() => undefined),
+      ]);
 
     const pdf = await generarPdfReporte({
       reporte: {
@@ -51,6 +54,8 @@ export class ReportePdfService {
       },
       fotos,
       grafico,
+      anexos,
+      diagramas,
       elaboradoPor: nombres.get(r.elaboradoPor) ?? r.elaboradoPor,
       revisadoPor: r.revisadoPor
         ? (nombres.get(r.revisadoPor) ?? r.revisadoPor)

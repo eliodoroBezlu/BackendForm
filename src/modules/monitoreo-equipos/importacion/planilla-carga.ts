@@ -14,6 +14,10 @@ import {
  *
  * Un problema `grave` impide aplicar la carga (un TAG mal escrito, un número
  * que no es número, una pieza que no existe); un aviso se informa y se sigue.
+ *
+ * Desde 2026-11-18 la hoja Bombas trae «Alcance» en lugar de «Servicio /
+ * proceso», y ya no se leen «TMEF (hrs)» ni «Bombas pares»: si una planilla
+ * vieja las trae, se ignoran.
  */
 
 export interface BombaLeida {
@@ -23,11 +27,18 @@ export interface BombaLeida {
   frecuenciaDias?: number;
   fabricante?: string;
   modelo?: string;
-  servicio?: string;
-  tmefHrs?: number;
+  alcance?: string;
   tagPi?: string;
-  pares: string[];
   ubicacion?: string;
+}
+
+/**
+ * El tag de PI como se pegó en la celda, sin las comillas, comas o punto y
+ * coma que se cuelan al copiarlo (`\\PI_SERVER\230PP012-112/PV"`).
+ */
+export function limpiarTagPi(escrito: string | undefined): string | undefined {
+  const limpio = escrito?.trim().replace(/^["'\s]+|["';,\s]+$/g, '');
+  return limpio || undefined;
 }
 
 export interface ComponenteLeido {
@@ -225,15 +236,16 @@ export async function leerPlanillaDeCarga(
       grave(h.nombre, f.numero, `TAG «${tag}» repetido`);
       continue;
     }
-    const pares = (texto(f.celda('Bombas pares')) ?? '')
-      .split(/[,;]/)
-      .map((p) => p.trim().toUpperCase())
-      .filter(Boolean);
-    pares
-      .filter((p) => !FORMA_TAG.test(p))
-      .forEach((p) =>
-        aviso(h.nombre, f.numero, `Bomba par «${p}» no parece un TAG`),
+    const tagPi = limpiarTagPi(texto(f.celda('Tag de horas en PI')));
+    // El tag de PI lleva el TAG de la bomba (230PP013 → …\230PP013-112/PV). Si
+    // no lo nombra, lo más probable es que se haya copiado el de otra.
+    if (tagPi && !tagPi.toUpperCase().includes(tag)) {
+      aviso(
+        h.nombre,
+        f.numero,
+        `El tag de PI «${tagPi}» no menciona la bomba ${tag}: ¿es el de otra?`,
       );
+    }
     const fabricante = texto(f.celda('Fabricante'));
     if (fabricante && !enLista(TipoCatalogoMonitoreo.FABRICANTE, fabricante)) {
       aviso(
@@ -249,10 +261,8 @@ export async function leerPlanillaDeCarga(
       frecuenciaDias: numeroDe(h, f, 'Frecuencia (días)'),
       fabricante,
       modelo: texto(f.celda('Modelo')),
-      servicio: texto(f.celda('Servicio / proceso')),
-      tmefHrs: numeroDe(h, f, 'TMEF (hrs)'),
-      tagPi: texto(f.celda('Tag de horas en PI')),
-      pares,
+      alcance: texto(f.celda('Alcance')),
+      tagPi,
       ubicacion: texto(f.celda('Ubicación')),
     });
   }

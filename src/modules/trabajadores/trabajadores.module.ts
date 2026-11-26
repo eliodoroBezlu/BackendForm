@@ -22,5 +22,8 @@ import { User, UserSchema } from '../auth/schemas/user.schema';
   ],
   controllers: [TrabajadoresController],
   providers: [TrabajadoresService, SincronizacionIamService],
+  // El monitoreo de equipos ofrece a supervisores y superintendentes en
+  // «Comunicado / coordinado con».
+  exports: [TrabajadoresService],
 })
 export class TrabajadoresModule {}

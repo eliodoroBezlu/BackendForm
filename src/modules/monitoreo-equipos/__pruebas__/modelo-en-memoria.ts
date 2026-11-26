@@ -14,6 +14,7 @@ type Orden = Record<string, 1 | -1>;
 type Filtro = Record<string, unknown>;
 interface Cambio {
   $set?: Record<string, unknown>;
+  $unset?: Record<string, unknown>;
   $push?: Record<string, unknown>;
   $inc?: Record<string, number>;
 }
@@ -45,6 +46,8 @@ function cumpleCondicion(valor: unknown, cond: unknown): boolean {
         return valor !== undefined && v < r;
       case '$lte':
         return valor !== undefined && v <= r;
+      case '$gt':
+        return valor !== undefined && v > r;
       case '$gte':
         return valor !== undefined && v >= r;
       default:
@@ -111,6 +114,15 @@ function aplicar(doc: Registro, cambio: Cambio): void {
     const [campo, sub] = ruta.split(/\.(.+)/);
     if (sub === undefined) doc[campo] = valor;
     else doc[campo] = { ...(doc[campo] as object), [sub]: valor };
+  }
+  for (const ruta of Object.keys(cambio.$unset ?? {})) {
+    const [campo, sub] = ruta.split(/\.(.+)/);
+    if (sub === undefined) delete doc[campo];
+    else if (doc[campo] && typeof doc[campo] === 'object') {
+      const copia = { ...(doc[campo] as Record<string, unknown>) };
+      delete copia[sub];
+      doc[campo] = copia;
+    }
   }
   for (const [campo, valor] of Object.entries(cambio.$push ?? {})) {
     doc[campo] = [...((doc[campo] as unknown[]) ?? []), valor];

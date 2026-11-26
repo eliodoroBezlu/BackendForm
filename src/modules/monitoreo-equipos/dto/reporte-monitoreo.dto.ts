@@ -6,6 +6,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -15,16 +16,20 @@ import {
   Max,
   MaxLength,
   Min,
+  IsUrl,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
   EstadoReporte,
   FOTOS_POR_FILA_MAXIMO,
+  MAX_ANEXOS,
   MAX_FOTOS,
   MAX_RECOMENDACIONES,
   MAX_TAREAS,
 } from '../domain/reporte';
 import { FORMA_ARCHIVO } from '../domain/archivos';
+import { PIEZAS_BOMBA } from '../domain/bomba';
 
 export class LecturasReporteDto {
   @IsOptional()
@@ -55,6 +60,55 @@ export class LecturasReporteDto {
   @Min(0)
   @Max(1)
   emisividad?: number;
+
+  /** Ultrasonido: velocidad del sonido en m/s (acero: 5920). */
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(20000)
+  velocidad_ms?: number;
+
+  /** Ultrasonido: frecuencia del sensor en MHz. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0.1)
+  @Max(100)
+  frecuencia_mhz?: number;
+}
+
+/**
+ * Una pieza como la deja el analista en el reporte. Lo vacío toma el dato de
+ * la ficha de la bomba; las horas vacías se calculan.
+ */
+export class PiezaReporteDto {
+  @IsIn(PIEZAS_BOMBA)
+  pieza: string;
+
+  @IsOptional()
+  @IsDateString()
+  fecha_instalacion?: string;
+
+  /** Lista de proveedores. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  proveedor?: string;
+
+  /** Lista de condiciones iniciales. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  condicion_inicial?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  material?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  horas_trabajo?: number;
 }
 
 export class ImagenReporteDto {
@@ -135,15 +189,49 @@ export class CrearReporteMonitoreoDto {
   @MaxLength(120)
   tecnica?: string;
 
+  /** Solo números (`''` lo vacía). */
   @IsOptional()
   @IsString()
   @MaxLength(40)
+  @Matches(/^\d*$/, { message: 'El N° de OT lleva solo números' })
   ot?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   alcance?: string;
+
+  /** El enlace al informe anterior (`''` lo quita). */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '')
+  @IsUrl(
+    { require_protocol: true, require_tld: false },
+    { message: 'El informe anterior tiene que ser un enlace (https://…)' },
+  )
+  @MaxLength(1000)
+  informe_anterior_url?: string;
+
+  /** ANTECEDENTES en texto libre (reportes con medición de espesores). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  antecedentes_texto?: string;
+
+  /**
+   * Los espesores medidos, `[pieza][zona][anillo][punto]` con `null` donde
+   * no se midió. La forma se revisa contra la grilla del reporte
+   * (`erroresDeValores`): aquí solo se exige que sea una lista.
+   */
+  @IsOptional()
+  @IsArray()
+  medicion_valores?: unknown[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(PIEZAS_BOMBA.length)
+  @ValidateNested({ each: true })
+  @Type(() => PiezaReporteDto)
+  piezas?: PiezaReporteDto[];
 
   @IsOptional()
   @ValidateNested()
@@ -167,6 +255,13 @@ export class CrearReporteMonitoreoDto {
   @Type(() => ImagenReporteDto)
   /** `null` quita el gráfico. */
   grafico?: ImagenReporteDto | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ANEXOS)
+  @ValidateNested({ each: true })
+  @Type(() => ImagenReporteDto)
+  anexos?: ImagenReporteDto[];
 
   @IsOptional()
   @IsString()

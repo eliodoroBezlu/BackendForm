@@ -1,5 +1,7 @@
 import * as sharpNs from 'sharp';
 import { EstadoReporte } from '../domain/reporte';
+import { valoresVacios } from '../domain/espesores';
+import { ESTRUCTURA_250SA225 } from '../__pruebas__/medicion-250sa225';
 import { nombreDeArchivo } from '../reporte-pdf.service';
 import {
   DatosPdfReporte,
@@ -30,7 +32,7 @@ const REPORTE: ReporteParaPdf = {
   tareas: [{ descripcion: 'Nueva medición', comunicado_con: 'Wilmers Cruz' }],
   antecedentes: {
     tomados_en: dia(2026, 10, 6),
-    ficha: { modelo: 'WARMAN ASH 550 MMC', tmef_hrs: 2900 },
+    ficha: { modelo: 'WARMAN ASH 550 MMC' },
     componentes: [
       {
         pieza: 'Voluta',
@@ -38,7 +40,6 @@ const REPORTE: ReporteParaPdf = {
         horas_trabajo: 2044,
       },
     ],
-    horas_restantes: 856,
   },
   estado: EstadoReporte.EMITIDO,
   codigo_interno: 'COTEM-0137',
@@ -81,6 +82,48 @@ describe('PDF del reporte de monitoreo', () => {
     expect(paginas(pdf)).toBe(1);
   });
 
+  it('un ultrasonido como COULT482 lleva su tabla de espesores sin romper el PDF', async () => {
+    const valores = valoresVacios(ESTRUCTURA_250SA225).map((zonas) =>
+      zonas.map((filas) =>
+        filas.map((fila) => fila.map((_, n) => 6 + n / 100)),
+      ),
+    );
+    valores[6][1][2][0] = 5.39; // bajo la alerta: va en rojo
+    const pdf = await generar({
+      reporte: {
+        ...REPORTE,
+        tag: '250SA225',
+        tecnica: 'ULTRASONIDO ACTIVO',
+        antecedentes_texto: 'Cambio de la válvula dardo LV250033.',
+        lecturas: {
+          instrumento: 'TI-CMX',
+          velocidad_ms: 5920,
+          frecuencia_mhz: 7.5,
+        },
+        antecedentes: {
+          tomados_en: dia(2026, 11, 12),
+          ficha: {},
+          componentes: [],
+          medicion_anterior: {
+            id: 'x',
+            codigo_interno: 'COULT-0481',
+            fecha: dia(2026, 4, 25),
+            minimos: [{ pieza: '3', zona: 'Lado Sur', minimo: 5.61 }],
+          },
+        },
+        medicion: {
+          estructura: ESTRUCTURA_250SA225,
+          diagramas: [],
+          valores,
+        },
+      },
+      fotos: [],
+      diagramas: fotos(2),
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(paginas(pdf)).toBeLessThanOrEqual(3);
+  });
+
   it.each([1, 2, 3, 4, 5, 6, 7, 8, 9])(
     'con %i fotos se genera sin fallar',
     async (n) => {
@@ -95,6 +138,21 @@ describe('PDF del reporte de monitoreo', () => {
       reporte: { ...REPORTE, analisis: 'Texto largo. '.repeat(400) },
     });
     expect(paginas(pdf)).toBeGreaterThan(1);
+  });
+
+  it('el informe anterior pegado como enlace se puede abrir desde el PDF', async () => {
+    const url = 'https://empresa.sharepoint.com/COTEM136.pdf';
+    const pdf = await generar({
+      reporte: { ...REPORTE, informe_anterior_url: url },
+    });
+    // La anotación del enlace no va comprimida.
+    expect(pdf.toString('latin1')).toContain(`/URI (${url})`);
+  });
+
+  it('los anexos salen en ANEXOS, antes de las firmas, sin romper el PDF', async () => {
+    const sinAnexos = await generar();
+    const conAnexos = await generar({ anexos: fotos(4) });
+    expect(paginas(conAnexos)).toBeGreaterThan(paginas(sinAnexos));
   });
 
   it('una imagen que falta o no se puede leer no impide el PDF', async () => {

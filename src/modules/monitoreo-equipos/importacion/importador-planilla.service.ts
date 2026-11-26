@@ -17,6 +17,7 @@ import {
   AREA_CONFIABILIDAD,
   CLASIFICACION_BOMBAS,
   ESPECIFICACION_BOMBA,
+  ESPECIFICACIONES_RETIRADAS,
   TIPO_EQUIPO_BOMBA,
   UBICACION_POR_DEFECTO,
 } from '../domain/bomba';
@@ -323,11 +324,18 @@ export class ImportadorPlanillaService {
         for (const [clave, valor] of Object.entries(especificaciones)) {
           set[`especificaciones.${clave}`] = valor;
         }
-        if (Object.keys(set).length) {
-          await this.equipoModel
-            .updateOne({ _id: existente._id }, { $set: set })
-            .exec();
-        }
+        // Lo que Confiabilidad pidió quitar de la ficha no queda colgado.
+        const unset = Object.fromEntries(
+          ESPECIFICACIONES_RETIRADAS.map((c) => [`especificaciones.${c}`, '']),
+        );
+        await this.equipoModel
+          .updateOne(
+            { _id: existente._id },
+            Object.keys(set).length
+              ? { $set: set, $unset: unset }
+              : { $unset: unset },
+          )
+          .exec();
         ids.set(b.tag, existente._id as Types.ObjectId);
         continue;
       }
@@ -356,13 +364,8 @@ export class ImportadorPlanillaService {
 
   private especificaciones(b: BombaLeida): Record<string, string | number> {
     const valores: [string, string | number | undefined][] = [
-      [ESPECIFICACION_BOMBA.servicio, b.servicio],
-      [ESPECIFICACION_BOMBA.tmef, b.tmefHrs],
+      [ESPECIFICACION_BOMBA.alcance, b.alcance],
       [ESPECIFICACION_BOMBA.tagPi, b.tagPi],
-      [
-        ESPECIFICACION_BOMBA.pares,
-        b.pares.length ? b.pares.join(', ') : undefined,
-      ],
       [ESPECIFICACION_BOMBA.otModelo, b.otModelo],
       [ESPECIFICACION_BOMBA.frecuencia, b.frecuenciaDias],
     ];

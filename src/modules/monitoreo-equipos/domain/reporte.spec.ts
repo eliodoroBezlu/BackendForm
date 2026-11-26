@@ -15,13 +15,21 @@ describe('reporte de monitoreo — dominio', () => {
   });
 
   describe('armarAntecedentes', () => {
-    // COTEM137: 230PP013, 06-oct-26, 2044 horas, TMEF 2900 (celda oculta AO1).
+    // COTEM137: 230PP013, 06-oct-26, 2044 horas.
     const entrada = {
       ahora: dia(2026, 10, 6),
       fecha: dia(2026, 10, 6),
       horas: 2044,
-      ficha: { tmef_hrs: 2900, modelo: 'WARMAN ASH 550 MMC' },
-      componentes: [{ pieza: 'Voluta', fecha_instalacion: dia(2026, 6, 28) }],
+      ficha: { modelo: 'WARMAN ASH 550 MMC', alcance: 'Monitoreo de desgaste' },
+      componentes: [
+        {
+          pieza: 'Voluta',
+          proveedor: 'ALTONA',
+          material: '068 LC',
+          dureza_hb: 600,
+          fecha_instalacion: dia(2026, 6, 28),
+        },
+      ],
       intervenciones: [
         {
           fecha: dia(2026, 6, 28),
@@ -32,11 +40,13 @@ describe('reporte de monitoreo — dominio', () => {
       ],
     };
 
-    it('la fecha tentativa usa las horas del día, no una celda vacía', () => {
-      const a = armarAntecedentes(entrada);
-      expect(a.horas_restantes).toBe(856);
-      // 856 h = 35 días y 16 h después del 06-oct-26.
-      expect(a.fecha_tentativa).toEqual(new Date(Date.UTC(2026, 10, 10, 16)));
+    it('ya no calcula TMEF, horas restantes ni fecha tentativa', () => {
+      const a = armarAntecedentes(entrada) as unknown as Record<
+        string,
+        unknown
+      >;
+      expect(a).not.toHaveProperty('horas_restantes');
+      expect(a).not.toHaveProperty('fecha_tentativa');
     });
 
     it('la última intervención es la más reciente hasta la fecha del reporte', () => {
@@ -45,16 +55,57 @@ describe('reporte de monitoreo — dominio', () => {
       );
     });
 
-    it('sin TMEF o sin horas no inventa la fecha tentativa', () => {
-      const a = armarAntecedentes({ ...entrada, horas: undefined });
-      expect(a.horas_restantes).toBeUndefined();
-      expect(a.fecha_tentativa).toBeUndefined();
-    });
-
     it('las piezas montadas en la última intervención llevan las horas del día', () => {
       expect(armarAntecedentes(entrada).componentes[0].horas_trabajo).toBe(
         2044,
       );
+    });
+
+    describe('piezas completadas en el reporte', () => {
+      it('lo escrito manda; lo vacío y lo que el reporte no pide salen de la ficha', () => {
+        const [voluta] = armarAntecedentes({
+          ...entrada,
+          piezasDelReporte: [
+            {
+              pieza: 'Voluta',
+              proveedor: 'WEIR',
+              material: '',
+              condicion_inicial: 'Nuevo',
+            },
+          ],
+        }).componentes;
+        expect(voluta).toMatchObject({
+          pieza: 'Voluta',
+          proveedor: 'WEIR',
+          material: '068 LC', // vacío en el reporte: el de la ficha
+          condicion_inicial: 'Nuevo',
+          dureza_hb: 600, // el reporte no lo pide: se conserva
+          horas_trabajo: 2044,
+        });
+      });
+
+      it('una pieza sin ficha toma lo del reporte y calcula sus horas', () => {
+        const [, impulsor] = armarAntecedentes({
+          ...entrada,
+          piezasDelReporte: [
+            { pieza: 'Voluta' },
+            { pieza: 'Impulsor', fecha_instalacion: dia(2026, 6, 28) },
+          ],
+        }).componentes;
+        expect(impulsor).toEqual({
+          pieza: 'Impulsor',
+          fecha_instalacion: dia(2026, 6, 28),
+          horas_trabajo: 2044,
+        });
+      });
+
+      it('las horas escritas a mano reemplazan a las calculadas', () => {
+        const [voluta] = armarAntecedentes({
+          ...entrada,
+          piezasDelReporte: [{ pieza: 'Voluta', horas_trabajo: 2601 }],
+        }).componentes;
+        expect(voluta.horas_trabajo).toBe(2601);
+      });
     });
   });
 
@@ -83,6 +134,7 @@ describe('reporte de monitoreo — dominio', () => {
       tecnica: 'TERMOGRAFIA MECANICA',
       resultado: 'NORMAL',
       alcance: 'Seguimiento',
+      emisividad: 0.95,
       analisis: 'Sin anomalías',
       recomendaciones: [],
       tareas: [],
@@ -92,15 +144,32 @@ describe('reporte de monitoreo — dominio', () => {
       expect(faltantesParaEnviar(completo)).toEqual([]);
     });
 
-    it('pide técnica, alcance, análisis y resultado', () => {
+    it('pide técnica, alcance, emisividad, análisis y resultado', () => {
       expect(
         faltantesParaEnviar({ recomendaciones: [], tareas: [], alcance: '  ' }),
       ).toEqual([
         'La técnica de monitoreo',
         'El alcance',
+        'La emisividad',
         'El análisis y diagnóstico',
         'El resultado del análisis',
       ]);
+    });
+
+    it('con medición de espesores pide los valores en vez de la emisividad', () => {
+      const sinEmisividad = { ...completo, emisividad: undefined };
+      expect(
+        faltantesParaEnviar({
+          ...sinEmisividad,
+          medicion: { valores: [[[[null, null]]]] },
+        }),
+      ).toEqual(['Las mediciones de espesores']);
+      expect(
+        faltantesParaEnviar({
+          ...sinEmisividad,
+          medicion: { valores: [[[[6.1, null]]]] },
+        }),
+      ).toEqual([]);
     });
 
     it('con recomendaciones, las tareas llevan descripción y con quién se coordinó', () => {

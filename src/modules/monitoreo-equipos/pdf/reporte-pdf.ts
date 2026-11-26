@@ -6,11 +6,30 @@ import {
   distribuirFotos,
   proporcionDeCaja,
 } from '../domain/distribucion-fotos';
+import { PIEZAS_BOMBA } from '../domain/bomba';
 import {
   AntecedentesReporte,
   EstadoReporte,
+  MedicionDelReporte,
+  PiezaDeAntecedentes,
   TareaDeReporte,
 } from '../domain/reporte';
+import {
+  A4,
+  C,
+  diaCorto,
+  Hoja,
+  ImagenParaPdf,
+  M,
+  M_INFERIOR,
+  num,
+  textoSobre,
+  W,
+} from './hoja';
+import { diagramasDeMedicion, tablaDeEspesores } from './tabla-espesores';
+
+export { diaCorto } from './hoja';
+export type { ImagenParaPdf } from './hoja';
 
 /**
  * El PDF del reporte de monitoreo, con la estructura y los colores del
@@ -21,19 +40,17 @@ import {
  *
  * Diferencias con el Excel, a propósito:
  * - ANTECEDENTES va normalizado (ficha, piezas, última intervención, informe
- *   anterior) en vez del texto libre de cada analista.
- * - La tabla de piezas se dibuja, no se pega como imagen.
+ *   anterior) en vez del texto libre de cada analista. Sin TMEF, horas
+ *   restantes, fecha tentativa, bombas pares ni tag de PI (Confiabilidad,
+ *   2026-11-18).
+ * - La tabla de piezas se dibuja, no se pega como imagen, sale siempre con
+ *   sus cuatro piezas aunque falten datos y va debajo del gráfico de PI
+ *   (Confiabilidad, 2026-11-26).
+ * - Un reporte con medición de espesores (ultrasonido) lleva ANTECEDENTES en
+ *   texto, los diagramas del equipo y la tabla de espesores dibujada.
+ * - Las imágenes de más van en ANEXOS, antes de las firmas.
  * - No hay segunda página con las celdas ocultas de cálculo.
  */
-
-export interface ImagenParaPdf {
-  /** `undefined` si el archivo ya no está: se dibuja un recuadro avisándolo. */
-  contenido?: Buffer;
-  descripcion: string;
-  referencia: boolean;
-  ancho?: number;
-  alto?: number;
-}
 
 export interface ReporteParaPdf {
   tag: string;
@@ -41,6 +58,8 @@ export interface ReporteParaPdf {
   tecnica?: string;
   ot?: string;
   alcance?: string;
+  /** Enlace al informe anterior, pegado por el analista. */
+  informe_anterior_url?: string;
   lecturas?: {
     horas?: number;
     fecha_horas?: Date;
@@ -48,7 +67,12 @@ export interface ReporteParaPdf {
     punto_referencia?: string;
     instrumento?: string;
     emisividad?: number;
+    velocidad_ms?: number;
+    frecuencia_mhz?: number;
   };
+  /** ANTECEDENTES en texto (reportes con medición de espesores). */
+  antecedentes_texto?: string;
+  medicion?: MedicionDelReporte;
   descripcion_proceso?: string;
   analisis?: string;
   recomendaciones: string[];
@@ -65,196 +89,16 @@ export interface DatosPdfReporte {
   reporte: ReporteParaPdf;
   fotos: ImagenParaPdf[];
   grafico?: ImagenParaPdf;
+  /** Las imágenes de ANEXOS. */
+  anexos?: ImagenParaPdf[];
+  /** Los diagramas de la medición de espesores, en el orden de la plantilla. */
+  diagramas?: ImagenParaPdf[];
   /** Nombres de las personas (del padrón), no sus usuarios. */
   elaboradoPor: string;
   revisadoPor?: string;
   /** El color de la severidad, como el formato condicional del Excel. */
   colorResultado?: string;
   logo?: Buffer;
-}
-
-// ── Medidas y colores ─────────────────────────────────────────────────────
-
-const A4 = { ancho: 595.28, alto: 841.89 };
-const M = 28;
-const W = A4.ancho - M * 2;
-/** Margen inferior más chico: lo que cabe en una hoja es lo que más se nota. */
-const M_INFERIOR = 18;
-/** Por debajo de esto va el «Página x de y». */
-const LIMITE = A4.alto - M_INFERIOR - 12;
-
-const C = {
-  borde: '#7F7F7F',
-  barra: '#D9D9D9',
-  azulOscuro: '#1F3864',
-  azul: '#2E75B6',
-  interna: '#9DC3E6',
-  negro: '#000000',
-  texto: '#000000',
-  tenue: '#595959',
-};
-
-const MESES = [
-  'ene',
-  'feb',
-  'mar',
-  'abr',
-  'may',
-  'jun',
-  'jul',
-  'ago',
-  'sep',
-  'oct',
-  'nov',
-  'dic',
-];
-
-/** 06-oct-26, como el formato. Las fechas del reporte son días en UTC. */
-export function diaCorto(d?: Date | string): string {
-  if (!d) return '';
-  const f = new Date(d);
-  if (Number.isNaN(f.getTime())) return '';
-  const dd = String(f.getUTCDate()).padStart(2, '0');
-  return `${dd}-${MESES[f.getUTCMonth()]}-${String(f.getUTCFullYear()).slice(-2)}`;
-}
-
-/** Coma decimal, sin separador de miles (el formato escribe «2044 Hrs»). */
-const num = (n?: number): string =>
-  n === undefined || n === null ? '' : String(n).replace('.', ',');
-
-/** Texto claro sobre un fondo oscuro, como INTERVENCIÓN INMEDIATA en rojo. */
-function textoSobre(fondo?: string): string {
-  if (!fondo || !/^#[0-9a-f]{6}$/i.test(fondo)) return C.texto;
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(fondo.slice(i, i + 2), 16));
-  return 0.299 * r + 0.587 * g + 0.114 * b < 150 ? '#FFFFFF' : C.texto;
-}
-
-interface Estilo {
-  negrita?: boolean;
-  tamano?: number;
-  fondo?: string;
-  color?: string;
-  alinear?: 'left' | 'center' | 'right';
-  borde?: boolean;
-}
-
-/** Ayudante de dibujo: celdas, barras y párrafos con un cursor vertical propio. */
-class Hoja {
-  y = M;
-
-  constructor(private readonly doc: PDFKit.PDFDocument) {}
-
-  /** Salta de página si no caben `alto` puntos más. */
-  reservar(alto: number): void {
-    if (this.y + alto > LIMITE) {
-      this.doc.addPage();
-      this.y = M;
-    }
-  }
-
-  celda(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    texto: string,
-    e: Estilo = {},
-  ): void {
-    const d = this.doc;
-    if (e.fondo) d.rect(x, y, w, h).fill(e.fondo);
-    if (e.borde !== false) d.rect(x, y, w, h).lineWidth(0.5).stroke(C.borde);
-    if (!texto) return;
-    const tamano = e.tamano ?? 7;
-    d.font(e.negrita ? 'Helvetica-Bold' : 'Helvetica')
-      .fontSize(tamano)
-      .fillColor(e.color ?? C.texto);
-    const alto = d.heightOfString(texto, { width: w - 4 });
-    const linea = d.currentLineHeight();
-    // Centrado vertical; si no entra, se corta con «…» en vez de desbordar.
-    const usar = Math.min(alto, h - 2);
-    d.text(texto, x + 2, y + Math.max(1, (h - usar) / 2), {
-      width: w - 4,
-      height: Math.max(linea, h - 2),
-      align: e.alinear ?? 'left',
-      ellipsis: true,
-      lineGap: 0,
-    });
-    d.fillColor(C.texto);
-  }
-
-  /** Una fila de celdas de anchos dados. */
-  fila(
-    anchos: number[],
-    textos: string[],
-    alto: number,
-    estilos: Estilo[] = [],
-  ): void {
-    this.reservar(alto);
-    let x = M;
-    anchos.forEach((w, i) => {
-      this.celda(x, this.y, w, alto, textos[i] ?? '', estilos[i] ?? {});
-      x += w;
-    });
-    this.y += alto;
-  }
-
-  /** La barra gris de cada sección del formato. */
-  barra(titulo: string): void {
-    this.reservar(24); // la barra no queda sola al pie de una página
-    this.celda(M, this.y, W, 10, titulo, {
-      negrita: true,
-      fondo: C.barra,
-      tamano: 7,
-    });
-    this.y += 10;
-  }
-
-  /** Texto libre que fluye en el ancho completo, con borde lateral. */
-  parrafo(texto: string, tamano = 7.5): void {
-    const d = this.doc;
-    const contenido = texto.trim() || ' ';
-    d.font('Helvetica').fontSize(tamano);
-    const alto = d.heightOfString(contenido, { width: W - 6 }) + 4;
-    if (alto <= LIMITE - M) this.reservar(alto);
-    const inicio = this.y;
-    d.fillColor(C.texto).text(contenido, M + 3, this.y + 2, {
-      width: W - 6,
-      lineGap: 0.5,
-    });
-    // Si el texto cruzó de página, PDFKit ya movió el cursor: se sigue desde ahí.
-    this.y = d.y > inicio ? d.y + 2 : inicio + alto;
-  }
-
-  imagen(img: ImagenParaPdf, x: number, y: number, w: number, h: number): void {
-    const d = this.doc;
-    d.rect(x, y, w, h).lineWidth(0.5).stroke(C.barra);
-    if (!img.contenido) {
-      this.celda(x, y, w, h, 'Imagen no disponible', {
-        alinear: 'center',
-        color: C.tenue,
-        borde: false,
-      });
-      return;
-    }
-    try {
-      // Se ajusta sin recortar: recortar una termografía puede cortar la escala.
-      d.image(img.contenido, x, y, {
-        fit: [w, h],
-        align: 'center',
-        valign: 'center',
-      });
-    } catch {
-      this.celda(x, y, w, h, 'Imagen ilegible', {
-        alinear: 'center',
-        color: C.tenue,
-        borde: false,
-      });
-    }
-  }
-
-  get documento(): PDFKit.PDFDocument {
-    return this.doc;
-  }
 }
 
 // ── Secciones ─────────────────────────────────────────────────────────────
@@ -338,6 +182,10 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
   const a = r.antecedentes;
   const l = r.lecturas ?? {};
   h.barra('ANTECEDENTES');
+  if (r.medicion) {
+    antecedentesDeMedicion(h, r);
+    return;
+  }
 
   const horas =
     l.horas !== undefined
@@ -352,13 +200,11 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
         .filter(Boolean)
         .join(' · ')
     : 'Sin registro';
-  const anterior = a.informe_anterior
-    ? `${a.informe_anterior.codigo_interno ?? 'Sin código'} · ${diaCorto(a.informe_anterior.fecha)}`
-    : 'Ninguno emitido';
   const temp =
     l.temp_referencia_c !== undefined
       ? `${num(l.temp_referencia_c)} °C${l.punto_referencia ? ` (${l.punto_referencia})` : ''}`
       : '';
+  const { texto: anterior, url } = informeAnterior(r);
 
   const pares: [string, string][] = [
     [
@@ -366,50 +212,78 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
       [a.ficha.fabricante, a.ficha.modelo].filter(Boolean).join(' · '),
     ],
     ['Horas:', horas],
-    [
-      'TMEF:',
-      a.ficha.tmef_hrs !== undefined ? `${num(a.ficha.tmef_hrs)} Hrs` : '',
-    ],
-    [
-      'Horas restantes:',
-      a.horas_restantes !== undefined ? `${num(a.horas_restantes)} Hrs` : '',
-    ],
     ['Última intervención:', ultima],
-    ['Fecha tentativa:', diaCorto(a.fecha_tentativa)],
-    ['Informe anterior:', anterior],
     ['Temp. referencia:', temp],
-    ['Bombas pares:', a.ficha.pares ?? ''],
-    ['Tag de horas PI:', a.ficha.tag_pi ?? ''],
+    ['Informe anterior:', anterior],
+    ['', ''],
   ];
   const mitad = (W - 160) / 2;
   for (let i = 0; i < pares.length; i += 2) {
     const [e1, v1] = pares[i];
     const [e2, v2] = pares[i + 1] ?? ['', ''];
+    const esEnlace = e1 === 'Informe anterior:' && !!url;
     h.fila([80, mitad, 80, mitad], [e1, v1, e2, v2], 9.5, [
       { negrita: true, borde: false },
-      { borde: false },
+      { borde: false, color: esEnlace ? C.azul : undefined },
       { negrita: true, borde: false },
       { borde: false },
     ]);
+    // El enlace se puede abrir desde el PDF.
+    if (esEnlace) h.documento.link(M + 80, h.y - 9.5, mitad, 9.5, url);
   }
+}
 
-  // Sin piezas cargadas, una línea basta: una tabla vacía ocupa media
-  // pulgada y no dice nada.
-  if (a.componentes.length === 0) {
-    h.fila(
-      [80, W - 80],
-      ['Piezas:', 'Sin piezas cargadas para esta bomba.'],
-      9.5,
-      [
-        { negrita: true, borde: false },
-        { borde: false, color: C.tenue },
-      ],
-    );
-    return;
-  }
+/** El enlace que pegó el analista; si no hay, el último emitido del sistema. */
+function informeAnterior(r: ReporteParaPdf): { texto: string; url?: string } {
+  const url = r.informe_anterior_url?.trim() || undefined;
+  const a = r.antecedentes.informe_anterior;
+  return {
+    url,
+    texto:
+      url ??
+      (a ? `${a.codigo_interno ?? 'Sin código'} · ${diaCorto(a.fecha)}` : ''),
+  };
+}
 
-  // La tabla de piezas: antes se pegaba como imagen.
-  const anchos = [80, 58, 72, 58, 92, 48, 72, W - 480];
+/** ANTECEDENTES de un reporte con medición: el texto del analista y lo anterior. */
+function antecedentesDeMedicion(h: Hoja, r: ReporteParaPdf): void {
+  h.parrafo(r.antecedentes_texto ?? '');
+  const { texto, url } = informeAnterior(r);
+  const m = r.antecedentes.medicion_anterior;
+  const medicion = m
+    ? `${m.codigo_interno ?? 'Sin código'} · ${diaCorto(m.fecha)}`
+    : 'Sin medición anterior';
+  const mitad = (W - 180) / 2;
+  h.fila(
+    [80, mitad, 100, mitad],
+    ['Informe anterior:', texto, 'Medición anterior:', medicion],
+    9.5,
+    [
+      { negrita: true, borde: false },
+      { borde: false, color: url ? C.azul : undefined },
+      { negrita: true, borde: false },
+      { borde: false },
+    ],
+  );
+  if (url) h.documento.link(M + 80, h.y - 9.5, mitad, 9.5, url);
+}
+
+/**
+ * La tabla de piezas de la bomba: siempre las cuatro, aunque falte algún
+ * dato. Va debajo del gráfico de PI.
+ */
+function tablaDePiezas(h: Hoja, datos: DatosPdfReporte): void {
+  const r = datos.reporte;
+  const a = r.antecedentes;
+  const porPieza = new Map(a.componentes.map((c) => [c.pieza, c]));
+  const filas: PiezaDeAntecedentes[] = [
+    ...PIEZAS_BOMBA.map((p) => porPieza.get(p) ?? { pieza: p }),
+    ...a.componentes.filter(
+      (c) => !(PIEZAS_BOMBA as readonly string[]).includes(c.pieza),
+    ),
+  ];
+  const anchos = [90, 78, 92, 82, 0, 66];
+  anchos[4] = W - anchos.reduce((t, x) => t + x, 0);
   const cab = {
     negrita: true,
     fondo: C.azulOscuro,
@@ -426,20 +300,13 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
       'PROVEEDOR',
       'CONDICIÓN INICIAL',
       'MATERIAL',
-      'DUREZA (HB)',
-      'ESPESOR NOM./PREC.',
       'HRS. TRABAJO',
     ],
     18,
     anchos.map(() => cab),
   );
   const centro = { alinear: 'center' as const };
-  for (const c of a.componentes) {
-    const espesor =
-      c.espesor_nominal_mm !== undefined ||
-      c.espesor_precaucion_mm !== undefined
-        ? `${num(c.espesor_nominal_mm) || '—'} / ${num(c.espesor_precaucion_mm) || '—'} mm`
-        : '';
+  for (const c of filas) {
     h.fila(
       anchos,
       [
@@ -448,8 +315,6 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
         c.proveedor ?? '',
         c.condicion_inicial ?? '',
         c.material ?? '',
-        num(c.dureza_hb),
-        espesor,
         num(c.horas_trabajo),
       ],
       11,
@@ -460,11 +325,10 @@ function antecedentes(h: Hoja, datos: DatosPdfReporte): void {
         centro,
         centro,
         centro,
-        centro,
-        centro,
       ],
     );
   }
+  h.y += 4;
 }
 
 function proceso(h: Hoja, r: ReporteParaPdf): void {
@@ -473,6 +337,8 @@ function proceso(h: Hoja, r: ReporteParaPdf): void {
   const instrumento = [
     l.instrumento && `Equipo: ${l.instrumento}`,
     l.emisividad !== undefined && `e.: ${num(l.emisividad)}`,
+    l.velocidad_ms !== undefined && `Vel.: ${num(l.velocidad_ms)} m/s`,
+    l.frecuencia_mhz !== undefined && `Sensor: ${num(l.frecuencia_mhz)} MHz`,
   ]
     .filter(Boolean)
     .join('; ');
@@ -481,24 +347,26 @@ function proceso(h: Hoja, r: ReporteParaPdf): void {
   );
 }
 
-function recopilacion(h: Hoja, datos: DatosPdfReporte): void {
-  h.barra('RECOPILACIÓN Y TABULACIÓN DE DATOS');
+/**
+ * Imágenes en filas de `porFila`, todas del mismo tamaño, con su leyenda
+ * debajo y en la misma página. La usan la recopilación y los anexos.
+ */
+function grillaDeImagenes(
+  h: Hoja,
+  imagenes: ImagenParaPdf[],
+  porFila: number,
+): void {
   const d = h.documento;
   const separacion = 8;
-  const dist = distribuirFotos(
-    datos.fotos.length,
-    datos.reporte.fotos_por_fila,
-    W,
-    separacion,
-  );
+  const dist = distribuirFotos(imagenes.length, porFila, W, separacion);
   // Todas miden lo mismo; la caja la marca la foto más alta (la misma regla
   // que la vista previa).
-  const altoFoto = dist.anchoCelda * proporcionDeCaja(datos.fotos);
+  const altoFoto = dist.anchoCelda * proporcionDeCaja(imagenes);
 
   h.y += 4;
   for (const fila of dist.filas) {
     d.fontSize(7);
-    const leyendas = fila.indices.map((i) => leyenda(datos.fotos[i]));
+    const leyendas = fila.indices.map((i) => leyenda(imagenes[i]));
     const altoLeyenda = Math.max(
       ...leyendas.map((t) =>
         d.font('Helvetica').heightOfString(t, { width: dist.anchoCelda }),
@@ -508,8 +376,8 @@ function recopilacion(h: Hoja, datos: DatosPdfReporte): void {
     h.reservar(altoFoto + altoLeyenda + 6);
     fila.indices.forEach((i, k) => {
       const x = M + fila.desplazamiento + k * (dist.anchoCelda + separacion);
-      h.imagen(datos.fotos[i], x, h.y, dist.anchoCelda, altoFoto);
-      const foto = datos.fotos[i];
+      h.imagen(imagenes[i], x, h.y, dist.anchoCelda, altoFoto);
+      const foto = imagenes[i];
       d.fillColor(C.texto).fontSize(7);
       if (foto.referencia) {
         d.font('Helvetica-Bold').text('Referencia. ', x, h.y + altoFoto + 2, {
@@ -530,6 +398,12 @@ function recopilacion(h: Hoja, datos: DatosPdfReporte): void {
     });
     h.y += altoFoto + altoLeyenda + 6;
   }
+}
+
+function recopilacion(h: Hoja, datos: DatosPdfReporte): void {
+  h.barra('RECOPILACIÓN Y TABULACIÓN DE DATOS');
+  const d = h.documento;
+  grillaDeImagenes(h, datos.fotos, datos.reporte.fotos_por_fila);
 
   if (datos.grafico) {
     // 21,9 × 7,16 cm: la caja del gráfico de PI en el formato.
@@ -545,6 +419,18 @@ function recopilacion(h: Hoja, datos: DatosPdfReporte): void {
         align: 'center',
       });
     h.y += alto + altoLeyenda + 6;
+  }
+
+  const r = datos.reporte;
+  if (!r.medicion || r.antecedentes.componentes.length > 0) {
+    tablaDePiezas(h, datos);
+  }
+  if (r.medicion) {
+    const diagramas = datos.diagramas ?? [];
+    if (diagramas.length > 0) {
+      diagramasDeMedicion(h, diagramas);
+    }
+    tablaDeEspesores(h, r.medicion, r.fecha, r.antecedentes.medicion_anterior);
   }
 }
 
@@ -631,7 +517,17 @@ function tareas(h: Hoja, r: ReporteParaPdf): void {
 
 function pie(h: Hoja, datos: DatosPdfReporte): void {
   const r = datos.reporte;
+  if (datos.anexos?.length) {
+    // La barra no queda sola al pie: va con la primera fila de imágenes.
+    const dist = distribuirFotos(datos.anexos.length, r.fotos_por_fila, W, 8);
+    h.reservar(10 + 4 + dist.anchoCelda * proporcionDeCaja(datos.anexos) + 16);
+  }
   h.barra('ANEXOS');
+  // Las imágenes que no entraron en la recopilación, con la misma grilla.
+  if (datos.anexos?.length) {
+    grillaDeImagenes(h, datos.anexos, r.fotos_por_fila);
+    h.y += 2;
+  }
   const negro = {
     negrita: true,
     fondo: C.negro,
