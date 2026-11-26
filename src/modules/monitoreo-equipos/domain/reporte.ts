@@ -2,10 +2,16 @@
  * El reporte de monitoreo (formato 2.03.P01.R09) sin base ni framework: sus
  * estados, sus cálculos y la regla de qué falta para enviarlo a revisión.
  *
- * Los cálculos viven aquí y no en el Excel: en COTEM137 la fecha tentativa
- * oculta restaba una celda vacía (`F9`) en vez de las horas (`C9`), y nadie
- * lo notó porque la celda no se ve.
+ * Los cálculos viven aquí y no en el Excel. El TMEF, las horas restantes y la
+ * fecha tentativa se quitaron a pedido de Confiabilidad (2026-11-18).
  */
+
+import {
+  EstructuraDeMedicion,
+  hayMediciones,
+  MinimoDeZona,
+  ValoresDeMedicion,
+} from './espesores';
 
 export enum EstadoReporte {
   BORRADOR = 'borrador',
@@ -16,6 +22,10 @@ export enum EstadoReporte {
 /** El formato trae cinco columnas de tareas. */
 export const MAX_TAREAS = 5;
 export const MAX_FOTOS = 12;
+/** Anexos: las imágenes que no entran en la recopilación. Van al final del PDF. */
+export const MAX_ANEXOS = 24;
+/** Emisividad de la cámara FLIR: la que se usa casi siempre. */
+export const EMISIVIDAD_POR_DEFECTO = 0.95;
 export const MAX_RECOMENDACIONES = 10;
 
 /** Fotos por fila: lo eligió Confiabilidad para la plantilla; arranca en 3. */
@@ -25,8 +35,6 @@ export const FOTOS_POR_FILA_POR_DEFECTO = 3;
  * de detalle, no para leer la escala de una termografía.
  */
 export const FOTOS_POR_FILA_MAXIMO = 6;
-
-const MS_POR_HORA = 3_600_000;
 
 /** `COTEM` + 137 → `COTEM-0137`, como el pie del formato. */
 export function codigoInterno(
@@ -41,10 +49,10 @@ export function codigoInterno(
 export interface FichaDeAntecedentes {
   fabricante?: string;
   modelo?: string;
-  servicio?: string;
-  tmef_hrs?: number;
+  /** Alcance de la bomba: el reporte nuevo lo toma de aquí. */
+  alcance?: string;
+  /** No sale en el reporte: queda para leer las horas de PI cuando se pueda. */
   tag_pi?: string;
-  pares?: string;
   ot_modelo?: string;
   frecuencia_dias?: number;
 }
@@ -62,6 +70,20 @@ export interface PiezaDeAntecedentes {
   horas_trabajo?: number;
 }
 
+/**
+ * Lo que el analista escribió de una pieza en el propio reporte. Un dato
+ * vacío toma el de la ficha de la bomba; las horas, si no se escriben, se
+ * calculan con las horas del día.
+ */
+export interface PiezaDelReporte {
+  pieza: string;
+  fecha_instalacion?: Date;
+  proveedor?: string;
+  condicion_inicial?: string;
+  material?: string;
+  horas_trabajo?: number;
+}
+
 export interface IntervencionDeAntecedentes {
   fecha: Date;
   tipo?: string;
@@ -76,6 +98,31 @@ export interface InformeAnterior {
   fecha: Date;
 }
 
+/** Los mínimos por zona del último reporte emitido del tag con medición. */
+export interface MedicionAnterior extends InformeAnterior {
+  minimos: MinimoDeZona[];
+}
+
+/** Un diagrama del equipo con los puntos de medición (va en la plantilla). */
+export interface DiagramaDeMedicion {
+  archivo: string;
+  descripcion: string;
+  ancho?: number;
+  alto?: number;
+}
+
+/**
+ * La medición de espesores de un reporte: la grilla y los diagramas
+ * **copiados de la plantilla al crearlo** (cambiar la plantilla no desarma
+ * reportes viejos) y los valores que cargó el analista.
+ */
+export interface MedicionDelReporte {
+  plantilla_id?: string;
+  estructura: EstructuraDeMedicion;
+  diagramas: DiagramaDeMedicion[];
+  valores: ValoresDeMedicion;
+}
+
 /**
  * Lo que el reporte muestra en ANTECEDENTES, **copiado del momento**: si
  * mañana se cambia una pieza, este reporte sigue diciendo lo que se vio.
@@ -86,10 +133,7 @@ export interface AntecedentesReporte {
   componentes: PiezaDeAntecedentes[];
   ultima_intervencion?: IntervencionDeAntecedentes;
   informe_anterior?: InformeAnterior;
-  /** TMEF − horas. Negativo: la bomba ya pasó su TMEF. */
-  horas_restantes?: number;
-  /** Fecha del reporte + (TMEF − horas) / 24 días. */
-  fecha_tentativa?: Date;
+  medicion_anterior?: MedicionAnterior;
 }
 
 export interface EntradaAntecedentes {
@@ -102,6 +146,18 @@ export interface EntradaAntecedentes {
   componentes: Omit<PiezaDeAntecedentes, 'horas_trabajo'>[];
   intervenciones: IntervencionDeAntecedentes[];
   informeAnterior?: InformeAnterior;
+  medicionAnterior?: MedicionAnterior;
+  /** Las piezas como las dejó el analista en el reporte, si las tocó. */
+  piezasDelReporte?: PiezaDelReporte[];
+}
+
+/** Sin las claves vacías: un dato vacío del reporte no tapa el de la ficha. */
+function definidos<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(o).filter(
+      ([, v]) => v !== undefined && v !== null && v !== '',
+    ),
+  ) as Partial<T>;
 }
 
 export function armarAntecedentes(e: EntradaAntecedentes): AntecedentesReporte {
@@ -109,24 +165,30 @@ export function armarAntecedentes(e: EntradaAntecedentes): AntecedentesReporte {
     .filter((i) => i.fecha.getTime() <= e.fecha.getTime())
     .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
 
-  const tmef = e.ficha.tmef_hrs;
-  const horasRestantes =
-    tmef !== undefined && e.horas !== undefined ? tmef - e.horas : undefined;
+  const calcular = (c: Omit<PiezaDeAntecedentes, 'horas_trabajo'>) =>
+    horasDePieza(c.fecha_instalacion, hastaLaFecha, e.horas);
+
+  const delReporte = e.piezasDelReporte ?? [];
+  const deLaFicha = new Map(e.componentes.map((c) => [c.pieza, c]));
+  const componentes: PiezaDeAntecedentes[] =
+    delReporte.length > 0
+      ? delReporte.map(({ horas_trabajo, ...p }) => {
+          // Lo de la ficha que el reporte no pide (dureza, espesores) se conserva.
+          const pieza = { ...deLaFicha.get(p.pieza), ...definidos(p) } as Omit<
+            PiezaDeAntecedentes,
+            'horas_trabajo'
+          >;
+          return { ...pieza, horas_trabajo: horas_trabajo ?? calcular(pieza) };
+        })
+      : e.componentes.map((c) => ({ ...c, horas_trabajo: calcular(c) }));
 
   return {
     tomados_en: e.ahora,
     ficha: e.ficha,
-    componentes: e.componentes.map((c) => ({
-      ...c,
-      horas_trabajo: horasDePieza(c.fecha_instalacion, hastaLaFecha, e.horas),
-    })),
+    componentes,
     ultima_intervencion: hastaLaFecha[0],
     informe_anterior: e.informeAnterior,
-    horas_restantes: horasRestantes,
-    fecha_tentativa:
-      horasRestantes === undefined
-        ? undefined
-        : new Date(e.fecha.getTime() + horasRestantes * MS_POR_HORA),
+    medicion_anterior: e.medicionAnterior,
   };
 }
 
@@ -170,9 +232,12 @@ export interface ContenidoParaEnviar {
   tecnica?: string;
   resultado?: string;
   alcance?: string;
+  emisividad?: number;
   analisis?: string;
   recomendaciones: string[];
   tareas: TareaDeReporte[];
+  /** Con medición de espesores no se pide emisividad sino los valores. */
+  medicion?: { valores: ValoresDeMedicion };
 }
 
 const vacio = (t?: string) => !t || t.trim() === '';
@@ -189,6 +254,13 @@ export function faltantesParaEnviar(r: ContenidoParaEnviar): string[] {
   const faltan: string[] = [];
   if (vacio(r.tecnica)) faltan.push('La técnica de monitoreo');
   if (vacio(r.alcance)) faltan.push('El alcance');
+  if (r.medicion) {
+    if (!hayMediciones(r.medicion.valores)) {
+      faltan.push('Las mediciones de espesores');
+    }
+  } else if (r.emisividad === undefined) {
+    faltan.push('La emisividad');
+  }
   if (vacio(r.analisis)) faltan.push('El análisis y diagnóstico');
   if (vacio(r.resultado)) faltan.push('El resultado del análisis');
 

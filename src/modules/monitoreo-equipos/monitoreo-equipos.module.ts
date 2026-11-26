@@ -30,9 +30,14 @@ import {
   PlantillaMonitoreoSchema,
 } from './schemas/plantilla-monitoreo.schema';
 import {
+  PlantillaMedicion,
+  PlantillaMedicionSchema,
+} from './schemas/plantilla-medicion.schema';
+import {
   Trabajador,
   TrabajadorSchema,
 } from '../trabajadores/schemas/trabajador.schema';
+import { TrabajadoresModule } from '../trabajadores/trabajadores.module';
 import { MonitoreoCatalogosService } from './monitoreo-catalogos.service';
 import { ReportePdfService } from './reporte-pdf.service';
 import { BombasService } from './bombas.service';
@@ -41,6 +46,8 @@ import { AntecedentesMonitoreoService } from './antecedentes-monitoreo.service';
 import { ArchivosMonitoreoService } from './archivos-monitoreo.service';
 import { CorrelativosMonitoreoService } from './correlativos-monitoreo.service';
 import { PlantillasMonitoreoService } from './plantillas-monitoreo.service';
+import { PlantillasMedicionService } from './plantillas-medicion.service';
+import { PlantillasMedicionController } from './plantillas-medicion.controller';
 import { ReportesMonitoreoService } from './reportes-monitoreo.service';
 import { MonitoreoEquiposController } from './monitoreo-equipos.controller';
 import { ReportesMonitoreoController } from './reportes-monitoreo.controller';
@@ -61,6 +68,7 @@ import { ReportesMonitoreoController } from './reportes-monitoreo.controller';
       { name: ReporteMonitoreo.name, schema: ReporteMonitoreoSchema },
       { name: CorrelativoMonitoreo.name, schema: CorrelativoMonitoreoSchema },
       { name: PlantillaMonitoreo.name, schema: PlantillaMonitoreoSchema },
+      { name: PlantillaMedicion.name, schema: PlantillaMedicionSchema },
       // El PDF lleva el nombre de quien elaboró y revisó, no su usuario.
       { name: Trabajador.name, schema: TrabajadorSchema },
     ]),
@@ -70,8 +78,14 @@ import { ReportesMonitoreoController } from './reportes-monitoreo.controller';
     UbicacionModule,
     ClasificacionModule,
     ConfigFormularioModule,
+    // Supervisores y superintendentes para «Comunicado / coordinado con».
+    TrabajadoresModule,
   ],
-  controllers: [MonitoreoEquiposController, ReportesMonitoreoController],
+  controllers: [
+    MonitoreoEquiposController,
+    ReportesMonitoreoController,
+    PlantillasMedicionController,
+  ],
   providers: [
     MonitoreoCatalogosService,
     BombasService,
@@ -80,6 +94,7 @@ import { ReportesMonitoreoController } from './reportes-monitoreo.controller';
     ArchivosMonitoreoService,
     CorrelativosMonitoreoService,
     PlantillasMonitoreoService,
+    PlantillasMedicionService,
     ReportesMonitoreoService,
     ReportePdfService,
   ],

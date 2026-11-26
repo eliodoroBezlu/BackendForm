@@ -20,37 +20,34 @@ export const AREA_CONFIABILIDAD = 'Confiabilidad';
 export const UBICACION_POR_DEFECTO = 'Sin Ubicación';
 
 export const ESPECIFICACION_BOMBA = {
-  servicio: 'Servicio / proceso',
-  tmef: 'TMEF (hrs)',
+  alcance: 'Alcance',
   tagPi: 'Tag de horas en PI',
-  pares: 'Bombas pares',
   otModelo: 'OT modelo',
   frecuencia: 'Frecuencia (días)',
 } as const;
 
+/**
+ * Campos que tuvo la ficha y Confiabilidad pidió quitar (2026-11-18): el TMEF
+ * (y con él las horas restantes y la fecha tentativa), las bombas pares y el
+ * «Servicio / proceso», que pasó a ser el alcance del reporte.
+ */
+export const ESPECIFICACIONES_RETIRADAS = [
+  'TMEF (hrs)',
+  'Bombas pares',
+  'Servicio / proceso',
+] as const;
+
 /** Los campos de la ficha para `config_formularios`: así se ven y se editan en el panel de inventario. */
 export const CAMPOS_FICHA_BOMBA = [
   {
-    name: ESPECIFICACION_BOMBA.servicio,
-    label: 'Servicio / proceso',
+    name: ESPECIFICACION_BOMBA.alcance,
+    label: 'Alcance',
     type: 'text',
-    required: false,
-  },
-  {
-    name: ESPECIFICACION_BOMBA.tmef,
-    label: 'TMEF (hrs)',
-    type: 'number',
     required: false,
   },
   {
     name: ESPECIFICACION_BOMBA.tagPi,
     label: 'Tag de horas en PI',
-    type: 'text',
-    required: false,
-  },
-  {
-    name: ESPECIFICACION_BOMBA.pares,
-    label: 'Bombas pares',
     type: 'text',
     required: false,
   },

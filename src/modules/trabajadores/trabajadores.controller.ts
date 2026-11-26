@@ -11,6 +11,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { TrabajadoresService } from './trabajadores.service';
+import { SincronizacionIamService } from './sincronizacion-iam.service';
+import { AplicarSincronizacionDto } from './dto/aplicar-sincronizacion.dto';
 import { CreateTrabajadorDto } from './dto/create-trabajador.dto';
 import { CreateTrabajadorWithUserDto } from './dto/create-trabajador-with-user.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -44,7 +46,10 @@ interface AuthenticatedUserData {
 export class TrabajadoresController {
   private readonly logger = new Logger(TrabajadoresController.name);
 
-  constructor(private readonly trabajadoresService: TrabajadoresService) {}
+  constructor(
+    private readonly trabajadoresService: TrabajadoresService,
+    private readonly sincronizacion: SincronizacionIamService,
+  ) {}
 
   @Post()
   @Roles(Role.ADMIN)
@@ -77,16 +82,41 @@ export class TrabajadoresController {
     return this.trabajadoresService.createWithUser(createDto, user);
   }
 
+  @Get('sync/ultima')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Cuándo fue la última sincronización con el IAM, quién la hizo y qué cambió (solo admin)',
+  })
+  ultimaSync() {
+    return this.sincronizacion.ultima();
+  }
+
+  @Get('sync/vista-previa')
+  @Roles(Role.ADMIN)
+  @ApiOperation({
+    summary:
+      'Qué cambiaría sincronizar con el IAM (nuevos, cambios, bajas, problemas y supervisores), sin escribir nada (solo admin)',
+  })
+  vistaPreviaSync() {
+    return this.sincronizacion.vistaPrevia();
+  }
+
   @Post('sync')
   @Roles(Role.ADMIN)
   @ApiOperation({
     summary:
-      'Sincroniza el roster completo de trabajadores + roles de un servicio desde el IAM Core (solo admin)',
+      'Aplica la sincronización con el IAM: los ids elegidos de la vista previa (sin ids, todo) y los supervisores (solo admin)',
   })
-  async sync(@Query('role') role: string = 'supervisor') {
-    const roster = await this.trabajadoresService.syncTrabajadoresFromIam();
-    const roles = await this.trabajadoresService.syncRolFromIam(role);
-    return { roster, roles };
+  sync(
+    @Body() dto: AplicarSincronizacionDto,
+    @CurrentUser() user: AuthenticatedUserData,
+  ) {
+    return this.sincronizacion.aplicar(
+      dto.ids,
+      dto.supervisores ?? true,
+      user?.username ?? 'desconocido',
+    );
   }
 
   @Get()

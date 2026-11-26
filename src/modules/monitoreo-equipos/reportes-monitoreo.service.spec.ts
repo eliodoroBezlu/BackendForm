@@ -27,6 +27,11 @@ import { CrearReporteMonitoreoDto } from './dto/reporte-monitoreo.dto';
 import { MonitoreoCatalogosService } from './monitoreo-catalogos.service';
 import { MonitoreoEquiposController } from './monitoreo-equipos.controller';
 import { PlantillasMonitoreoService } from './plantillas-monitoreo.service';
+import { PlantillasMedicionService } from './plantillas-medicion.service';
+import { PlantillasMedicionController } from './plantillas-medicion.controller';
+import { PlantillaMedicion } from './schemas/plantilla-medicion.schema';
+import { ESTRUCTURA_250SA225 } from './__pruebas__/medicion-250sa225';
+import { valoresVacios } from './domain/espesores';
 import { ReportesMonitoreoController } from './reportes-monitoreo.controller';
 import { ReportesMonitoreoService } from './reportes-monitoreo.service';
 import { CatalogoMonitoreo } from './schemas/catalogo-monitoreo.schema';
@@ -54,7 +59,7 @@ const COTEM137: CrearReporteMonitoreoDto = {
   ot: '952013',
   alcance:
     'Realizar seguimiento elementos de desgaste nuevos de la bomba 230PP013.',
-  lecturas: { horas: 2044, instrumento: 'EPOCH-XT' },
+  lecturas: { horas: 2044, instrumento: 'EPOCH-XT', emisividad: 0.95 },
   analisis:
     'Disco succión: según termografía no se observa anomalía, temp. máx. 20,7 °C.',
   recomendaciones: [
@@ -92,6 +97,7 @@ describe('ReportesMonitoreoService', () => {
       reporte: new ModeloEnMemoria([['codigo_interno']]),
       correlativo: new ModeloEnMemoria([['tecnica_codigo', 'anio']]),
       plantilla: new ModeloEnMemoria(),
+      plantillaMedicion: new ModeloEnMemoria([['tag', 'tecnica_normalizada']]),
       trabajador: new ModeloEnMemoria(),
     };
     modulo = await Test.createTestingModule({
@@ -103,6 +109,7 @@ describe('ReportesMonitoreoService', () => {
         CorrelativosMonitoreoService,
         MonitoreoCatalogosService,
         PlantillasMonitoreoService,
+        PlantillasMedicionService,
         ReportePdfService,
         {
           provide: getModelToken(Trabajador.name),
@@ -134,6 +141,10 @@ describe('ReportesMonitoreoService', () => {
           useValue: modelos.plantilla,
         },
         {
+          provide: getModelToken(PlantillaMedicion.name),
+          useValue: modelos.plantillaMedicion,
+        },
+        {
           provide: ConfigFormularioService,
           useValue: { create: jest.fn().mockResolvedValue({}) },
         },
@@ -154,9 +165,8 @@ describe('ReportesMonitoreoService', () => {
       marca: 'Warman',
       modelo: 'WARMAN ASH 550 MMC',
       especificaciones: {
-        'TMEF (hrs)': 2900,
         'Frecuencia (días)': 28,
-        'Servicio / proceso': 'Transfiere pulpa',
+        Alcance: 'Realizar monitoreo a los elementos de desgaste de la bomba.',
       },
     });
     for (const pieza of [
@@ -226,14 +236,53 @@ describe('ReportesMonitoreoService', () => {
     it('los antecedentes salen de la ficha, las piezas y la última intervención', async () => {
       const { antecedentes } = await reportes.crear(COTEM137, ANALISTA);
       expect(antecedentes.ficha).toMatchObject({
-        tmef_hrs: 2900,
+        alcance: 'Realizar monitoreo a los elementos de desgaste de la bomba.',
         modelo: 'WARMAN ASH 550 MMC',
       });
       expect(antecedentes.componentes).toHaveLength(4);
       expect(antecedentes.componentes[0].horas_trabajo).toBe(2044);
       expect(antecedentes.ultima_intervencion?.fecha).toEqual(dia(2026, 6, 28));
-      expect(antecedentes.horas_restantes).toBe(856);
+      expect(antecedentes).not.toHaveProperty('horas_restantes');
       expect(antecedentes.informe_anterior).toBeUndefined();
+    });
+
+    it('las piezas que completa el analista se guardan y mandan en los antecedentes', async () => {
+      const r = await reportes.crear(
+        {
+          ...COTEM137,
+          piezas: [
+            { pieza: 'Voluta', proveedor: 'weir vulco', horas_trabajo: 2601 },
+            { pieza: 'Impulsor', material: 'Alto cromo' },
+          ],
+        },
+        ANALISTA,
+      );
+      expect(r.piezas).toEqual([
+        { pieza: 'Voluta', proveedor: 'Weir Vulco', horas_trabajo: 2601 },
+        { pieza: 'Impulsor', material: 'Alto cromo' },
+      ]);
+      const [voluta, impulsor] = r.antecedentes.componentes;
+      expect(voluta).toMatchObject({
+        proveedor: 'Weir Vulco',
+        horas_trabajo: 2601,
+      });
+      expect(impulsor).toMatchObject({
+        material: 'Alto cromo',
+        horas_trabajo: 2044,
+      });
+    });
+
+    it('guarda el enlace al informe anterior y acepta anexos', async () => {
+      const r = await reportes.crear(
+        {
+          ...COTEM137,
+          informe_anterior_url: ' https://sharepoint/cotem136.pdf ',
+        },
+        ANALISTA,
+      );
+      expect(r.informe_anterior_url).toBe('https://sharepoint/cotem136.pdf');
+      // El modelo en memoria no aplica los valores por defecto del esquema.
+      expect(r.anexos ?? []).toEqual([]);
     });
 
     it('el reporte siguiente de la bomba nombra al anterior emitido', async () => {
@@ -281,6 +330,74 @@ describe('ReportesMonitoreoService', () => {
     });
   });
 
+  describe('las piezas del reporte pasan a la ficha al emitir', () => {
+    const vigente = (pieza: string) =>
+      modelos.componente.docs.find((c) => c.pieza === pieza && c.vigente);
+
+    it('al emitir, lo que completó el analista queda en la ficha de la bomba', async () => {
+      await emitido({
+        ...COTEM137,
+        piezas: [
+          { pieza: 'Voluta', proveedor: 'ALTONA', condicion_inicial: 'Nuevo' },
+          { pieza: 'Impulsor' },
+        ],
+      });
+      expect(vigente('Voluta')).toMatchObject({
+        proveedor: 'ALTONA',
+        condicion_inicial: 'Nuevo',
+      });
+      // Lo vacío no borra nada.
+      expect(vigente('Impulsor')?.proveedor).toBeUndefined();
+    });
+
+    it('otra fecha de instalación retira la pieza anterior y monta una nueva', async () => {
+      await emitido({
+        ...COTEM137,
+        piezas: [
+          {
+            pieza: 'Voluta',
+            fecha_instalacion: '2026-09-30',
+            proveedor: 'ALTONA',
+          },
+        ],
+      });
+      const volutas = modelos.componente.docs.filter(
+        (c) => c.pieza === 'Voluta',
+      );
+      expect(volutas).toHaveLength(2);
+      expect(volutas.find((c) => !c.vigente)).toMatchObject({
+        retirado_en: dia(2026, 9, 30),
+      });
+      expect(vigente('Voluta')).toMatchObject({
+        fecha_instalacion: dia(2026, 9, 30),
+        proveedor: 'ALTONA',
+        registradoPor: `COTEM-0001 · ${ANALISTA}`,
+      });
+    });
+
+    it('un borrador o un reporte en revisión no tocan la ficha', async () => {
+      const r = await reportes.crear(
+        { ...COTEM137, piezas: [{ pieza: 'Voluta', proveedor: 'ALTONA' }] },
+        ANALISTA,
+      );
+      await reportes.enviar(String(r._id), ANALISTA);
+      expect(vigente('Voluta')?.proveedor).toBeUndefined();
+    });
+
+    it('emitir tarde un reporte de fecha anterior no pisa lo de uno más nuevo', async () => {
+      await emitido({
+        ...COTEM137,
+        fecha: '2026-11-03',
+        piezas: [{ pieza: 'Voluta', proveedor: 'ALTONA' }],
+      });
+      await emitido({
+        ...COTEM137,
+        piezas: [{ pieza: 'Voluta', proveedor: 'Weir Vulco' }],
+      });
+      expect(vigente('Voluta')?.proveedor).toBe('ALTONA');
+    });
+  });
+
   describe('reglas', () => {
     it('no se envía incompleto, y dice qué falta', async () => {
       const r = await reportes.crear(
@@ -292,7 +409,10 @@ describe('ReportesMonitoreoService', () => {
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(BadRequestException);
       expect((error as BadRequestException).getResponse()).toMatchObject({
-        message: expect.arrayContaining(['Falta: el alcance']) as string[],
+        message: expect.arrayContaining([
+          'Falta: el alcance',
+          'Falta: la emisividad',
+        ]) as string[],
       });
     });
 
@@ -391,14 +511,13 @@ describe('ReportesMonitoreoService', () => {
       expect(bomba.situacion.alerta).toBe('sin_datos');
     });
 
-    it('con COTEM137 emitido: próximo monitoreo a 28 días y fecha tentativa por TMEF', async () => {
+    it('con COTEM137 emitido: próximo monitoreo a 28 días', async () => {
       await emitido();
       const [bomba] = await modulo.get(BombasService).listar(HOY);
       expect(bomba.situacion).toMatchObject({
         ultimo_reporte: { codigo_interno: 'COTEM-0001', resultado: 'NORMAL' },
         proximo_monitoreo: dia(2026, 11, 3),
         dias_para_monitoreo: 19,
-        dias_para_intervencion: 26,
         alerta: 'al_dia',
       });
     });
@@ -543,6 +662,185 @@ describe('ReportesMonitoreoService', () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  describe('medición de espesores (ultrasonido de 250SA225)', () => {
+    /** COULT-0482: el muestreador no es una bomba ni está en el inventario. */
+    const COULT482: CrearReporteMonitoreoDto = {
+      tag: '250sa225',
+      fecha: '2026-11-12',
+      tecnica: 'ultrasonido activo',
+      alcance: '10S Identificación áreas con desgaste',
+      antecedentes_texto:
+        'En parada de planta septiembre 2026 se cambió la válvula dardo LV250033.',
+      lecturas: {
+        instrumento: 'EPOCH-XT',
+        velocidad_ms: 5920,
+        frecuencia_mhz: 7.5,
+      },
+      analisis: 'Pieza 3 con espesor de 5,39 mm de 6,5 mm nominal.',
+      resultado: 'NORMAL',
+    };
+
+    const conPlantilla = async () => {
+      const plantillas = modulo.get(PlantillasMedicionService);
+      const diagrama = await archivos.guardar(
+        await sharp({
+          create: { width: 320, height: 300, channels: 3, background: '#36c' },
+        })
+          .png()
+          .toBuffer(),
+        'image/png',
+        UsoDeImagen.FOTO,
+      );
+      return plantillas.crear(
+        {
+          tag: '250sa225',
+          tecnica: 'Ultrasonido activo',
+          titulo: ESTRUCTURA_250SA225.titulo,
+          piezas: ESTRUCTURA_250SA225.piezas,
+          diagramas: [{ ...diagrama, descripcion: 'Muestreador, piezas 1–6' }],
+        },
+        ANALISTA,
+      );
+    };
+
+    /** Todo en 6 mm salvo un valor bajo en la pieza 3, Lado Sur. */
+    const medidos = () => {
+      const v = valoresVacios(ESTRUCTURA_250SA225).map((zonas) =>
+        zonas.map((filas) => filas.map((fila) => fila.map(() => 6))),
+      );
+      v[6][1][2][0] = 5.39;
+      return v;
+    };
+
+    it('la plantilla guarda el tag en mayúsculas y la técnica como en su lista', async () => {
+      const p = await conPlantilla();
+      expect(p).toMatchObject({
+        tag: '250SA225',
+        tecnica: 'ULTRASONIDO ACTIVO',
+        tecnica_normalizada: 'ULTRASONIDO ACTIVO',
+      });
+      expect(p.piezas).toHaveLength(ESTRUCTURA_250SA225.piezas.length);
+    });
+
+    it('no hay dos plantillas para el mismo tag y técnica, ni técnicas fuera de la lista', async () => {
+      await conPlantilla();
+      await expect(conPlantilla()).rejects.toThrow(ConflictException);
+      await expect(
+        modulo.get(PlantillasMedicionService).crear(
+          {
+            tag: 'X1',
+            tecnica: 'RAYOS X',
+            titulo: 'T',
+            piezas: [{ nombre: '1', zonas: [{ anillos: 1, puntos: 1 }] }],
+          },
+          ANALISTA,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('el reporte nace con la grilla y los diagramas, sin ser una bomba', async () => {
+      await conPlantilla();
+      const r = await reportes.crear(COULT482, ANALISTA);
+      expect(r).toMatchObject({
+        tag: '250SA225',
+        tecnica: 'ULTRASONIDO ACTIVO',
+        tipo_equipo: 'Sin inventario',
+        antecedentes_texto: COULT482.antecedentes_texto,
+        lecturas: { velocidad_ms: 5920, frecuencia_mhz: 7.5 },
+      });
+      expect(r.equipo_id).toBeUndefined();
+      expect(r.piezas).toBeUndefined();
+      expect(r.medicion?.estructura.piezas).toHaveLength(10);
+      expect(r.medicion?.diagramas[0].descripcion).toBe(
+        'Muestreador, piezas 1–6',
+      );
+      expect(r.medicion?.valores).toEqual(valoresVacios(ESTRUCTURA_250SA225));
+      expect(r.antecedentes.ficha).toEqual({});
+    });
+
+    it('sin plantilla, un tag que no es bomba no se reporta', async () => {
+      await expect(reportes.crear(COULT482, ANALISTA)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('para enviar pide las mediciones, no la emisividad', async () => {
+      await conPlantilla();
+      const r = await reportes.crear(COULT482, ANALISTA);
+      const error = await reportes
+        .enviar(String(r._id), ANALISTA)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        message: ['Falta: las mediciones de espesores'],
+      });
+    });
+
+    it('valores con otra forma se rechazan; los buenos se guardan', async () => {
+      await conPlantilla();
+      const r = await reportes.crear(COULT482, ANALISTA);
+      await expect(
+        reportes.actualizar(
+          String(r._id),
+          { medicion_valores: [[[[6]]]] },
+          ANALISTA,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      const ok = await reportes.actualizar(
+        String(r._id),
+        { medicion_valores: medidos() },
+        ANALISTA,
+      );
+      expect(ok.medicion?.valores[6][1][2][0]).toBe(5.39);
+    });
+
+    it('un reporte de bomba sin plantilla no acepta mediciones', async () => {
+      await expect(
+        reportes.crear({ ...COTEM137, medicion_valores: [] }, ANALISTA),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('el reporte siguiente trae los mínimos de la medición anterior', async () => {
+      await conPlantilla();
+      const primero = await emitido({
+        ...COULT482,
+        medicion_valores: medidos(),
+      });
+      expect(primero.codigo_interno).toBe('COULT-0001');
+
+      const siguiente = await reportes.crear(
+        { ...COULT482, fecha: '2026-12-10' },
+        ANALISTA,
+      );
+      const anterior = siguiente.antecedentes.medicion_anterior;
+      expect(anterior).toMatchObject({ codigo_interno: 'COULT-0001' });
+      expect(anterior?.minimos).toContainEqual({
+        pieza: '3',
+        zona: 'Lado Sur',
+        minimo: 5.39,
+      });
+    });
+
+    it('el PDF lleva la medición y sus diagramas', async () => {
+      await conPlantilla();
+      const r = await reportes.crear(
+        { ...COULT482, medicion_valores: medidos() },
+        ANALISTA,
+      );
+      const espia = jest.spyOn(generador, 'generarPdfReporte');
+      const { pdf } = await modulo
+        .get(ReportePdfService)
+        .generar(String(r._id));
+      expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      const datos = espia.mock.calls[0][0];
+      expect(datos.reporte.medicion?.estructura.titulo).toBe(
+        ESTRUCTURA_250SA225.titulo,
+      );
+      expect(datos.diagramas?.[0].contenido?.length).toBeGreaterThan(0);
+      espia.mockRestore();
+    });
+  });
 });
 
 describe('acceso al módulo', () => {
@@ -560,7 +858,11 @@ describe('acceso al módulo', () => {
       (m) => m !== 'constructor',
     );
 
-  it.each([MonitoreoEquiposController, ReportesMonitoreoController])(
+  it.each([
+    MonitoreoEquiposController,
+    ReportesMonitoreoController,
+    PlantillasMedicionController,
+  ])(
     'en %p, ni admin ni super_admin entran sin el rol; con él, sí',
     (clase) => {
       for (const metodo of rutas(clase)) {

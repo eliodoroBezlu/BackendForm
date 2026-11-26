@@ -67,7 +67,11 @@ describe('ImportadorPlanillaService', () => {
   const clasificaciones = {
     findByNameOrCreate: jest.fn().mockResolvedValue({ _id: 'clasificacion' }),
   };
-  const configFormularios = { create: jest.fn() };
+  const configFormularios = {
+    create: jest.fn(),
+    findOne: jest.fn(),
+    update: jest.fn(),
+  };
 
   beforeEach(async () => {
     equipos = new ModeloEnMemoria();
@@ -118,7 +122,7 @@ describe('ImportadorPlanillaService', () => {
 
       expect(r.aplicado).toBe(false);
       expect(r.problemas.filter((p) => p.grave)).toEqual([]);
-      expect(r.bombas.nuevas).toHaveLength(21);
+      expect(r.bombas.nuevas).toHaveLength(23);
       expect(r.componentes).toEqual({
         nuevos: 4,
         reemplazados: 0,
@@ -129,11 +133,11 @@ describe('ImportadorPlanillaService', () => {
       expect(listas.docs).toHaveLength(0);
     });
 
-    it('al aplicar deja las 21 bombas en el inventario, en el área Confiabilidad', async () => {
+    it('al aplicar deja las 23 bombas en el inventario, en el área Confiabilidad', async () => {
       const r = await aplicar(PLANILLA);
 
       expect(r.aplicado).toBe(true);
-      expect(equipos.docs).toHaveLength(21);
+      expect(equipos.docs).toHaveLength(23);
       const bomba = equipos.docs.find((e) => e.codigo === '230PP013');
       expect(bomba).toMatchObject({
         tipo_equipo: 'Bomba',
@@ -145,7 +149,8 @@ describe('ImportadorPlanillaService', () => {
         especificaciones: {
           'OT modelo': '489249',
           'Frecuencia (días)': 28,
-          'Bombas pares': '230PP012, 230PP112',
+          Alcance:
+            'Realizar monitoreo a los elementos de desgaste de la bomba.',
         },
       });
       expect(ubicaciones.findOrCreateByRuta).toHaveBeenCalledWith(
@@ -200,14 +205,14 @@ describe('ImportadorPlanillaService', () => {
       const r = await aplicar(PLANILLA);
 
       expect(r.bombas).toMatchObject({ nuevas: [] });
-      expect(r.bombas.actualizadas).toHaveLength(21);
+      expect(r.bombas.actualizadas).toHaveLength(23);
       expect(r.componentes).toEqual({
         nuevos: 0,
         reemplazados: 0,
         actualizados: 4,
       });
       expect(r.intervenciones).toEqual({ nuevas: 0, actualizadas: 3 });
-      expect(equipos.docs).toHaveLength(21);
+      expect(equipos.docs).toHaveLength(23);
       expect(componentes.docs).toHaveLength(4);
       expect(intervenciones.docs).toHaveLength(3);
     });
@@ -277,28 +282,34 @@ describe('ImportadorPlanillaService', () => {
       );
     });
 
-    it('una bomba que ya estaba conserva lo que la planilla no trae', async () => {
+    it('una bomba que ya estaba conserva lo que la planilla no trae y pierde lo retirado', async () => {
       await equipos.create({
         codigo: '230PP013',
         tipo_equipo: 'Bomba',
         marca: 'KSB',
-        especificaciones: { 'Cargado a mano': 'sí', 'TMEF (hrs)': 1 },
+        especificaciones: {
+          'Cargado a mano': 'sí',
+          'TMEF (hrs)': 1,
+          'Bombas pares': '230PP012',
+          'Servicio / proceso': 'Transfiere pulpa',
+        },
       });
 
       await aplicar(
         await planilla({
           Bombas: [
-            ['TAG', 'TMEF (hrs)'],
-            ['230PP013', 4500],
+            ['TAG', 'Alcance'],
+            ['230PP013', 'Monitoreo de desgaste'],
           ],
           Componentes: [['TAG', 'Pieza']],
           Intervenciones: [['TAG', 'Fecha']],
         }),
       );
 
-      expect(equipos.docs[0]).toMatchObject({
-        marca: 'KSB',
-        especificaciones: { 'Cargado a mano': 'sí', 'TMEF (hrs)': 4500 },
+      expect(equipos.docs[0]).toMatchObject({ marca: 'KSB' });
+      expect(equipos.docs[0].especificaciones).toEqual({
+        'Cargado a mano': 'sí',
+        Alcance: 'Monitoreo de desgaste',
       });
     });
 
@@ -327,6 +338,41 @@ describe('ImportadorPlanillaService', () => {
       );
       expect(r.fichaBombaCreada).toBe(false);
       expect((await catalogos.sembrar()).sembrados).toEqual([]);
+    });
+
+    it('en una ficha «Bomba» que ya existe quita los campos retirados y agrega el alcance', async () => {
+      configFormularios.create.mockRejectedValue(new ConflictException());
+      configFormularios.findOne.mockResolvedValue({
+        campos: [
+          {
+            name: 'Servicio / proceso',
+            label: 'Servicio / proceso',
+            type: 'text',
+          },
+          { name: 'TMEF (hrs)', label: 'TMEF (hrs)', type: 'number' },
+          { name: 'Bombas pares', label: 'Bombas pares', type: 'text' },
+          {
+            name: 'Tag de horas en PI',
+            label: 'Tag de horas en PI',
+            type: 'text',
+          },
+          { name: 'Agregado a mano', label: 'Agregado a mano', type: 'text' },
+        ],
+      });
+
+      await catalogos.sembrar();
+
+      const [, ficha] = configFormularios.update.mock.calls[0] as [
+        string,
+        { campos: { name: string }[] },
+      ];
+      expect(ficha.campos.map((c) => c.name)).toEqual([
+        'Alcance',
+        'OT modelo',
+        'Frecuencia (días)',
+        'Tag de horas en PI',
+        'Agregado a mano',
+      ]);
     });
 
     it('no deja repetir un valor escrito de otra forma', async () => {

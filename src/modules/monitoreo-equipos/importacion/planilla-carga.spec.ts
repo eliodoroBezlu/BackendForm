@@ -2,7 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ExcelJS from 'exceljs';
 import { TipoCatalogoMonitoreo } from '../domain/catalogos-iniciales';
-import { fecha, leerPlanillaDeCarga, numero } from './planilla-carga';
+import {
+  fecha,
+  leerPlanillaDeCarga,
+  limpiarTagPi,
+  numero,
+} from './planilla-carga';
 
 const PLANILLA = path.join(
   __dirname,
@@ -26,10 +31,8 @@ const CAB_BOMBAS = [
   'Frecuencia (días)',
   'Fabricante',
   'Modelo',
-  'Servicio / proceso',
-  'TMEF (hrs)',
+  'Alcance',
   'Tag de horas en PI',
-  'Bombas pares',
   'Ubicación',
 ];
 const CAB_COMP = [
@@ -59,23 +62,47 @@ const LISTAS = [
 
 describe('leerPlanillaDeCarga', () => {
   describe('con la planilla que se envió a Confiabilidad', () => {
-    it('lee las 21 bombas con su OT modelo y frecuencia, sin problemas graves', async () => {
+    it('lee las 23 bombas con su OT modelo, frecuencia y alcance, sin problemas graves', async () => {
       const leida = await leerPlanillaDeCarga(fs.readFileSync(PLANILLA));
       expect(leida.problemas.filter((p) => p.grave)).toEqual([]);
-      expect(leida.bombas).toHaveLength(21);
-      expect(leida.bombas.find((b) => b.tag === '230PP013')).toMatchObject({
+      expect(leida.bombas).toHaveLength(23);
+      const b = leida.bombas.find((x) => x.tag === '230PP013');
+      expect(b).toMatchObject({
         otModelo: '489249',
         frecuenciaDias: 28,
-        tmefHrs: 2900,
         fabricante: 'Warman',
         modelo: 'WARMAN ASH 550 MMC',
-        pares: ['230PP012', '230PP112'],
-        tagPi: '\\\\PI_SERVER\\230PP013/HR',
+        alcance: 'Realizar monitoreo a los elementos de desgaste de la bomba.',
+        tagPi: '\\\\PI_SERVER\\230PP013-112/PV',
       });
-      expect(leida.bombas.find((b) => b.tag === '420PP557')).toMatchObject({
-        tmefHrs: 5000,
-        pares: ['420PP556'],
-      });
+      // TMEF y bombas pares ya no se leen.
+      expect(b).not.toHaveProperty('tmefHrs');
+      expect(b).not.toHaveProperty('pares');
+    });
+
+    it('limpia las comillas que se colaron en el tag de PI y avisa si no es el de la bomba', async () => {
+      const leida = await leerPlanillaDeCarga(fs.readFileSync(PLANILLA));
+      expect(leida.bombas.find((b) => b.tag === '230PP012')?.tagPi).toBe(
+        '\\\\PI_SERVER\\230PP012-112/PV',
+      );
+      expect(leida.problemas).toContainEqual(
+        expect.objectContaining({
+          grave: false,
+          mensaje: expect.stringContaining(
+            'no menciona la bomba 420PP558',
+          ) as string,
+        }),
+      );
+    });
+
+    it('avisa que «Warman» no está en la lista de fabricantes de esa planilla', async () => {
+      const leida = await leerPlanillaDeCarga(fs.readFileSync(PLANILLA));
+      expect(leida.problemas).toContainEqual(
+        expect.objectContaining({
+          grave: false,
+          mensaje: 'Fabricante «Warman» no está en la hoja Listas',
+        }),
+      );
     });
 
     it('solo carga los componentes con datos: las 4 piezas de la 230PP013', async () => {
@@ -153,16 +180,12 @@ describe('leerPlanillaDeCarga', () => {
     it('un número que no es número es grave; la coma decimal se acepta', async () => {
       const leida = await leerPlanillaDeCarga(
         await planilla({
-          Bombas: [
-            CAB_BOMBAS,
-            ['230PP013', null, 'cada mes', null, null, null, '4500,5'],
-          ],
+          Bombas: [CAB_BOMBAS, ['230PP013', null, 'cada mes']],
           Componentes: [CAB_COMP],
           Intervenciones: [CAB_INT],
           Listas: LISTAS,
         }),
       );
-      expect(leida.bombas[0].tmefHrs).toBe(4500.5);
       expect(leida.problemas).toEqual([
         expect.objectContaining({
           grave: true,
@@ -245,7 +268,33 @@ describe('leerPlanillaDeCarga', () => {
     });
   });
 
+  describe('planillas viejas', () => {
+    it('las columnas «TMEF (hrs)» y «Bombas pares» se ignoran sin problema', async () => {
+      const leida = await leerPlanillaDeCarga(
+        await planilla({
+          Bombas: [
+            ['TAG', 'TMEF (hrs)', 'Bombas pares'],
+            ['230PP013', 'no es número', 'cualquier cosa'],
+          ],
+          Componentes: [CAB_COMP],
+          Intervenciones: [CAB_INT],
+          Listas: LISTAS,
+        }),
+      );
+      expect(leida.problemas).toEqual([]);
+      expect(leida.bombas).toHaveLength(1);
+    });
+  });
+
   describe('valores de celda', () => {
+    it('limpiarTagPi quita comillas, comas y punto y coma de los bordes', () => {
+      expect(limpiarTagPi('\\\\PI_SERVER\\240PP123/PV";')).toBe(
+        '\\\\PI_SERVER\\240PP123/PV',
+      );
+      expect(limpiarTagPi('  ')).toBeUndefined();
+      expect(limpiarTagPi(undefined)).toBeUndefined();
+    });
+
     it('numero y fecha distinguen vacío de inválido', () => {
       expect(numero(null)).toBeUndefined();
       expect(numero('12')).toBe(12);

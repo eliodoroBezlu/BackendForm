@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { TrabajadoresController } from './trabajadores.controller';
 import { TrabajadoresService } from './trabajadores.service';
+import { SincronizacionIamService } from './sincronizacion-iam.service';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { Role } from '../auth/enums/role.enum';
 
@@ -21,13 +22,13 @@ import { Role } from '../auth/enums/role.enum';
 describe('TrabajadoresController', () => {
   let controller: TrabajadoresController;
   let servicio: Record<string, jest.Mock>;
+  let sincronizacion: Record<string, jest.Mock>;
   const reflector = new Reflector();
 
   beforeEach(async () => {
     servicio = {
       create: jest.fn(),
       createWithUser: jest.fn(),
-      syncTrabajadoresFromIam: jest.fn().mockResolvedValue({}),
       findAll: jest.fn().mockResolvedValue([]),
       findAllNames: jest.fn().mockResolvedValue([]),
       findAllCompletos: jest.fn().mockResolvedValue([]),
@@ -39,9 +40,18 @@ describe('TrabajadoresController', () => {
       remove: jest.fn(),
     };
 
+    sincronizacion = {
+      vistaPrevia: jest.fn().mockResolvedValue({}),
+      ultima: jest.fn().mockResolvedValue(null),
+      aplicar: jest.fn().mockResolvedValue({}),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TrabajadoresController],
-      providers: [{ provide: TrabajadoresService, useValue: servicio }],
+      providers: [
+        { provide: TrabajadoresService, useValue: servicio },
+        { provide: SincronizacionIamService, useValue: sincronizacion },
+      ],
     }).compile();
 
     controller = module.get<TrabajadoresController>(TrabajadoresController);
@@ -112,6 +122,30 @@ describe('TrabajadoresController', () => {
     it('lanzar la sincronizacion con IAM es solo de admin', () => {
       // Reescribe el roster completo: no es una operacion de consulta.
       expect(rolesDe('sync')).toEqual([Role.ADMIN]);
+    });
+
+    it('la vista previa de la sincronizacion tambien es solo de admin', () => {
+      // Muestra CI y datos de todo el padron.
+      expect(rolesDe('vistaPreviaSync')).toEqual([Role.ADMIN]);
+      expect(rolesDe('ultimaSync')).toEqual([Role.ADMIN]);
+    });
+
+    it('aplicar pasa los ids elegidos, los supervisores y quien lo hizo', async () => {
+      await controller.sync({ ids: ['iam-1'], supervisores: false }, {
+        username: 'ana',
+      } as never);
+      expect(sincronizacion.aplicar).toHaveBeenCalledWith(
+        ['iam-1'],
+        false,
+        'ana',
+      );
+
+      await controller.sync({}, { username: 'ana' } as never);
+      expect(sincronizacion.aplicar).toHaveBeenLastCalledWith(
+        undefined,
+        true,
+        'ana',
+      );
     });
 
     it('consultar el listado lo pueden varios roles operativos', () => {

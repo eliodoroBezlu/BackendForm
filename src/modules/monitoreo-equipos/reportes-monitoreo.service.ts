@@ -3,17 +3,25 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { marcarDadoDeBaja } from '../../common/baja-logica/baja-logica.plugin';
 import { AntecedentesMonitoreoService } from './antecedentes-monitoreo.service';
+import { BombasService } from './bombas.service';
 import { ArchivosMonitoreoService } from './archivos-monitoreo.service';
 import { CorrelativosMonitoreoService } from './correlativos-monitoreo.service';
 import { MonitoreoCatalogosService } from './monitoreo-catalogos.service';
 import { PlantillasMonitoreoService } from './plantillas-monitoreo.service';
+import { PlantillasMedicionService } from './plantillas-medicion.service';
 import { TIPO_EQUIPO_BOMBA } from './domain/bomba';
+import {
+  erroresDeValores,
+  ValoresDeMedicion,
+  valoresVacios,
+} from './domain/espesores';
 import {
   normalizarValor,
   TipoCatalogoMonitoreo,
@@ -22,6 +30,8 @@ import {
   codigoInterno,
   EstadoReporte,
   faltantesParaEnviar,
+  MedicionDelReporte,
+  PiezaDelReporte,
 } from './domain/reporte';
 import { ValoresDeCatalogo } from './domain/valores-de-catalogo';
 import {
@@ -30,8 +40,17 @@ import {
   FiltrosReportesDto,
 } from './dto/reporte-monitoreo.dto';
 import { ReporteMonitoreo } from './schemas/reporte-monitoreo.schema';
+import { PlantillaMedicion } from './schemas/plantilla-medicion.schema';
 
-type Contenido = Omit<ActualizarReporteMonitoreoDto, 'fecha'>;
+type Contenido = Omit<
+  ActualizarReporteMonitoreoDto,
+  'fecha' | 'piezas' | 'medicion_valores'
+> & {
+  piezas?: PiezaDelReporte[];
+};
+
+/** Lo que no es una bomba ni está en el inventario. */
+const SIN_INVENTARIO = 'Sin inventario';
 
 /**
  * Quita los `undefined` de un objeto antes de guardarlo como `Object`: el
@@ -72,7 +91,11 @@ export class ReportesMonitoreoService {
     private readonly catalogos: MonitoreoCatalogosService,
     private readonly correlativos: CorrelativosMonitoreoService,
     private readonly plantillas: PlantillasMonitoreoService,
+    private readonly plantillasMedicion: PlantillasMedicionService,
+    private readonly bombas: BombasService,
   ) {}
+
+  private readonly logger = new Logger(ReportesMonitoreoService.name);
 
   listar(filtros: FiltrosReportesDto): Promise<ReporteMonitoreo[]> {
     const consulta: FilterQuery<ReporteMonitoreo> = {};
@@ -105,17 +128,32 @@ export class ReportesMonitoreoService {
   ): Promise<ReporteMonitoreo> {
     const fecha = new Date(dto.fecha);
     const contenido = await this.contenidoValidado(dto);
+    const plantillaMedicion = await this.plantillasMedicion.aplicable(
+      dto.tag,
+      contenido.tecnica,
+    );
+    const medicion = plantillaMedicion
+      ? this.medicionDesde(plantillaMedicion, dto.medicion_valores)
+      : this.sinMedicion(dto.medicion_valores);
+    // Con plantilla de medición el tag no tiene que ser una bomba.
     const prellenado = await this.antecedentes.armar(
       dto.tag,
       fecha,
       contenido.lecturas?.horas,
+      undefined,
+      contenido.piezas,
+      { sinFicha: !!medicion, tecnica: contenido.tecnica },
     );
+    const tipoEquipo = prellenado.tipo_equipo ?? SIN_INVENTARIO;
     const plantilla = await this.plantillas.obtener(TIPO_EQUIPO_BOMBA);
 
     return this.modelo.create(
       sinIndefinidos({
         ...contenido,
-        tipo_equipo: TIPO_EQUIPO_BOMBA,
+        // Las piezas son de la ficha de una bomba: otro equipo no las tiene.
+        piezas: tipoEquipo === TIPO_EQUIPO_BOMBA ? contenido.piezas : undefined,
+        medicion,
+        tipo_equipo: tipoEquipo,
         equipo_id: prellenado.equipo_id,
         tag: prellenado.tag,
         fecha,
@@ -137,8 +175,10 @@ export class ReportesMonitoreoService {
     this.exigirBorradorPropio(reporte, usuario);
 
     const contenido = await this.contenidoValidado(dto, reporte);
+    if (reporte.tipo_equipo !== TIPO_EQUIPO_BOMBA) delete contenido.piezas;
     reporte.set(sinIndefinidos(contenido));
     if (dto.fecha) reporte.fecha = new Date(dto.fecha);
+    await this.actualizarMedicion(reporte, dto.medicion_valores);
     await this.rehacerAntecedentes(reporte);
     return reporte.save();
   }
@@ -159,9 +199,11 @@ export class ReportesMonitoreoService {
       tecnica: reporte.tecnica,
       resultado: reporte.resultado,
       alcance: reporte.alcance,
+      emisividad: reporte.lecturas?.emisividad,
       analisis: reporte.analisis,
       recomendaciones: reporte.recomendaciones ?? [],
       tareas: reporte.tareas ?? [],
+      medicion: reporte.medicion,
     });
     if (faltan.length > 0) {
       // Va en `message`: es lo único que el filtro de errores reenvía, y es
@@ -217,16 +259,31 @@ export class ReportesMonitoreoService {
     const correlativo = await this.correlativos.siguiente(codigoTecnica, anio);
     const ahora = new Date();
 
-    return this.transicion(reporte, EstadoReporte.PENDIENTE_REVISION, {
-      $set: {
-        estado: EstadoReporte.EMITIDO,
-        codigo_interno: codigoInterno(codigoTecnica, correlativo),
-        correlativo,
-        revisadoPor: usuario,
-        emitidoEn: ahora,
+    const emitido = await this.transicion(
+      reporte,
+      EstadoReporte.PENDIENTE_REVISION,
+      {
+        $set: {
+          estado: EstadoReporte.EMITIDO,
+          codigo_interno: codigoInterno(codigoTecnica, correlativo),
+          correlativo,
+          revisadoPor: usuario,
+          emitidoEn: ahora,
+        },
+        $push: { historial: { accion: 'emitido', por: usuario, en: ahora } },
       },
-      $push: { historial: { accion: 'emitido', por: usuario, en: ahora } },
-    });
+    );
+
+    // Las piezas que completó el analista pasan a la ficha de la bomba. El
+    // reporte ya está emitido: si esto falla, se avisa y no se deshace nada.
+    try {
+      await this.bombas.guardarPiezasDelReporte(emitido);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron guardar en la ficha las piezas de ${emitido.codigo_interno}: ${(error as Error).message}`,
+      );
+    }
+    return emitido;
   }
 
   // ── Reglas ─────────────────────────────────────────────────────────────
@@ -281,8 +338,76 @@ export class ReportesMonitoreoService {
       reporte.fecha,
       reporte.lecturas?.horas,
       reporte._id as Types.ObjectId,
+      reporte.piezas,
+      { sinFicha: !!reporte.medicion, tecnica: reporte.tecnica },
     );
     reporte.set('antecedentes', sinIndefinidos(antecedentes));
+  }
+
+  // ── Medición de espesores ──────────────────────────────────────────────
+
+  /** La grilla y los diagramas de la plantilla, copiados, con sus valores. */
+  private medicionDesde(
+    plantilla: PlantillaMedicion,
+    valores?: unknown[],
+  ): MedicionDelReporte {
+    const estructura = { titulo: plantilla.titulo, piezas: plantilla.piezas };
+    return {
+      plantilla_id: String(plantilla._id),
+      estructura,
+      diagramas: plantilla.diagramas ?? [],
+      valores:
+        valores === undefined
+          ? valoresVacios(estructura)
+          : this.valoresValidados(estructura, valores),
+    };
+  }
+
+  /** Mediciones para un reporte sin grilla: es un error, no se descartan. */
+  private sinMedicion(valores?: unknown[]): undefined {
+    if (valores !== undefined) {
+      throw new BadRequestException(
+        'Este reporte no tiene plantilla de medición para su tag y técnica',
+      );
+    }
+    return undefined;
+  }
+
+  private valoresValidados(
+    estructura: MedicionDelReporte['estructura'],
+    valores: unknown[],
+  ): ValoresDeMedicion {
+    const errores = erroresDeValores(estructura, valores);
+    if (errores.length > 0) throw new BadRequestException({ message: errores });
+    return valores as ValoresDeMedicion;
+  }
+
+  /**
+   * Un borrador que no tenía grilla la toma si ahora su tag y técnica tienen
+   * plantilla (se cambió la técnica, o la plantilla se creó después). Uno
+   * que ya la tenía la conserva: cambiar la técnica no borra lo medido.
+   */
+  private async actualizarMedicion(
+    reporte: ReporteMonitoreo,
+    valores?: unknown[],
+  ): Promise<void> {
+    if (reporte.medicion) {
+      if (valores === undefined) return;
+      reporte.set('medicion', {
+        ...reporte.medicion,
+        valores: this.valoresValidados(reporte.medicion.estructura, valores),
+      });
+      return;
+    }
+    const plantilla = await this.plantillasMedicion.aplicable(
+      reporte.tag,
+      reporte.tecnica,
+    );
+    if (plantilla) {
+      reporte.set('medicion', this.medicionDesde(plantilla, valores));
+    } else {
+      this.sinMedicion(valores);
+    }
   }
 
   private async codigoDeTecnica(tecnica?: string): Promise<string> {
@@ -318,9 +443,10 @@ export class ReportesMonitoreoService {
     const v = new ValoresDeCatalogo(activos);
     const T = TipoCatalogoMonitoreo;
 
-    const contenido: Contenido = { ...dto };
+    const contenido = { ...dto } as Contenido;
     delete (contenido as { fecha?: string }).fecha;
     delete (contenido as { tag?: string }).tag;
+    delete (contenido as { medicion_valores?: unknown }).medicion_valores;
 
     if (dto.tecnica !== undefined)
       contenido.tecnica = v.valor(T.TECNICA, dto.tecnica, [anterior?.tecnica]);
@@ -363,6 +489,35 @@ export class ReportesMonitoreoService {
         ),
       }));
     }
+    if (dto.piezas) {
+      const previas = anterior?.piezas ?? [];
+      contenido.piezas = dto.piezas.map((p) =>
+        sinIndefinidos({
+          pieza: p.pieza,
+          fecha_instalacion: p.fecha_instalacion
+            ? new Date(p.fecha_instalacion)
+            : undefined,
+          proveedor: v.valor(
+            T.PROVEEDOR,
+            p.proveedor,
+            previas.map((x) => x.proveedor),
+          ),
+          condicion_inicial: v.valor(
+            T.CONDICION_INICIAL,
+            p.condicion_inicial,
+            previas.map((x) => x.condicion_inicial),
+          ),
+          material: p.material?.trim() || undefined,
+          horas_trabajo: p.horas_trabajo,
+        }),
+      );
+    }
+    if (dto.informe_anterior_url !== undefined) {
+      contenido.informe_anterior_url = dto.informe_anterior_url.trim();
+    }
+    if (dto.antecedentes_texto !== undefined) {
+      contenido.antecedentes_texto = dto.antecedentes_texto.trim();
+    }
     if (dto.recomendaciones) {
       contenido.recomendaciones = dto.recomendaciones
         .map((r) => r.trim())
@@ -371,6 +526,7 @@ export class ReportesMonitoreoService {
 
     const archivos = [
       ...(dto.fotos ?? []),
+      ...(dto.anexos ?? []),
       ...(dto.grafico ? [dto.grafico] : []),
     ].map((i) => i.archivo);
     const faltan = await this.archivos.faltantes(archivos);

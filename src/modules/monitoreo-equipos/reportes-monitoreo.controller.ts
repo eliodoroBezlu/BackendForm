@@ -37,7 +37,16 @@ import { AntecedentesMonitoreoService } from './antecedentes-monitoreo.service';
 import { ArchivosMonitoreoService } from './archivos-monitoreo.service';
 import { CorrelativosMonitoreoService } from './correlativos-monitoreo.service';
 import { PlantillasMonitoreoService } from './plantillas-monitoreo.service';
+import { PlantillasMedicionService } from './plantillas-medicion.service';
 import { ReportePdfService } from './reporte-pdf.service';
+import { TrabajadoresService } from '../trabajadores/trabajadores.service';
+
+/** Quien puede figurar en «Comunicado / coordinado con» de una tarea. */
+export interface Coordinador {
+  nombre: string;
+  puesto: string;
+  rol: 'supervisor' | 'superintendente';
+}
 
 /**
  * Los reportes de monitoreo y lo que necesitan: imágenes, correlativos y la
@@ -53,7 +62,9 @@ export class ReportesMonitoreoController {
     private readonly archivos: ArchivosMonitoreoService,
     private readonly correlativos: CorrelativosMonitoreoService,
     private readonly plantillas: PlantillasMonitoreoService,
+    private readonly plantillasMedicion: PlantillasMedicionService,
     private readonly pdf: ReportePdfService,
+    private readonly trabajadores: TrabajadoresService,
   ) {}
 
   // ── Reportes ────────────────────────────────────────────────────────────
@@ -63,19 +74,51 @@ export class ReportesMonitoreoController {
     return this.reportes.listar(filtros);
   }
 
-  /** Los antecedentes de una bomba para un reporte nuevo, sin guardar nada. */
+  /**
+   * Lo que un reporte nuevo trae de entrada, sin guardar nada: los
+   * antecedentes del equipo y, si el tag y la técnica la tienen, la plantilla
+   * de medición. Un tag con plantillas no tiene que ser una bomba.
+   */
   @Get('reportes/prellenado/:tag')
-  prellenado(
+  async prellenado(
     @Param('tag') tag: string,
     @Query('fecha') fecha?: string,
     @Query('horas') horas?: string,
+    @Query('tecnica') tecnica?: string,
   ) {
     const dia = fecha ? new Date(fecha) : new Date();
     const n = horas === undefined || horas === '' ? undefined : Number(horas);
     if (Number.isNaN(dia.getTime()) || (n !== undefined && Number.isNaN(n))) {
       throw new BadRequestException('Fecha u horas inválidas');
     }
-    return this.antecedentes.armar(tag, dia, n);
+    const plantilla = tecnica?.trim()
+      ? await this.plantillasMedicion.aplicable(tag, tecnica)
+      : await this.plantillasMedicion.unicaDelTag(tag);
+    const sinFicha =
+      !!plantilla || (await this.plantillasMedicion.tieneAlguna(tag));
+    const prellenado = await this.antecedentes.armar(
+      tag,
+      dia,
+      n,
+      undefined,
+      undefined,
+      { sinFicha, tecnica: tecnica || plantilla?.tecnica },
+    );
+    return { ...prellenado, plantilla_medicion: plantilla };
+  }
+
+  /**
+   * Supervisores y superintendentes (roles al día con el IAM), para
+   * «Comunicado / coordinado con». Solo el nombre, el puesto y el rol.
+   */
+  @Get('coordinadores')
+  async coordinadores(): Promise<Coordinador[]> {
+    const lista = await this.trabajadores.responsablesDeCierre();
+    return lista.map(({ nomina, puesto, rol }) => ({
+      nombre: nomina,
+      puesto,
+      rol,
+    }));
   }
 
   /**
