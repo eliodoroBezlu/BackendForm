@@ -50,9 +50,17 @@ export class ExtintorService {
     }
   }
 
-  async findAll() {
+  /**
+   * Por defecto solo los activos (plugin de baja lógica). Con `incluirDadosDeBaja` también los
+   * inactivos: el panel de Sistemas de Emergencia los necesita para decir que un código
+   * inspeccionado está dado de baja, y no que «no existe».
+   */
+  async findAll(incluirDadosDeBaja = false) {
     try {
-      return await this.extintorModel.find().exec();
+      return await this.extintorModel
+        .find()
+        .setOptions({ incluirDadosDeBaja })
+        .exec();
     } catch (error) {
       // Una excepcion de Nest ya trae su codigo: re-envolverla la
       // convertiria en un 500 y perderia el 404 o el 400 original.

@@ -44,9 +44,9 @@ export class ExtintorController {
   }
 
   @Get()
-  async findAll() {
+  async findAll(@Query('incluirDadosDeBaja') incluirDadosDeBaja?: string) {
     try {
-      return await this.extintorService.findAll();
+      return await this.extintorService.findAll(incluirDadosDeBaja === 'true');
     } catch {
       throw new HttpException(
         'Error al obtener extintores',

@@ -47,6 +47,7 @@ describe('InspeccionesEmergenciaService', () => {
     });
     static updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 });
     static find = jest.fn();
+    static findById = jest.fn();
   }
 
   const mockAreaModel = {
@@ -159,8 +160,80 @@ describe('InspeccionesEmergenciaService', () => {
         tag: 'TAG-TEST-01',
         periodo: 'ENERO-JUNIO',
         año: 2026,
+        estado: { $ne: 'archivado' },
       });
       expect(result).toEqual(mockFormInfo);
+    });
+
+    // Lo que pasó en agosto de 2026: la pantalla mandó «crear» con el formulario ya existente
+    // (julio) más agosto. Antes se insertaba una copia; después, el mes se descartaba.
+    it('si el formulario ya existe, le agrega los meses nuevos en vez de crear otro o ignorarlos', async () => {
+      const existente = {
+        _id: 'orig-1',
+        tag: '710BL728',
+        periodo: 'JULIO-DICIEMBRE',
+        año: 2026,
+        estado: 'activo',
+        meses: new Map([['JULIO', { inspector: { nombre: 'A' } }]]),
+      };
+      const agosto = {
+        inspeccionesExtintor: [{ codigo: 'PL-1', ubicacion: 'Taller' }],
+        inspector: { nombre: 'B' },
+      };
+      const payload: any = {
+        tag: '710BL728',
+        periodo: 'JULIO-DICIEMBRE',
+        año: 2026,
+        area: 'Filtros',
+        mesActual: 'JULIO',
+        meses: { JULIO: { inspector: { nombre: 'otro' } }, AGOSTO: agosto },
+      };
+      jest.spyOn(model, 'findOne').mockResolvedValue(existente);
+      const actualizado = { ...existente, mesActual: 'AGOSTO' };
+      model.findById.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(actualizado),
+      });
+
+      const result = await service.create(payload);
+
+      expect(model.updateOne).toHaveBeenCalledWith(
+        { _id: 'orig-1' },
+        {
+          $set: {
+            'meses.AGOSTO': agosto,
+            mesActual: 'AGOSTO',
+            fechaUltimaModificacion: expect.any(Date),
+          },
+        },
+      );
+      // Julio ya estaba firmado: no se pisa.
+      const $set = model.updateOne.mock.calls[0][1].$set;
+      expect($set['meses.JULIO']).toBeUndefined();
+      expect(
+        mockExtintorService.marcarExtintoresComoInspeccionados,
+      ).toHaveBeenCalledWith(['PL-1']);
+      expect(result).toBe(actualizado);
+    });
+
+    it('no agrega meses a un formulario completado', async () => {
+      jest.spyOn(model, 'findOne').mockResolvedValue({
+        _id: 'orig-2',
+        tag: 'T',
+        periodo: 'JULIO-DICIEMBRE',
+        año: 2025,
+        estado: 'completado',
+        meses: new Map([['JULIO', {}]]),
+      });
+      const payload: any = {
+        tag: 'T',
+        periodo: 'JULIO-DICIEMBRE',
+        año: 2025,
+        area: 'X',
+        mesActual: 'AGOSTO',
+        meses: { AGOSTO: {} },
+      };
+      await expect(service.create(payload)).rejects.toThrow(ForbiddenException);
+      expect(model.updateOne).not.toHaveBeenCalled();
     });
   });
 
@@ -182,6 +255,7 @@ describe('InspeccionesEmergenciaService', () => {
         tag,
         periodo: period,
         año: year,
+        estado: { $ne: 'archivado' },
       });
       expect(result.existe).toBe(true);
       expect(result.esActivo).toBe(false);
@@ -209,6 +283,30 @@ describe('InspeccionesEmergenciaService', () => {
       await expect(
         service.actualizarMesPorTag(tag, mes, datosMes, area),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('busca el formulario del semestre del mes y escribe en ese documento', async () => {
+      jest.spyOn(model, 'findOne').mockResolvedValue({
+        _id: 'orig-3',
+        tag: '710BL728',
+        periodo: 'JULIO-DICIEMBRE',
+        estado: 'activo',
+      });
+      const datosMes = { inspector: { nombre: 'B' } } as InspeccionMensualDto;
+
+      await service.actualizarMesPorTag('710BL728', 'AGOSTO', datosMes, 'F');
+
+      expect(model.findOne).toHaveBeenCalledWith({
+        tag: '710BL728',
+        periodo: 'JULIO-DICIEMBRE',
+        estado: 'activo',
+      });
+      expect(model.updateOne).toHaveBeenCalledWith(
+        { _id: 'orig-3' },
+        expect.objectContaining({
+          $set: expect.objectContaining({ 'meses.AGOSTO': datosMes }),
+        }),
+      );
     });
   });
 });

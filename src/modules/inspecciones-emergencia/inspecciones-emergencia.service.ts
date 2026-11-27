@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -14,15 +15,24 @@ import { isValidObjectId, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { ExtintorService } from '../extintor/extintor.service';
 import { Area } from '../area/schemas/area.schema';
+import {
+  AreaDelMaestro,
+  consultaDelReporte,
+  FiltrosReporte,
+  MESES,
+} from './domain/consulta-reporte';
+import {
+  esMesValido,
+  mesesGuardados,
+  mesesQueFaltan,
+  periodoDeMes,
+  ultimoMes,
+} from './domain/meses-formulario';
 
-interface FiltrosInspeccion {
-  area?: string;
-  superintendencia?: string;
-  mesActual?: string;
-  documentCode?: string;
-}
 @Injectable()
 export class InspeccionesEmergenciaService {
+  private readonly logger = new Logger(InspeccionesEmergenciaService.name);
+
   constructor(
     @InjectModel(FormularioInspeccionEmergencia.name)
     private inspeccionEmergenciaModel: Model<FormularioInspeccionEmergencia>,
@@ -55,9 +65,15 @@ export class InspeccionesEmergenciaService {
     }
   }
 
-  private async validarEstadoActivo(tag: string): Promise<void> {
+  /**
+   * El formulario activo del tag para ese semestre. Antes se buscaba solo por tag: con dos
+   * formularios activos del mismo tag (las copias de agosto de 2026) se escribía en el primero que
+   * devolviera la base.
+   */
+  private async validarEstadoActivo(tag: string, periodo: string) {
     const formulario = await this.inspeccionEmergenciaModel.findOne({
       tag,
+      periodo,
       estado: 'activo',
     });
 
@@ -72,6 +88,70 @@ export class InspeccionesEmergenciaService {
         `No se puede modificar el formulario con TAG: ${tag}. Estado actual: ${formulario.estado}. Solo se pueden modificar formularios en estado 'activo'.`,
       );
     }
+    return formulario;
+  }
+
+  /** Da de alta los extintores nuevos y los marca como inspeccionados. */
+  private async registrarExtintores(
+    extintores: { codigo: string; ubicacion?: string }[] | undefined,
+    tag: string,
+    area: string,
+  ): Promise<void> {
+    if (!extintores?.length) return;
+    await this.extintorService.verificarYCrearExtintores(
+      extintores.map((extintor) => ({
+        codigo: extintor.codigo,
+        ubicacion: extintor.ubicacion || 'No especificada',
+      })),
+      tag,
+      area,
+    );
+    await this.extintorService.marcarExtintoresComoInspeccionados(
+      extintores.map((extintor) => extintor.codigo),
+    );
+  }
+
+  /**
+   * «Crear» llegó para un formulario que ya existe: se agregan los meses que el envío trae y el
+   * formulario no tiene (ver `domain/meses-formulario.ts`). Sin esto, en agosto de 2026 se
+   * insertaron copias, y después el mes enviado se descartaba en silencio.
+   */
+  private async completarMesesFaltantes(
+    existente: FormularioInspeccionEmergencia,
+    dto: CreateFormularioInspeccionDto,
+  ) {
+    const guardados = mesesGuardados(
+      existente.meses as unknown as Map<string, unknown>,
+    );
+    const faltan = mesesQueFaltan(guardados, dto.meses, existente.periodo);
+    if (faltan.length === 0) return existente;
+
+    if (existente.estado !== 'activo') {
+      throw new ForbiddenException(
+        `El formulario del TAG ${existente.tag} (${existente.periodo} ${existente.año}) está ${existente.estado}: no se le pueden agregar meses.`,
+      );
+    }
+
+    for (const mes of faltan) {
+      await this.registrarExtintores(
+        dto.meses[mes]?.inspeccionesExtintor,
+        existente.tag,
+        dto.area,
+      );
+    }
+
+    const $set: Record<string, unknown> = {
+      mesActual: ultimoMes([...guardados, ...faltan]),
+      fechaUltimaModificacion: new Date(),
+    };
+    for (const mes of faltan) $set[`meses.${mes}`] = dto.meses[mes];
+
+    const id = (existente as unknown as { _id: unknown })._id;
+    await this.inspeccionEmergenciaModel.updateOne({ _id: id }, { $set });
+    this.logger.warn(
+      `crear-formulario recibió el TAG ${existente.tag} (${existente.periodo} ${existente.año}), que ya existía: se agregaron ${faltan.join(', ')} al formulario existente en vez de crear otro.`,
+    );
+    return this.inspeccionEmergenciaModel.findById(id).exec();
   }
 
   async create(createInspeccionesEmergenciaDto: CreateFormularioInspeccionDto) {
@@ -84,15 +164,20 @@ export class InspeccionesEmergenciaService {
     // Autocompletar vencidos
     await this.autoCompletarFormulariosVencidos();
 
-    // Buscar si ya existe para tag, periodo y año (evita duplicidad)
+    // Buscar si ya existe para tag, periodo y año (evita duplicidad). Las copias archivadas no
+    // cuentan: su contenido ya está en el original.
     const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
       tag: createInspeccionesEmergenciaDto.tag,
       periodo: createInspeccionesEmergenciaDto.periodo,
       año: createInspeccionesEmergenciaDto.año,
+      estado: { $ne: 'archivado' },
     });
 
     if (formularioExistente) {
-      return formularioExistente;
+      return this.completarMesesFaltantes(
+        formularioExistente,
+        createInspeccionesEmergenciaDto,
+      );
     }
 
     // Crear la inspección
@@ -103,28 +188,11 @@ export class InspeccionesEmergenciaService {
 
     // Actualizar los extintores que fueron inspeccionados
     const mesActual = createInspeccionesEmergenciaDto.mesActual;
-    const extintoresInspeccionados =
-      createInspeccionesEmergenciaDto.meses[mesActual]?.inspeccionesExtintor ||
-      [];
-
-    if (extintoresInspeccionados.length > 0) {
-      const codigosExtintores = extintoresInspeccionados.map(
-        (extintor) => extintor.codigo,
-      );
-
-      await this.extintorService.verificarYCrearExtintores(
-        extintoresInspeccionados.map((extintor) => ({
-          codigo: extintor.codigo,
-          ubicacion: extintor.ubicacion || 'No especificada',
-        })),
-        createInspeccionesEmergenciaDto.tag,
-        createInspeccionesEmergenciaDto.area,
-      );
-
-      await this.extintorService.marcarExtintoresComoInspeccionados(
-        codigosExtintores,
-      );
-    }
+    await this.registrarExtintores(
+      createInspeccionesEmergenciaDto.meses[mesActual]?.inspeccionesExtintor,
+      createInspeccionesEmergenciaDto.tag,
+      createInspeccionesEmergenciaDto.area,
+    );
 
     return savedInspection;
   }
@@ -133,11 +201,12 @@ export class InspeccionesEmergenciaService {
     // Autocompletar vencidos
     await this.autoCompletarFormulariosVencidos();
 
-    // Buscar el formulario por tag, periodo y año (sin limitar a estado: 'activo')
+    // Buscar el formulario por tag, periodo y año (activo o completado; nunca una copia archivada)
     const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
       tag,
       periodo,
       año,
+      estado: { $ne: 'archivado' },
     });
 
     // Buscar extintores por área
@@ -183,50 +252,14 @@ export class InspeccionesEmergenciaService {
     // Autocompletar vencidos
     await this.autoCompletarFormulariosVencidos();
 
-    // Validar que el formulario esté en estado activo antes de proceder
-    await this.validarEstadoActivo(tag);
-
-    // Verificar que el mes sea válido
-    const mesesValidos = [
-      'ENERO',
-      'FEBRERO',
-      'MARZO',
-      'ABRIL',
-      'MAYO',
-      'JUNIO',
-      'JULIO',
-      'AGOSTO',
-      'SEPTIEMBRE',
-      'OCTUBRE',
-      'NOVIEMBRE',
-      'DICIEMBRE',
-    ];
-
-    if (!mesesValidos.includes(mes)) {
-      throw new Error(`Mes no válido: ${mes}`);
+    if (!esMesValido(mes)) {
+      throw new BadRequestException(`Mes no válido: ${mes}`);
     }
 
-    // Actualizar los extintores que fueron inspeccionados
-    if (
-      datosMes.inspeccionesExtintor &&
-      datosMes.inspeccionesExtintor.length > 0
-    ) {
-      await this.extintorService.verificarYCrearExtintores(
-        datosMes.inspeccionesExtintor.map((extintor) => ({
-          codigo: extintor.codigo,
-          ubicacion: extintor.ubicacion || 'No especificada',
-        })),
-        tag,
-        area,
-      );
+    // El formulario activo del tag **para el semestre de ese mes**.
+    const formulario = await this.validarEstadoActivo(tag, periodoDeMes(mes));
 
-      const codigosExtintores = datosMes.inspeccionesExtintor.map(
-        (extintor) => extintor.codigo,
-      );
-      await this.extintorService.marcarExtintoresComoInspeccionados(
-        codigosExtintores,
-      );
-    }
+    await this.registrarExtintores(datosMes.inspeccionesExtintor, tag, area);
 
     // Crear el objeto de actualización
     const updateQuery = {
@@ -238,7 +271,7 @@ export class InspeccionesEmergenciaService {
     };
 
     const resultado = await this.inspeccionEmergenciaModel.updateOne(
-      { tag: tag, estado: 'activo' },
+      { _id: (formulario as unknown as { _id: unknown })._id },
       updateQuery,
     );
 
@@ -249,38 +282,31 @@ export class InspeccionesEmergenciaService {
     return { success: true, message: 'Mes actualizado correctamente' };
   }
 
-  async findAll(filtros?: FiltrosInspeccion) {
-    // Construir el objeto de consulta basado en los filtros
-    const query: any = {};
-
-    if (filtros) {
-      if (filtros.area && typeof filtros.area === 'string') {
-        query.area = { $regex: filtros.area, $options: 'i' };
-      }
-
-      if (
-        filtros.superintendencia &&
-        typeof filtros.superintendencia === 'string'
-      ) {
-        query.superintendencia = {
-          $regex: filtros.superintendencia,
-          $options: 'i',
-        };
-      }
-
-      if (filtros.mesActual && typeof filtros.mesActual === 'string') {
-        query[`meses.${filtros.mesActual}`] = { $exists: true };
-      }
-
-      if (filtros.documentCode && typeof filtros.documentCode === 'string') {
-        query.documentCode = { $regex: filtros.documentCode, $options: 'i' };
-      }
-    }
-
+  /** Reporte: ver `domain/consulta-reporte.ts` para cómo se resuelve cada filtro. */
+  async findAll(filtros: FiltrosReporte = {}) {
+    const maestro = filtros.superintendencia?.trim()
+      ? await this.areasDelMaestro()
+      : [];
     return this.inspeccionEmergenciaModel
-      .find(query)
-      .sort({ fechaUltimaModificacion: -1 }) // Ordenar por fecha de última modificación descendente
+      .find(consultaDelReporte(filtros, maestro))
+      .sort({ fechaUltimaModificacion: -1 })
       .exec();
+  }
+
+  /** Áreas activas con el nombre de su superintendencia. */
+  private async areasDelMaestro(): Promise<AreaDelMaestro[]> {
+    const areas = await this.areaModel
+      .find({ activo: { $ne: false } })
+      .select('nombre superintendencia')
+      .populate({ path: 'superintendencia', select: 'nombre' })
+      .lean()
+      .exec();
+    return areas.map((a) => ({
+      nombre: a.nombre,
+      superintendencia:
+        (a.superintendencia as unknown as { nombre?: string } | null)?.nombre ??
+        null,
+    }));
   }
 
   async findOne(id: string): Promise<FormularioInspeccionEmergencia> {
@@ -314,8 +340,11 @@ export class InspeccionesEmergenciaService {
     // Autocompletar vencidos
     await this.autoCompletarFormulariosVencidos();
 
-    // Validar que el formulario esté en estado activo antes de proceder
-    await this.validarEstadoActivo(tag);
+    // El formulario activo del tag para el semestre en curso (este endpoint no recibe el mes).
+    const formularioExistente = await this.validarEstadoActivo(
+      tag,
+      periodoDeMes(MESES[new Date().getMonth()]),
+    );
 
     // Verificar extintores
     if (!extintores || extintores.length === 0) {
@@ -323,25 +352,11 @@ export class InspeccionesEmergenciaService {
         'No se proporcionaron extintores para actualizar',
       );
     }
-    console.log(extintores);
-
     // Extraer códigos de extintores para marcarlos como inspeccionados
     const codigosExtintores = extintores.map((extintor) => extintor.codigo);
     await this.extintorService.marcarExtintoresComoInspeccionados(
       codigosExtintores,
     );
-
-    // Buscar el formulario por tag
-    const formularioExistente = await this.inspeccionEmergenciaModel.findOne({
-      tag,
-      estado: 'activo',
-    });
-
-    if (!formularioExistente) {
-      throw new NotFoundException(
-        `No se encontró formulario activo con TAG: ${tag}`,
-      );
-    }
 
     // Obtener el mes actual
     const mesActual = formularioExistente.mesActual;
@@ -360,7 +375,7 @@ export class InspeccionesEmergenciaService {
 
     // Actualizar el documento
     const resultado = await this.inspeccionEmergenciaModel.updateOne(
-      { tag: tag, estado: 'activo' },
+      { _id: (formularioExistente as unknown as { _id: unknown })._id },
       updateQuery,
     );
 

@@ -170,15 +170,15 @@ export class InspeccionesEmergenciaController {
     @Query('superintendencia') superintendencia?: string,
     @Query('mesActual') mesActual?: string,
     @Query('documentCode') documentCode?: string,
+    @Query('anio') anio?: string,
   ) {
-    const filtros = {
+    return this.inspeccionesEmergenciaService.findAll({
       area,
       superintendencia,
       mesActual,
       documentCode,
-    };
-
-    return this.inspeccionesEmergenciaService.findAll(filtros);
+      anio,
+    });
   }
 
   @Patch(':id')

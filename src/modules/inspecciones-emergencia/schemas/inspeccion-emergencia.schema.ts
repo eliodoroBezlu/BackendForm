@@ -223,4 +223,14 @@ FormularioInspeccionSchema.index({
 });
 
 FormularioInspeccionSchema.index({ tag: 1, estado: 1 });
-FormularioInspeccionSchema.index({ tag: 1, periodo: 1, año: 1 });
+// Un solo formulario por tag, semestre y año. Las copias archivadas (los duplicados de agosto de
+// 2026, ya juntados con su original) quedan fuera del índice. En una base que ya tenía el índice
+// normal `tag_1_periodo_1_año_1`, hay que borrarlo antes: ver limpieza-datos/INSTRUCCIONES.
+FormularioInspeccionSchema.index(
+  { tag: 1, periodo: 1, año: 1 },
+  {
+    name: 'unico_tag_periodo_año',
+    unique: true,
+    partialFilterExpression: { estado: { $in: ['activo', 'completado'] } },
+  },
+);

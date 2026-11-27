@@ -224,6 +224,27 @@ export class TrabajadoresService implements OnModuleInit {
 
   // ==================== BÚSQUEDA ====================
 
+  /**
+   * Quién puede haber hecho una inspección: los trabajadores activos con usuario. Solo usuario,
+   * nombre y área: la lista la ve cualquier técnico en la carpeta virtual, y el resto de la ficha
+   * (CI, celular, residencia) no hace falta para elegir a alguien.
+   */
+  async conUsuario(): Promise<
+    { username: string; nombre: string; area: string }[]
+  > {
+    const trabajadores = await this.trabajadorModel
+      .find({ username: { $nin: [null, ''] }, activo: { $ne: false } })
+      .select('username nomina area')
+      .sort({ nomina: 1 })
+      .lean()
+      .exec();
+    return trabajadores.map((t) => ({
+      username: t.username as string,
+      nombre: t.nomina,
+      area: t.area,
+    }));
+  }
+
   async findAllNames(): Promise<string[]> {
     const trabajadores = await this.trabajadorModel
       .find()

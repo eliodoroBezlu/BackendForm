@@ -186,6 +186,26 @@ export class TrabajadoresController {
   }
 
   // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
+  @Get('con-usuario')
+  @Roles(
+    Role.ADMIN,
+    Role.SUPER_ADMIN,
+    Role.TECNICO,
+    Role.SUPERVISOR,
+    Role.SUPERINTENDENTE,
+    Role.INSPECTOR,
+    Role.INSPECTOR_ASIGNADO,
+    Role.USER,
+  )
+  @ApiOperation({
+    summary:
+      'Trabajadores activos con usuario en el sistema: usuario, nombre y área (para elegir un técnico)',
+  })
+  conUsuario() {
+    return this.trabajadoresService.conUsuario();
+  }
+
+  // ⚠️ IMPORTANTE: Este endpoint DEBE ir ANTES de @Get(':id')
   @Get('responsables-cierre')
   @Roles(
     Role.ADMIN,
